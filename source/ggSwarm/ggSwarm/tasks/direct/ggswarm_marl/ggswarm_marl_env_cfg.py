@@ -1,9 +1,10 @@
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# Copyright (c) 2022-2025, The Isaac Lab Project Developers.
+# (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-from isaaclab_assets.robots.cart_double_pendulum import CART_DOUBLE_PENDULUM_CFG
+from isaaclab_assets import CRAZYFLIE_CFG
 
 from isaaclab.assets import ArticulationCfg
 from isaaclab.envs import DirectMARLEnvCfg
@@ -16,40 +17,48 @@ from isaaclab.utils import configclass
 class GgswarmMarlEnvCfg(DirectMARLEnvCfg):
     # env
     decimation = 2
-    episode_length_s = 5.0
+    episode_length_s = 10.0
     # multi-agent specification and spaces definition
-    possible_agents = ["cart", "pendulum"]
-    action_spaces = {"cart": 1, "pendulum": 1}
-    observation_spaces = {"cart": 4, "pendulum": 3}
+    num_agents = 4
+
+    possible_agents: list[str] = []
+    action_spaces: dict = {}
+    observation_spaces: dict = {}
     state_space = -1
 
+    def __post_init__(self):
+        self.possible_agents = [f"drone_{i}" for i in range(self.num_agents)]
+        self.action_spaces = {agent: 4 for agent in self.possible_agents}
+        self.observation_spaces = {agent: 12 for agent in self.possible_agents}
+
     # simulation
-    sim: SimulationCfg = SimulationCfg(dt=1 / 120, render_interval=decimation)
+    sim: SimulationCfg = SimulationCfg(
+        dt=1 / 100,
+        render_interval=decimation,
+    )
 
     # robot(s)
-    robot_cfg: ArticulationCfg = CART_DOUBLE_PENDULUM_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+    robot_cfg: ArticulationCfg = CRAZYFLIE_CFG.replace(
+        prim_path="/World/envs/env_.*/drone_.*"
+    )
+
+    # swarm specific
+    thrust_to_weight = 1.9
+    moment_scale = 0.01
 
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=4.0, replicate_physics=True)
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(
+        num_envs=32, env_spacing=5.0, replicate_physics=True
+    )
 
-    # custom parameters/scales
-    # - controllable joint
-    cart_dof_name = "slider_to_cart"
-    pole_dof_name = "cart_to_pole"
-    pendulum_dof_name = "pole_to_pendulum"
-    # - action scale
-    cart_action_scale = 100.0  # [N]
-    pendulum_action_scale = 50.0  # [Nm]
-    # - reward scales
-    rew_scale_alive = 1.0
+    # reward scales
+    rew_scale_pos = 1.0
+    rew_scale_vel = -0.05
+    rew_scale_ang_vel = -0.01
+    rew_scale_alive = 0.1
     rew_scale_terminated = -2.0
-    rew_scale_cart_pos = 0
-    rew_scale_cart_vel = -0.01
-    rew_scale_pole_pos = -1.0
-    rew_scale_pole_vel = -0.01
-    rew_scale_pendulum_pos = -1.0
-    rew_scale_pendulum_vel = -0.01
-    # - reset states/conditions
-    initial_pendulum_angle_range = [-0.25, 0.25]  # pendulum angle sample range on reset [rad]
-    initial_pole_angle_range = [-0.25, 0.25]  # pole angle sample range on reset [rad]
-    max_cart_pos = 3.0  # reset if cart exceeds this position [m]
+
+    # reset states/conditions
+    min_height = 0.1
+    max_height = 3.0
+    spawn_dist = 1.5  # max distance from origin for spawning drones
