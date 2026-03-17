@@ -16,7 +16,7 @@ from isaaclab.utils.math import (
     subtract_frame_transforms,
 )
 
-from .ggswarm_marl_env_cfg import GgswarmMarlEnvCfg
+from .drone_swarm_env_cfg import GgswarmMarlEnvCfg
 
 # import logger
 logger = logging.getLogger("isaaclab")

@@ -14,10 +14,10 @@ from . import agents
 
 gym.register(
     id="Template-Ggswarm-Marl-Direct-v0",
-    entry_point=f"{__name__}.ggswarm_marl_env:GgswarmMarlEnv",
+    entry_point=f"{__name__}.drone_swarm_env:GgswarmMarlEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.ggswarm_marl_env_cfg:GgswarmMarlEnvCfg",
+        "env_cfg_entry_point": f"{__name__}.drone_swarm_env_cfg:GgswarmMarlEnvCfg",
         "skrl_MAPPO_cfg_entry_point": f"{agents.__name__}:skrl_MAPPO_cfg.yaml",
     },
 )

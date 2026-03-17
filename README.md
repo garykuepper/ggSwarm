@@ -20,6 +20,18 @@ The project utilizes a **Centralized Training, Decentralized Execution (CTDE)** 
 * Efficiency: Maintain end-to-end decision latency under **90ms**.
 * Robustness: Maintain a **> 95% success rate** while navigating cluttered environments like forests or urban canyons.
 
+## Development Phases
+
+| Phase | Weeks | Focus | Status |
+| :--- | :--- | :--- | :--- |
+| **1. Foundation** | 5–6 | Isaac Lab env, drone spawning, graph connectivity | ✅ Complete |
+| **2. Brain Development** | 7–8 | GATv2 policy training with PPO/MAPPO | 🔄 In Progress |
+| **3. Muscle Refinement** | 9–10 | MINCO optimization, SwarmRaft consensus | ⬜ Planned |
+| **4. Stress Testing** | 11–12 | Agent failure tests, obstacle environments | ⬜ Planned |
+| **5. Showcase Prep** | 13–15 | HD rendering, final validation, demo video | ⬜ Planned |
+
+*Detailed plans: [Phase 1](docs/phase1_foundation.md) · [Phase 2](docs/phase2_brain_development.md)*
+
 ## Development Stack
 
 * Simulation: NVIDIA Isaac Sim 5.1 / Isaac Lab 2.3.
@@ -57,7 +69,7 @@ pip install -e source/ggSwarm
 
 ### Running the Phase 1 Demo
 
-To verify the Phase 1 Foundation is working (spawning 20 drones and calculating graph connectivity), run the Phase 1 demonstration script:
+To verify the Phase 1 Foundation is working (spawning drones and calculating graph connectivity), run the Phase 1 demonstration script:
 
 ```bash
 ..\IsaacLab\isaaclab.bat -p scripts/phase1_demo.py --task=Template-Ggswarm-Marl-Direct-v0
@@ -70,8 +82,10 @@ To verify the Phase 1 Foundation is working (spawning 20 drones and calculating 
 To start training with SKRL, run (from `ggSwarm` directory):
 
 ```bash
-..\IsaacLab\isaaclab.bat -p scripts/skrl/train.py --task=Template-Ggswarm-Marl-Direct-v0
+..\IsaacLab\isaaclab.bat -p scripts/skrl/train.py --task=Template-Ggswarm-Marl-Direct-v0 --algorithm=MAPPO
 ```
+
+*Note: For the full Phase 2 plan including GATv2 integration and reward tuning, see [Phase 2 Documentation](docs/phase2_brain_development.md).*
 
 ---
 

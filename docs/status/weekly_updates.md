@@ -4,19 +4,30 @@ Formatted for synchronization with the project website.
 
 ## Week 10 (2026-03-16)
 
-### Status: In Progress
+### Status: Completed
 
 ### 1. What project milestones did you accomplish this week?
 
-- (Pending update)
+- **Phase 1 Complete:** Finalized the foundational Isaac Lab MARL environment (`GgswarmMarlEnv`), including multi-agent Crazyflie spawning, 12-dim observation space, 4-dim action space, distance-based graph connectivity (L2 adjacency matrix), reward shaping, and reset logic.
+- **Verification:** Created and ran `phase1_demo.py` to visually confirm drone rendering in Isaac Sim and validate real-time adjacency matrix computation.
+- **SKRL Pipeline:** Set up the MAPPO training pipeline with `train.py`, `play.py`, and `skrl_mappo_cfg.yaml`.
+- **Documentation:** Expanded `phase1_foundation.md` into a comprehensive technical reference. Updated changelog with all Phase 1 milestones.
+- **Code Cleanup:** Renamed environment files to `drone_swarm_env.py` / `drone_swarm_env_cfg.py` for clarity.
 
 ### 2. What is your plan for next week?
 
-- (Pending update)
+- **Phase 2 Kickoff (Brain Development):** Begin training the GATv2 coordination policy using PPO/MAPPO via SKRL.
+- **SKRL Config Tuning:** Increase network capacity from `[32, 32]` to larger layers, extend training timesteps, and fix the experiment directory name.
+- **Reward Evolution:** Evolve from hover-in-place rewards to formation-aware rewards (inter-agent spacing targets).
+- **GATv2 Integration:** Start building a custom GNN policy that consumes the adjacency matrix to enable spatial reasoning.
 
 ### 3. What challenges, if any, are you currently facing in project development? Do you need instructor assistance?
 
-- (Pending update)
+- **GATv2 Architecture:** Designing the custom GNN policy network that integrates with SKRL's model interface requires careful study of both frameworks.
+- **Reward Engineering:** Transitioning from simple position rewards to formation-aware rewards without causing training instability.
+- **No instructor assistance needed** at this time.
+
+---
 
 ## Week 9 (2026-03-09)
 
