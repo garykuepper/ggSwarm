@@ -1,3 +1,8 @@
+# Copyright (c) 2022-2026, ggSwarm Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: MIT
+
 import sys
 import time
 

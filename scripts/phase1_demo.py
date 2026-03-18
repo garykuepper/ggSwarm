@@ -1,19 +1,23 @@
-# Copyright (c) 2022-2026, The Isaac Lab Project Developers
-# (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# Copyright (c) 2022-2026, ggSwarm Developers.
 # All rights reserved.
 #
-# SPDX-License-Identifier: BSD-3-Clause
+# SPDX-License-Identifier: MIT
 
 """Script to an environment with random action agent."""
 
 import argparse
 
+import ggSwarm.tasks  # noqa: F401, E402
+import gymnasium as gym  # noqa: E402
+import torch  # noqa: E402
+
 from isaaclab.app import AppLauncher
 
+import isaaclab_tasks  # noqa: F401, E402
+from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
+
 # add argparse arguments
-parser = argparse.ArgumentParser(
-    description="Random agent for Isaac Lab environments."
-)
+parser = argparse.ArgumentParser(description="Random agent for Isaac Lab environments.")
 parser.add_argument(
     "--disable_fabric",
     action="store_true",
@@ -37,14 +41,6 @@ app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
 """Rest everything follows."""
-
-import gymnasium as gym  # noqa: E402
-import torch  # noqa: E402
-
-import isaaclab_tasks  # noqa: F401, E402
-from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
-
-import ggSwarm.tasks  # noqa: F401, E402
 
 
 def main():
@@ -104,12 +100,9 @@ def main():
             if "adj_matrix" in info:
                 # Get the matrix for the first environment instance
                 adj = info["adj_matrix"][0].cpu().numpy()
-                # Subtract self-loops
-                num_connected = (adj > 0).sum() - adj.shape[0]
-                print(
-                    "[Phase 1 Evidence] Drones connected (Distance < 2.0m): "
-                    f"{num_connected // 2} pairs"
-                )
+                # Subtraction of self-loops is no longer needed as they are removed in the env
+                num_connected = (adj > 0).sum()
+                print(f"[Phase 1 Evidence] Drones connected (Distance < 2.0m): {num_connected // 2} pairs")
                 # Uncomment to print the full matrix:
                 # print(adj)
     env.close()

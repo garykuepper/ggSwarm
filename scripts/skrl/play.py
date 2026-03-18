@@ -1,3 +1,8 @@
+# Copyright (c) 2022-2026, ggSwarm Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: MIT
+
 # Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
 # All rights reserved.
 #
@@ -97,6 +102,8 @@ if args_cli.ml_framework.startswith("torch"):
 elif args_cli.ml_framework.startswith("jax"):
     from skrl.utils.runner.jax import Runner
 
+import ggSwarm.tasks  # noqa: F401
+
 from isaaclab.envs import (
     DirectMARLEnv,
     DirectMARLEnvCfg,
@@ -112,8 +119,6 @@ from isaaclab_rl.utils.pretrained_checkpoint import get_published_pretrained_che
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
-
-import ggSwarm.tasks  # noqa: F401
 
 # config shortcuts
 if args_cli.agent is None:

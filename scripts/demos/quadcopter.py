@@ -1,3 +1,8 @@
+# Copyright (c) 2022-2026, ggSwarm Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: MIT
+
 # Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
 # All rights reserved.
 #
@@ -20,9 +25,7 @@ import argparse
 from isaaclab.app import AppLauncher
 
 # add argparse arguments
-parser = argparse.ArgumentParser(
-    description="This script demonstrates how to simulate a quadcopter."
-)
+parser = argparse.ArgumentParser(description="This script demonstrates how to simulate a quadcopter.")
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
@@ -64,9 +67,7 @@ def main():
 
     # Robots
     robot_cfg = CRAZYFLIE_CFG.replace(prim_path="/World/Crazyflie")
-    robot_cfg.spawn.func(
-        "/World/Crazyflie", robot_cfg.spawn, translation=robot_cfg.init_state.pos
-    )
+    robot_cfg.spawn.func("/World/Crazyflie", robot_cfg.spawn, translation=robot_cfg.init_state.pos)
 
     # create handles for the robots
     robot = Articulation(robot_cfg)

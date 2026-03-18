@@ -1,6 +1,10 @@
+# Copyright (c) 2022-2026, ggSwarm Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: MIT
+
 import torch
 import warp as wp
-import numpy as np
 
 wp.init()
 

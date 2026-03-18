@@ -1,3 +1,8 @@
+# Copyright (c) 2022-2026, ggSwarm Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: MIT
+
 # Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
 # All rights reserved.
 #

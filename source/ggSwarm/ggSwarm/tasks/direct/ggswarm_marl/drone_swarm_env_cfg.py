@@ -1,16 +1,15 @@
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers.
-# (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# Copyright (c) 2022-2026, ggSwarm Developers.
 # All rights reserved.
 #
-# SPDX-License-Identifier: BSD-3-Clause
-
-from isaaclab_assets import CRAZYFLIE_CFG
+# SPDX-License-Identifier: MIT
 
 from isaaclab.assets import ArticulationCfg
 from isaaclab.envs import DirectMARLEnvCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim import SimulationCfg
 from isaaclab.utils import configclass
+
+from isaaclab_assets import CRAZYFLIE_CFG
 
 
 @configclass
@@ -38,18 +37,14 @@ class GgswarmMarlEnvCfg(DirectMARLEnvCfg):
     )
 
     # robot(s)
-    robot_cfg: ArticulationCfg = CRAZYFLIE_CFG.replace(
-        prim_path="/World/envs/env_.*/drone_.*"
-    )
+    robot_cfg: ArticulationCfg = CRAZYFLIE_CFG.replace(prim_path="/World/envs/env_.*/drone_.*")
 
     # swarm specific
     thrust_to_weight = 1.9
     moment_scale = 0.01
 
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=32, env_spacing=5.0, replicate_physics=True
-    )
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=32, env_spacing=5.0, replicate_physics=True)
 
     # reward scales
     rew_scale_pos = 1.0

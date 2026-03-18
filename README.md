@@ -1,5 +1,9 @@
 # ggSwarm: Decentralized Formation Control for Drone Swarms
 
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+
 This project develops a **decentralized coordination framework** for Unmanned Aerial Vehicle (UAV) swarms to eliminate single points of failure and high latency inherent in centralized systems. The system is built within **NVIDIA Isaac Lab**, utilizing GPU-accelerated reinforcement learning to enable autonomous, resilient swarm behavior.
 
 ## Core Architecture (GNSC 5-Layer Model)
@@ -86,6 +90,31 @@ To start training with SKRL, run (from `ggSwarm` directory):
 ```
 
 *Note: For the full Phase 2 plan including GATv2 integration and reward tuning, see [Phase 2 Documentation](docs/phase2_brain_development.md).*
+
+## Code Quality
+
+This project uses **Ruff** for linting and formatting, and **pre-commit** to ensure code standards.
+
+### Setting up pre-commit
+
+```bash
+# Install pre-commit
+pip install pre-commit
+
+# Install the git hooks
+pre-commit install
+```
+
+### Running manual checks
+
+```bash
+# Run all pre-commit hooks on all files
+pre-commit run --all-files
+
+# Run ruff directly
+ruff check .
+ruff format .
+```
 
 ---
 

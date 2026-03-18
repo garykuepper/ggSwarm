@@ -1,3 +1,8 @@
+# Copyright (c) 2022-2026, ggSwarm Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: MIT
+
 # Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
 # All rights reserved.
 #
@@ -29,13 +34,12 @@ simulation_app = app_launcher.app
 
 """Rest everything follows."""
 
+import ggSwarm.tasks  # noqa: F401
 import gymnasium as gym
 import torch
 
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import parse_env_cfg
-
-import ggSwarm.tasks  # noqa: F401
 
 
 def main():

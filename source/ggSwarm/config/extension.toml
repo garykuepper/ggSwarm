@@ -7,12 +7,12 @@ version = "0.1.0"
 category = "isaaclab"
 readme  = "README.md"
 
-title = "Extension Template"
-author = "Isaac Lab Project Developers"
-maintainer = "Isaac Lab Project Developers"
-description="Extension Template for Isaac Lab"
-repository = "https://github.com/isaac-sim/IsaacLab.git"
-keywords = ["extension", "template", "isaaclab"]
+title = "ggSwarm: Decentralized Formation Control"
+author = "ggSwarm Developers"
+maintainer = "ggSwarm Developers"
+description="Decentralized formation control for drone swarms using MARL in NVIDIA Isaac Lab."
+repository = "https://github.com/garykuepper/ggSwarm"
+keywords = ["drone", "swarm", "marl", "isaaclab", "formation-control"]
 
 [dependencies]
 "isaaclab" = {}
