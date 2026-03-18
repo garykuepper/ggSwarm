@@ -6,7 +6,7 @@
 [![Isaac Lab](https://img.shields.io/badge/Isaac%20Lab-2.3-76B900?logo=nvidia&logoColor=white)](https://isaac-sim.github.io/IsaacLab/)
 [![Isaac Sim](https://img.shields.io/badge/Isaac%20Sim-5.1-76B900?logo=nvidia&logoColor=white)](https://developer.nvidia.com/isaac-sim)
 [![SKRL](https://img.shields.io/badge/skrl-1.1.0-blueviolet?logo=github&logoColor=white)](https://skrl.readthedocs.io/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![Machine Learning](https://img.shields.io/badge/pytorch-2.0+-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
 [![Status](https://img.shields.io/badge/Status-In%20Development-orange)]
 
@@ -32,13 +32,13 @@ The project utilizes a **Centralized Training, Decentralized Execution (CTDE)** 
 
 ## Development Phases
 
-| Phase | Weeks | Focus | Status |
-| :--- | :--- | :--- | :--- |
-| **1. Foundation** | 5–6 | Isaac Lab env, drone spawning, graph connectivity | ✅ Complete |
-| **2. Brain Development** | 7–8 | GATv2 policy training with MAPPO | 🔄 In Progress |
-| **3. Muscle Refinement** | 9–10 | MINCO optimization, SwarmRaft consensus | ⬜ Planned |
-| **4. Stress Testing** | 11–12 | Agent failure tests, obstacle environments | ⬜ Planned |
-| **5. Showcase Prep** | 13–15 | HD rendering, final validation, demo video | ⬜ Planned |
+| Phase | Weeks | Dates | Focus | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **1. Foundation** | 5–6 | Feb 5 – Feb 17 | Isaac Lab env, drone spawning, graph connectivity | ✅ Complete |
+| **2. Brain Development** | 7–8 | Feb 18 – Mar 3 | GATv2 policy training with MAPPO | 🔄 In Progress |
+| **3. Muscle Refinement** | 9–11 | Mar 4 – Mar 24 | MINCO optimization, SwarmRaft consensus | ⬜ Planned |
+| **4. Stress Testing** | 12–13 | Mar 25 – Apr 7 | Agent failure tests, obstacle environments | ⬜ Planned |
+| **5. Showcase Prep** | 14–15 | Apr 8 – Apr 21 | HD rendering, final validation, demo video | ⬜ Planned |
 
 *Detailed plans: [Phase 1](docs/phase1_foundation.md) · [Phase 2](docs/phase2_brain_development.md)*
 

@@ -41,6 +41,12 @@
         "venv",
         "virtualenv"
     ],
+    "ignoreWords": [
+        "Py",
+        "py",
+        "pytorch",
+        "Pytorch"
+    ],
     "ignorePaths": [
         "env_isaaclab/**",
         ".git/**",
