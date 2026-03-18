@@ -8,7 +8,7 @@
 [![SKRL](https://img.shields.io/badge/skrl-1.1.0-blueviolet?logo=github&logoColor=white)](https://skrl.readthedocs.io/)
 [![Machine Learning](https://img.shields.io/badge/pytorch-2.0+-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
-[![Status](https://img.shields.io/badge/Status-In%20Development-orange)]
+![Status](https://img.shields.io/badge/Status-In%20Development-orange)
 
 This project develops a **decentralized coordination framework** for Unmanned Aerial Vehicle (UAV) swarms to eliminate single points of failure and high latency inherent in centralized systems. The system is built within **NVIDIA Isaac Lab**, utilizing GPU-accelerated reinforcement learning to enable autonomous, resilient swarm behavior.
 
