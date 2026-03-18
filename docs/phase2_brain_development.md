@@ -9,9 +9,9 @@ Phase 2 trains the GATv2 coordination policy using MAPPO so agents learn basic f
 | ID | Objective | Success Criteria |
 | :--- | :--- | :--- |
 | P2.1 | Train a shared MAPPO policy that keeps agents in a stable formation | Mean formation error < 0.5m within 50k timesteps |
-| P2.2 | Integrate GATv2 as the policy backbone | Policy consumes adjacency matrix from `extras["adj_matrix"]` |
-| P2.3 | Evolve rewards from hover-in-place to formation-aware | Agents maintain target inter-agent spacing |
-| P2.4 | Validate training pipeline end-to-end | TensorBoard logs show converging reward curve |
+| P2.2 | Integrate GATv2 as the policy backbone | Policy handles batched graphs from `extras["adj_matrix"]` |
+| P2.3 | Implement Curriculum Reward Shaping | Smooth transition from hover-in-place to formation-aware |
+| P2.4 | Validate training pipeline end-to-end | TensorBoard logs show converging reward curve without collapsing |
 
 Aligns with proposal **Milestone M1 (Week 8):** "GNN policy training."
 
@@ -21,42 +21,36 @@ Aligns with proposal **Milestone M1 (Week 8):** "GNN policy training."
 
 ### Custom GATv2 Policy Network
 
-Replace the current MLP policy (`[32, 32]` layers) with a GATv2-based network:
+Replace the current MLP policy (`[32, 32]` layers) with a GATv2-based network that bridges PyTorch Geometric and SKRL.
 
-```
-Input: agent_obs (12-dim) + neighbor_obs (via adjacency matrix)
+```text
+Input: agent_obs (12-dim) + extras["adj_matrix"]
   │
-  ▼
-GATv2Conv (K-hop, max 3 hops)
+  ▼ (Batched 3D Adjacency Flattened to 2D Sparse Edge Index)
+  │
+GATv2Conv (2 attention heads, max 2 hops)
   │
   ▼
 MLP Head → Actions (4-dim)
 ```
 
-**Integration points:**
-
-- `drone_swarm_env.py` already stores `self.extras["adj_matrix"]` with shape `[num_envs, num_agents, num_agents]`.
-- The custom model must implement SKRL's `GaussianMixin` interface for PPO compatibility.
-- Edge construction: use the adjacency matrix to define which agents exchange messages.
-
-### Formation-Aware Rewards
-
-Extend the current reward function with formation components:
+**Curriculum-Based Rewards**
+Rewards dynamically scale based on training progress to prevent early-stage training collapse.
 
 | Component | Scale | Formula |
 | :--- | :--- | :--- |
-| **Formation error** | `+2.0` | `exp(-mean_spacing_error / 0.3)` where spacing error = `|actual_dist - target_dist|` |
-| **Cohesion** | `+0.5` | Penalize if any neighbor distance > `connectivity_threshold` |
-| Position (existing) | `+1.0` | `exp(-dist_to_goal / 0.5)` |
-| Velocity penalty (existing) | `-0.05` | `‖lin_vel_b‖` |
-| Angular velocity penalty (existing) | `-0.01` | `‖ang_vel_b‖` |
-| Alive bonus (existing) | `+0.1` | Constant |
+| **Separation Penalty** | `-5.0` | Applied if `dist < 2 * drone_radius` (prevents physical clipping/collapse) |
+| **Formation error** | `+2.0 * α` | `exp(-mean_spacing_error / 0.3)` where spacing error = `\|actual_dist - target_dist\|` |
+| **Cohesion** | `+0.5 * α` | `exp(-max_neighbor_dist / connectivity_threshold)` |
+| Position (Hover) | `+1.0 * (1-α)` | `exp(-dist_to_goal / 0.5)` |
+| Velocity penalty | `-0.05` | `‖lin_vel_b‖` |
+| Alive bonus | `+0.1` | Constant |
+
+*(Where `α` scales from 0.0 to 1.0 between 25k and 50k timesteps).*
 
 ---
 
-## SKRL Configuration Tuning
-
-Current `skrl_mappo_cfg.yaml` needs these adjustments:
+## SKRL Configuration Tuning (`skrl_mappo_cfg.yaml`)
 
 | Parameter | Current | Target | Rationale |
 | :--- | :--- | :--- | :--- |
@@ -64,6 +58,7 @@ Current `skrl_mappo_cfg.yaml` needs these adjustments:
 | `trainer.timesteps` | `4800` | `100000+` | Sufficient training for convergence |
 | `experiment.directory` | `cart_double_pendulum_direct` | `ggswarm_marl` | Fix template leftover |
 | `agent.rollouts` | `16` | `32` | More experience per update |
+| `agent.mini_batches` | `(default)` | `4` or `8` | Prevents memory spikes with larger rollouts |
 | `agent.learning_rate` | `3.0e-04` | `1.0e-04` | Slower, more stable learning for MARL |
 | `agent.entropy_loss_scale` | `0.0` | `0.01` | Encourage exploration in early training |
 
@@ -73,29 +68,153 @@ Current `skrl_mappo_cfg.yaml` needs these adjustments:
 
 ### Step 1: Fix Training Pipeline Basics
 
-1. Update `skrl_mappo_cfg.yaml` with corrected parameters (table above).
+1. Update `skrl_mappo_cfg.yaml` with corrected parameters.
 2. Run a baseline MLP training to confirm the pipeline works end-to-end.
-3. Verify TensorBoard logging and checkpoint saving.
+3. Verify TensorBoard logging.
 
-### Step 2: Formation Rewards
+### Step 2: Curriculum & Formation Rewards
 
-1. Define target formation geometry (e.g., uniform spacing at 1.0m).
+1. Add `Separation Penalty` to heavily penalize collisions.
 2. Add `_compute_formation_reward()` to `drone_swarm_env.py`.
-3. Integrate formation reward into `_get_rewards()`.
-4. Validate reward signals make physical sense by inspecting logged values.
+3. Link the formation scale (`α`) to `self.common_step_counter`.
+4. Validate reward signals make physical sense.
 
-### Step 3: GATv2 Policy
+### Step 3: PyG to SKRL Integration (Timebox: 5-7 Days)
 
-1. Create a custom SKRL model class that wraps `torch_geometric.nn.GATv2Conv`.
-2. Build edge index from the adjacency matrix each step.
+1. Create a custom SKRL model class wrapping `torch_geometric.nn.GATv2Conv`.
+2. Implement batched 3D adjacency matrix to 2D sparse `edge_index` flattening.
 3. Register the custom model in the SKRL config.
-4. Train and compare against the MLP baseline.
+4. Train and compare against the MLP baseline. *Fallback to MLP if tensor reshaping blocks progress.*
 
 ### Step 4: Evaluation
 
 1. Run trained policy with `play.py` for visual inspection.
 2. Log formation error metrics over episodes.
-3. Compare MLP vs GATv2 convergence speed and final performance.
+
+---
+
+## Code Implementation
+
+Here is the core logic needed to execute the riskiest parts of the plan: the PyG to SKRL bridge and the curriculum reward logic.
+
+### 1. The GNN Policy Wrapper (`skrl_gnn_policy.py`)
+
+This handles the critical task of converting the dense 3D adjacency matrix from your Isaac Lab environment into the 2D sparse graph format required by PyTorch Geometric, all while satisfying SKRL's `GaussianMixin` requirement.
+
+```python
+import torch
+import torch.nn as nn
+from skrl.models.torch import Model, GaussianMixin
+from torch_geometric.nn import GATv2Conv
+
+class GGSwarmGNNPolicy(GaussianMixin, Model):
+    def __init__(self, observation_space, action_space, device, clip_actions=False,
+                 clip_log_std=True, min_log_std=-20, max_log_std=2, reduction="sum"):
+        
+        Model.__init__(self, observation_space, action_space, device)
+        GaussianMixin.__init__(self, clip_actions, clip_log_std, min_log_std, max_log_std, reduction)
+
+        # Node features (observation space per agent)
+        in_channels = observation_space.shape[0] 
+        hidden_channels = 128
+        out_channels = action_space.shape[0] # 4-dim action
+
+        # GNN Layers (Limit to 2 heads to prevent over-smoothing)
+        self.conv1 = GATv2Conv(in_channels, hidden_channels // 2, heads=2, concat=True)
+        self.conv2 = GATv2Conv(hidden_channels, hidden_channels, heads=1, concat=False)
+        
+        # Action Head
+        self.action_head = nn.Linear(hidden_channels, out_channels)
+        self.log_std_parameter = nn.Parameter(torch.zeros(out_channels))
+
+    def compute(self, inputs, role):
+        obs = inputs["states"] # Shape: [num_envs * num_agents, obs_dim]
+        
+        # Fetch the adjacency matrix passed from the environment extras
+        # Shape expected: [num_envs, num_agents, num_agents]
+        adj_matrix = inputs.get("extras", {}).get("adj_matrix", None)
+        
+        if adj_matrix is not None:
+            num_envs, num_agents, _ = adj_matrix.shape
+            
+            # Flatten the batched 3D adjacency matrix to a 2D sparse edge_index
+            # Find all non-zero elements (edges)
+            indices = adj_matrix.nonzero(as_tuple=False) # Shape: [num_edges, 3] -> (env_idx, agent_i, agent_j)
+            
+            env_idx = indices[:, 0]
+            
+            # Shift node indices so each environment's graph is disconnected but in the same batch
+            src = indices[:, 1] + (env_idx * num_agents)
+            dst = indices[:, 2] + (env_idx * num_agents)
+            
+            edge_index = torch.stack([src, dst], dim=0) # Shape: [2, num_edges]
+        else:
+            # Fallback if no adj_matrix is provided (e.g., self-loops only)
+            num_nodes = obs.shape[0]
+            edge_index = torch.arange(num_nodes, device=self.device).repeat(2, 1)
+
+        # Forward pass through GNN
+        x = torch.relu(self.conv1(obs, edge_index))
+        x = torch.relu(self.conv2(x, edge_index))
+        
+        # Output actions
+        action_mean = self.action_head(x)
+        
+        return action_mean, self.log_std_parameter, {}
+```
+
+### 2. Curriculum Reward Logic (`drone_swarm_env.py`)
+
+This goes into your environment's reward computation block to ensure the agents learn to hover before they are penalized for formation errors.
+
+```python
+    def _get_rewards(self) -> torch.Tensor:
+        # ... existing state extraction ...
+
+        # 1. Define Curriculum Scale (alpha)
+        # Assuming self.common_step_counter tracks total environment steps
+        start_curriculum = 25000.0
+        end_curriculum = 50000.0
+        
+        alpha = torch.clamp(
+            (self.common_step_counter - start_curriculum) / (end_curriculum - start_curriculum),
+            min=0.0, 
+            max=1.0
+        )
+
+        # 2. Separation Penalty (ALWAYS ON)
+        # Prevents physical clipping regardless of curriculum stage
+        # Assuming inter_agent_distances is pre-calculated
+        collision_mask = inter_agent_distances < (2 * self.drone_radius)
+        separation_penalty = -5.0 * collision_mask.sum(dim=1)
+
+        # 3. Position (Hover) Reward (Fades OUT)
+        # Encourages staying near the global target
+        hover_reward = 1.0 * torch.exp(-dist_to_goal / 0.5) * (1.0 - alpha)
+
+        # 4. Formation Reward (Fades IN)
+        # target_dist is your defined formation spacing
+        spacing_error = torch.abs(inter_agent_distances - self.target_dist)
+        mean_spacing_error = spacing_error.mean(dim=1)
+        formation_reward = 2.0 * torch.exp(-mean_spacing_error / 0.3) * alpha
+
+        # 5. Cohesion Reward (Fades IN)
+        max_neighbor_dist, _ = torch.max(inter_agent_distances, dim=1)
+        cohesion_reward = 0.5 * torch.exp(-max_neighbor_dist / self.connectivity_threshold) * alpha
+
+        # ... compute velocity penalties and alive bonus ...
+
+        total_reward = (
+            separation_penalty + 
+            hover_reward + 
+            formation_reward + 
+            cohesion_reward +
+            alive_bonus +
+            vel_penalties
+        )
+
+        return total_reward
+```
 
 ---
 

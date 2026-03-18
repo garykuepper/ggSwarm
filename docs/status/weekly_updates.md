@@ -2,30 +2,19 @@
 
 Formatted for synchronization with the project website.
 
-## Week 10 (2026-03-16)
+## Week 10 (2026-03-17)
 
-### Week 10 Status: Completed
+### What project milestones did you accomplish this week? If you're working in a team, please list what you personally contributed, not the project status overall
 
-### 1. Week 10 Milestones
+I finalized the foundational Isaac Lab MARL environment (`GGSwarmMarlEnv`), including multi-agent Crazyflie spawning, observation/action spaces, distance-based graph connectivity, and reward shaping. I also set up the MAPPO training pipeline in SKRL and validated it via `phase1_demo.py`. While I fell behind in getting the initial environment setup and running—meaning Phase 2 completion is roughly two weeks behind my original March 3rd target—I have replanned my schedule and am back on track to complete Phase 2 in the next 2 days. Since this is a solo project, I individually contributed all architecture and codebase development.
 
-- **Phase 1 Complete:** Finalized the foundational Isaac Lab MARL environment (`GGSwarmMarlEnv`), including multi-agent Crazyflie spawning, 12-dim observation space, 4-dim action space, distance-based graph connectivity (L2 adjacency matrix), reward shaping, and reset logic.
-- **Verification:** Created and ran `phase1_demo.py` to visually confirm drone rendering in Isaac Sim and validate real-time adjacency matrix computation.
-- **SKRL Pipeline:** Set up the MAPPO training pipeline with `train.py`, `play.py`, and `skrl_mappo_cfg.yaml`.
-- **Documentation:** Expanded `phase1_foundation.md` into a comprehensive technical reference. Updated changelog with all Phase 1 milestones.
-- **Code Cleanup:** Renamed environment files to `drone_swarm_env.py` / `drone_swarm_env_cfg.py` for clarity.
+### What is your plan for next week?
 
-### 2. Week 11 Plan
+My plan is to fully complete Phase 2 (Brain Development) in the next 2 days by successfully training the GATv2 coordination policy. After that, I will transition into Phase 3, which focuses on MINCO trajectory optimization and SwarmRaft decentralized consensus. I know Phase 3 will represent the bulk of the project's work, but my replanned timeline still leaves me sufficient time to complete that task before the final showcase.
 
-- **Phase 2 Kickoff (Brain Development):** Begin training the GATv2 coordination policy using PPO/MAPPO via SKRL.
-- **SKRL Config Tuning:** Increase network capacity from `[32, 32]` to larger layers, extend training timesteps, and fix the experiment directory name.
-- **Reward Evolution:** Evolve from hover-in-place rewards to formation-aware rewards (inter-agent spacing targets).
-- **GATv2 Integration:** Start building a custom GNN policy that consumes the adjacency matrix to enable spatial reasoning.
+### What challenges, if any, are you currently facing in project development? Do you need instructor assistance?
 
-### 3. Week 10 Challenges
-
-- **GATv2 Architecture:** Designing the custom GNN policy network that integrates with SKRL's model interface requires careful study of both frameworks.
-- **Reward Engineering:** Transitioning from simple position rewards to formation-aware rewards without causing training instability.
-- **No instructor assistance needed** at this time.
+My primary challenge has been the sheer complexity of combining many advanced topics and ideas (Isaac Lab, PyTorch Geometric, SKRL, MARL) while simultaneously having to learn them from scratch. While falling behind on the environment setup was tough, breaking through those integration hurdles has already proven to be a very rewarding experience. At this time, I do not need instructor assistance.
 
 ---
 

@@ -32,6 +32,7 @@
         "pre-commit",
         "pxr",
         "Py",
+        "PyG",
         "PyPI",
         "PyTorch",
         "quat",
