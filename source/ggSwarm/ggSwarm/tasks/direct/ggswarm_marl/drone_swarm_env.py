@@ -131,12 +131,12 @@ class GGSwarmMarlEnv(DirectMARLEnv):
         rel_pos_b = rel_pos_b.view(self.num_envs, self.cfg.num_agents, 3)
 
         # Calculate Adjacency Matrix (Distance-based)
-        # Inter-drone distances: [num_envs, num_agents, num_agents]
+        # shape: [num_envs, num_agents, num_agents]
         diff = pos_w.unsqueeze(2) - pos_w.unsqueeze(1)
         dist = torch.norm(diff, dim=-1)
-        # Threshold at 2.0m for connectivity
-        adj_matrix = (dist < 2.0).float()
-        # Issue 3: Remove self-connections
+        # Threshold at defined radius for connectivity
+        adj_matrix = (dist < self.cfg.graph_connectivity_radius).float()
+        # Issue 3: Remove self-connections (Rule 7)
         eye = torch.eye(self.cfg.num_agents, device=self.device).unsqueeze(0)
         adj_matrix = adj_matrix * (1.0 - eye)
 
@@ -156,29 +156,79 @@ class GGSwarmMarlEnv(DirectMARLEnv):
         return observations
 
     def _get_rewards(self) -> dict[str, torch.Tensor]:
-        # Issue 5: Cache GPU memory reads once per step
+        # shape: [num_envs, num_agents, 3]
         pos_w = self.robot.data.root_pos_w.view(self.num_envs, self.cfg.num_agents, 3)
         lin_vel_b = self.robot.data.root_lin_vel_b.view(self.num_envs, self.cfg.num_agents, 3)
         ang_vel_b = self.robot.data.root_ang_vel_b.view(self.num_envs, self.cfg.num_agents, 3)
 
-        dist_to_goal = torch.norm(self._desired_pos_w - pos_w, dim=-1)
+        # 1. Define Curriculum Scale (alpha)
+        # shape: [1]
+        start_step = self.cfg.curriculum_start_step
+        end_step = self.cfg.curriculum_end_step
+        step_ratio = (self.common_step_counter - start_step) / max(1, end_step - start_step)
+        alpha = max(0.0, min(1.0, float(step_ratio)))
 
+        # 2. Inter-agent distances
+        # shape: [num_envs, num_agents, num_agents]
+        diff = pos_w.unsqueeze(2) - pos_w.unsqueeze(1)
+        inter_agent_distances = torch.norm(diff, dim=-1)
+
+        # 3. Component Rewards (Vectorized)
+        dist_to_goal = torch.norm(self._desired_pos_w - pos_w, dim=-1) # [num_envs, num_agents]
+        
+        # Position (Hover) Reward (Fades OUT)
+        rew_pos = torch.exp(-dist_to_goal / self.cfg.rew_pos_sigma) * self.cfg.rew_scale_pos * (1.0 - alpha)
+        
+        # Formation Reward (Fades IN)
+        # target_dist is desired spacing
+        spacing_error = torch.abs(inter_agent_distances - self.cfg.target_formation_dist)
+        # Ignore self-distances for mean pooling
+        eye = torch.eye(self.cfg.num_agents, device=self.device).unsqueeze(0)
+        spacing_error = spacing_error * (1.0 - eye)
+        mean_spacing_error = spacing_error.sum(dim=2) / (self.cfg.num_agents - 1)
+        rew_formation = torch.exp(-mean_spacing_error / self.cfg.rew_formation_sigma) * self.cfg.rew_scale_formation * alpha
+
+        # Cohesion Reward (Fades IN)
+        # shape: [num_envs, num_agents]
+        # max_dist takes the maximum distance from agent i to any generic agent j
+        max_neighbor_dist, _ = torch.max(inter_agent_distances, dim=2)
+        rew_cohesion = self.cfg.rew_scale_cohesion * torch.exp(
+            -max_neighbor_dist / self.cfg.graph_connectivity_radius
+        ) * alpha
+
+        # Separation Penalty (ALWAYS ON)
+        # shape: [num_envs, num_agents]
+        # Applied if drones are too close (clipping risk)
+        # shape: [num_envs, num_agents]
+        collision_mask = (inter_agent_distances < (2.0 * 0.05)) & (1.0 - eye).bool()
+        rew_separation = self.cfg.rew_scale_separation * collision_mask.any(dim=2).float()
+
+        # Velocity penalties
+        rew_vel = torch.norm(lin_vel_b, dim=-1) * self.cfg.rew_scale_vel
+        rew_ang_vel = torch.norm(ang_vel_b, dim=-1) * self.cfg.rew_scale_ang_vel
+        
+        # Alive bonus
+        rew_alive = torch.full_like(rew_pos, self.cfg.rew_scale_alive)
+
+        # Termination penalty
+        is_terminated = (pos_w[:, :, 2] < self.cfg.min_height) | (pos_w[:, :, 2] > self.cfg.max_height)
+        rew_terminated = is_terminated.float() * self.cfg.rew_scale_terminated
+
+        # Total rewards dict
+        total_rewards = (
+            rew_pos 
+            + rew_formation 
+            + rew_cohesion 
+            + rew_separation 
+            + rew_vel 
+            + rew_ang_vel 
+            + rew_alive 
+            + rew_terminated
+        )
+        
         rewards = {}
         for i, agent in enumerate(self.cfg.possible_agents):
-            # Distance reward (Gaussian-like)
-            rew_pos = torch.exp(-dist_to_goal[:, i] / 0.5) * self.cfg.rew_scale_pos
-            # Velocity penalties
-            rew_vel = torch.norm(lin_vel_b[:, i], dim=-1) * self.cfg.rew_scale_vel
-            rew_scale = self.cfg.rew_scale_ang_vel
-            rew_ang_vel = torch.norm(ang_vel_b[:, i], dim=-1) * rew_scale
-            # Alive bonus
-            rew_alive = self.cfg.rew_scale_alive
-
-            # Issue 1: Apply termination penalty
-            is_terminated = (pos_w[:, i, 2] < self.cfg.min_height) | (pos_w[:, i, 2] > self.cfg.max_height)
-            rew_terminated = is_terminated.float() * self.cfg.rew_scale_terminated
-
-            rewards[agent] = rew_pos + rew_vel + rew_ang_vel + rew_alive + rew_terminated
+            rewards[agent] = total_rewards[:, i]
         return rewards
 
     def _get_dones(
@@ -237,8 +287,8 @@ class GGSwarmMarlEnv(DirectMARLEnv):
         root_state[:, :, :3] = root_pos_w
         # Random yaw rotations
         random_yaw = sample_uniform(
-            -3.14,
-            3.14,
+            -self.cfg.spawn_yaw_range,
+            self.cfg.spawn_yaw_range,
             (num_resets, self.cfg.num_agents),
             self.device,
         )

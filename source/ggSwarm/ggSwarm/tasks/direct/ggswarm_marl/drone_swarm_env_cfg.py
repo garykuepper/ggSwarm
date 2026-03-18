@@ -46,8 +46,11 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     robot_cfg: ArticulationCfg = CRAZYFLIE_CFG.replace(prim_path="/World/envs/env_.*/drone_.*")
 
     # swarm specific
-    thrust_to_weight = 1.9
-    moment_scale = 0.01
+    thrust_to_weight: float = 1.9
+    moment_scale: float = 0.01
+    graph_connectivity_radius: float = 2.0  # (metres) for L2 adjacency matrix
+    spawn_yaw_range: float = 3.14159        # ± range for random yaw (rad)
+    target_formation_dist: float = 1.5      # desired inter-agent spacing (m)
 
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=32, env_spacing=5.0, replicate_physics=True)
@@ -58,8 +61,20 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     rew_scale_ang_vel = -0.01
     rew_scale_alive = 0.1
     rew_scale_terminated = -2.0
+    # Phase 2 rewards
+    rew_scale_formation = 2.0
+    rew_scale_cohesion = 0.5
+    rew_scale_separation = -5.0
+    
+    # reward sigmas
+    rew_pos_sigma = 0.5
+    rew_formation_sigma = 0.3
 
     # reset states/conditions
     min_height = 0.1
     max_height = 3.0
     spawn_dist = 1.5  # max distance from origin for spawning drones
+
+    # curriculum
+    curriculum_start_step: int = 25000
+    curriculum_end_step: int = 50000

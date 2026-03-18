@@ -9,7 +9,7 @@ ggSwarm is a decentralized formation control framework for large-scale Unmanned 
 | Layer | Responsibility | Implementation Component | Phase |
 | :--- | :--- | :--- | :--- |
 | **L1: Local Sensing** | LiDAR/IMU data collection | `GGSwarmMarlEnv` perception buffers (12-dim obs) | ✅ Phase 1 |
-| **L2: GNN Messaging** | Spatial awareness / GNN | Distance-based adjacency matrix → GATv2 policy | 🔄 Phase 2 |
+| **L2: GNN Messaging** | Spatial awareness / GNN | Distance-based adjacency matrix → GATv2 policy | ✅ Phase 2 |
 | **L3: Consensus** | Formation alignment | `SwarmRaft` logic | ⬜ Phase 3 |
 | **L4: Safety Shield** | Collision avoidance | Control Barrier Functions (CBF) | ⬜ Phase 3 |
 | **L5: Execution** | Trajectory following | Thrust/moment force application → MINCO (Phase 4) | ✅ Phase 1 (basic) |
@@ -47,6 +47,7 @@ ggSwarm is a decentralized formation control framework for large-scale Unmanned 
 | `drone_swarm_env.py` | MARL environment (scene, physics, obs, rewards, resets) |
 | `drone_swarm_env_cfg.py` | Environment configuration (agents, spaces, params) |
 | `agents/skrl_mappo_cfg.yaml` | SKRL MAPPO hyperparameters |
+| `agents/skrl_gnn_policy.py` | GATv2 GNN policy wrapper (PyG bridge) |
 | `scripts/skrl/train.py` | Training entry point |
 | `scripts/skrl/play.py` | Evaluation / playback entry point |
 | `scripts/phase1_demo.py` | Phase 1 verification script |

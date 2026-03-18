@@ -89,6 +89,12 @@ parser.add_argument(
     default=None,
     help="Automatically configured by Ray integration, otherwise None.",
 )
+parser.add_argument(
+    "--gnn",
+    action="store_true",
+    default=False,
+    help="Use the custom GATv2 GNN policy instead of the default MLP.",
+)
 # Append AppLauncher-specific CLI arguments
 AppLauncher.add_app_launcher_args(parser)
 # Parse the combined arguments
@@ -184,6 +190,25 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     if args_cli.max_iterations:
         agent_cfg["trainer"]["timesteps"] = args_cli.max_iterations * agent_cfg["agent"]["rollouts"]
     agent_cfg["trainer"]["close_environment_at_exit"] = False
+
+    # Override model with GNN if requested
+    if args_cli.gnn:
+        logger.info("Using GGSwarmGNNPolicy (GATv2) for training.")
+        agent_cfg["models"]["policy"]["class"] = "GGSwarmGNNPolicy"
+        # Disable the default 'network' key as GGSwarmGNNPolicy defines its own architecture
+        if "network" in agent_cfg["models"]["policy"]:
+            del agent_cfg["models"]["policy"]["network"]
+            
+        # Monkey-patch SKRL Runner to recognize the custom class string
+        original_component = Runner._component
+
+        def custom_component(self, name: str):
+            if name.lower() == "ggswarmgnnpolicy":
+                from ggSwarm.tasks.direct.ggswarm_marl.agents.skrl_gnn_policy import GGSwarmGNNPolicy
+                return GGSwarmGNNPolicy
+            return original_component(self, name)
+
+        Runner._component = custom_component
 
     if args_cli.ml_framework.startswith("jax"):
         skrl.config.jax.backend = "jax" if args_cli.ml_framework == "jax" else "numpy"

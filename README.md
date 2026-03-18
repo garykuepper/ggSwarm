@@ -146,28 +146,11 @@ pip install "h5py>=3.9.0,<3.12" --force-reinstall
 pip install -e source/ggSwarm
 ```
 
-### Running the Phase 1 Demo
+### Running the Demonstrations & Training
 
-To verify the Phase 1 Foundation is working (spawning drones and calculating graph
-connectivity), run the Phase 1 demonstration script:
+Detailed instructions on how to run the Phase 1 environments, invoke the Phase 2 MAPPO/GATv2 training scripts, and evaluate the swarm's flight policy have been moved to a dedicated guide.
 
-```powershell
-..\IsaacLab\isaaclab.bat -p scripts/phase1_demo.py --task=Template-GGSwarm-Marl-Direct-v0
-```
-
-*Note: For a detailed breakdown of the Phase 1 codebase, please read
-[Phase 1 Documentation](docs/phase1_foundation.md).*
-
-### Running the Training (Phase 2)
-
-To start training with SKRL, run from the `ggSwarm` directory:
-
-```powershell
-..\IsaacLab\isaaclab.bat -p scripts/skrl/train.py --task=Template-GGSwarm-Marl-Direct-v0 --algorithm=MAPPO
-```
-
-*Note: For the full Phase 2 plan including GATv2 integration and reward tuning, see
-[Phase 2 Documentation](docs/phase2_brain_development.md).*
+👉 **[View the Guide to Running Demonstrations](docs/running_demos.md)**
 
 ## Troubleshooting
 
@@ -180,30 +163,9 @@ To start training with SKRL, run from the `ggSwarm` directory:
 | `ModuleNotFoundError: No module named 'pxr'` | Isaac Lab imports before `AppLauncher` starts | All `isaaclab`/task imports must come **after** `app_launcher = AppLauncher(args_cli)`. See `scripts/phase1_demo.py` for the correct pattern. |
 | `ImportError: DLL load failed while importing _errors` on `h5py` | `h5py 3.16+` bundles HDF5 2.x DLLs that conflict with Isaac Sim's HDF5 1.12.x DLLs | Run `pip install "h5py>=3.9.0,<3.12" --force-reinstall` (Step 5 covers this) |
 
-## Code Quality
+## License
 
-This project uses **Ruff** for linting and formatting, and **pre-commit** to ensure code standards.
-
-### Setting up pre-commit
-
-```bash
-# Install pre-commit
-pip install pre-commit
-
-# Install the git hooks
-pre-commit install
-```
-
-### Running manual checks
-
-```bash
-# Run all pre-commit hooks on all files
-pre-commit run --all-files
-
-# Run ruff directly
-ruff check .
-ruff format .
-```
+This project is licensed under the MIT License - see the `LICENSE` file for details.
 
 ---
 
