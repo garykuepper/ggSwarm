@@ -55,7 +55,7 @@ The project employs a **Centralized Training, Decentralized Execution (CTDE)** w
 * **Platform:** NVIDIA Isaac Lab 2.3 and Isaac Sim 5.1.
 * **RL Library:** SKRL using Proximal Policy Optimization (PPO).
 * **Software Stack:** `PyTorch` 2.5+ and `OpenUSD`.
-* **Compute:** Local RTX 3070 (8GB VRAM) for development; cloud-based **NVIDIA Brev (A100 80GB)** for large-scale multi-agent training to ensure convergence within the project timeline.
+* **Compute:** Local RTX 3070 (8GB VRAM) for development; cloud-based **NVIDIA `Brev` (A100 80GB)** for large-scale multi-agent training to ensure convergence within the project timeline.
 
 ---
 
@@ -63,7 +63,7 @@ The project employs a **Centralized Training, Decentralized Execution (CTDE)** w
 
 To achieve stable formation control, the reinforcement learning agent is trained using a multi-objective reward function $R$:
 
-$$R = w_{pos} \cdot R_{pos} + w_{vel} \cdot R_{vel} + w_{ang\_vel} \cdot R_{ang\_vel} + w_{alive} \cdot R_{alive} + w_{term} \cdot R_{term}$$
+$$R = w_{pos} \times R_{pos} + w_{vel} \times R_{vel} + w_{ang\_vel} \times R_{ang\_vel} + w_{alive} \times R_{alive} + w_{term} \times R_{term}$$
 
 * **Formation Error ($R_{pos}$):** A Gaussian-shaped reward based on the Euclidean distance to the desired formation coordinate.
 * **Stability ($R_{vel}, R_{ang\_vel}$):** Penalties on linear and angular velocity jitter to encourage smooth hovering.
