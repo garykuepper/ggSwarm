@@ -18,7 +18,21 @@ a more user-friendly way.
 """Launch Isaac Sim Simulator first."""
 
 import argparse
+import os
 import sys
+import traceback
+
+LOG_PATH = r"c:\Users\gkuep\Code\isaaclab\ggSwarm\play_error.log"
+
+def log_error(exctype, value, tb):
+    try:
+        with open(LOG_PATH, "w") as f:
+            traceback.print_exception(exctype, value, tb, file=f)
+    except Exception:
+        pass
+    sys.__excepthook__(exctype, value, tb)
+
+sys.excepthook = log_error
 
 from isaaclab.app import AppLauncher
 
@@ -62,6 +76,12 @@ parser.add_argument(
     help="The RL algorithm used for training the skrl agent.",
 )
 parser.add_argument("--real-time", action="store_true", default=False, help="Run in real-time, if possible.")
+parser.add_argument(
+    "--gnn",
+    action="store_true",
+    default=False,
+    help="Use the custom GATv2 GNN policy instead of the default MLP.",
+)
 
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
@@ -204,18 +224,87 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
 
     # configure and instantiate the skrl runner
     # https://skrl.readthedocs.io/en/latest/api/utils/runner.html
-    experiment_cfg["trainer"]["close_environment_at_exit"] = False
-    experiment_cfg["agent"]["experiment"]["write_interval"] = 0  # don't log to TensorBoard
-    experiment_cfg["agent"]["experiment"]["checkpoint_interval"] = 0  # don't generate checkpoints
+    experiment_cfg["trainer"]["checkpoint_interval"] = 0  # don't generate checkpoints
+
+    # Override model with GNN if requested
+    if args_cli.gnn:
+        print("[INFO] Using GGSwarmGNNPolicy (GATv2) for playback.")
+        experiment_cfg["models"]["policy"]["class"] = "GGSwarmGNNPolicy"
+        # Disable the default 'network' key as GGSwarmGNNPolicy defines its own architecture
+        if "network" in experiment_cfg["models"]["policy"]:
+            del experiment_cfg["models"]["policy"]["network"]
+
+        # Monkey-patch SKRL Runner to recognize the custom class string
+        original_component = Runner._component
+
+        def custom_component(self, name: str):
+            if name.lower() == "ggswarmgnnpolicy":
+                from ggSwarm.tasks.direct.ggswarm_marl.agents.skrl_gnn_policy import GGSwarmGNNPolicy
+
+                return GGSwarmGNNPolicy
+            return original_component(self, name)
+
+        Runner._component = custom_component
+
     runner = Runner(env, experiment_cfg)
 
+    def bcb(msg):
+        with open(r"c:\Users\gkuep\Code\isaaclab\ggSwarm\breadcrumbs.txt", "a") as f:
+            f.write(f"{time.time()}: {msg}\n")
+            f.flush()
+            os.fsync(f.fileno())
+    
+    bcb("Runner created")
+
     print(f"[INFO] Loading model checkpoint from: {resume_path}")
-    runner.agent.load(resume_path)
+    # Get the agent(s) from the runner
+    # skrl runners can have 'agent' (single-agent) or 'agents' (multi-agent)
+    agent = getattr(runner, "agent", None)
+    if agent is None and hasattr(runner, "agents"):
+        agent = runner.agents[0] # assuming shared policy for all agents in MAPPO
+
+    if agent is None:
+        print("[ERROR] Could not find agent in runner. Dumping attributes to play_error.log")
+        with open(LOG_PATH, "a") as f:
+            f.write(f"\nRunner Attributes: {dir(runner)}\n")
+            if hasattr(runner, "agents"):
+                f.write(f"Runner.agents: {runner.agents}\n")
+        # Let it fail with the original attribute error so we get a traceback too
+        agent = runner.agent 
+
+    bcb("Loading checkpoint file")
+    # Load checkpoint
+    checkpoint = torch.load(resume_path, map_location=agent.device)
+    bcb("Checkpoint file loaded")
+    if "policy" in checkpoint:
+        agent.policy.load_state_dict(checkpoint["policy"])
+        bcb("Policy state dict loaded (policy)")
+    elif "policy_0" in checkpoint: # some multi-agent formats
+        agent.policy.load_state_dict(checkpoint["policy_0"])
+        bcb("Policy state dict loaded (policy_0)")
+    else:
+        # Diagnostic: Print all keys if no known policy key is found
+        bcb(f"MISSING POLICY KEY. Keys: {list(checkpoint.keys())}")
+        # Attempt to find ANY key containing 'policy'
+        policy_key = next((k for k in checkpoint.keys() if "policy" in k.lower()), None)
+        if policy_key:
+            bcb(f"Trying to load from similar key: {policy_key}")
+            agent.policy.load_state_dict(checkpoint[policy_key])
+            bcb(f"Policy state dict loaded ({policy_key})")
+        else:
+            bcb("No policy-like keys found! Stopping to prevent Critic mismatch.")
+            raise KeyError(f"Could not find policy in checkpoint. Available keys: {list(checkpoint.keys())}")
+
+    bcb("Finalizing policy load")
+    print("[INFO] Policy loaded successfully (Value function skipped for scalability).")
     # set agent to evaluation mode
-    runner.agent.set_running_mode("eval")
+    agent.set_running_mode("eval")
+    bcb("Evaluation mode set")
 
     # reset environment
+    bcb("Resetting environment")
     obs, _ = env.reset()
+    bcb("Environment reset complete")
     timestep = 0
     # simulate environment
     while simulation_app.is_running():
@@ -224,7 +313,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
         # run everything in inference mode
         with torch.inference_mode():
             # agent stepping
-            outputs = runner.agent.act(obs, timestep=0, timesteps=0)
+            outputs = agent.act(obs, timestep=0, timesteps=0)
             # - multi-agent (deterministic) actions
             if hasattr(env, "possible_agents"):
                 actions = {a: outputs[-1][a].get("mean_actions", outputs[0][a]) for a in env.possible_agents}

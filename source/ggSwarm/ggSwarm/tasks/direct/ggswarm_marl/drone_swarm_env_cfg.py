@@ -9,7 +9,16 @@ from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim import SimulationCfg
 from isaaclab.utils import configclass
 
-from isaaclab_assets import CRAZYFLIE_CFG
+try:
+    # Common Isaac Lab layout
+    from isaaclab_assets.robots import CRAZYFLIE_CFG
+except ImportError:  # pragma: no cover
+    try:
+        # Alternative layout used by some releases
+        from isaaclab_assets.robots.crazyflie import CRAZYFLIE_CFG
+    except ImportError:  # pragma: no cover
+        # Backwards-compat for older asset layouts
+        from isaaclab_assets import CRAZYFLIE_CFG
 
 
 @configclass
@@ -18,7 +27,7 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     decimation = 2
     episode_length_s = 10.0
     # multi-agent specification and spaces definition
-    num_agents = 4
+    num_agents = 10
 
     possible_agents: list[str] = []
     action_spaces: dict = {}
@@ -32,8 +41,8 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
 
     # viewer
     viewer: ViewerCfg = ViewerCfg(
-        eye=(4.0, 4.0, 3.0),    # camera position (metres)
-        lookat=(0.0, 0.0, 1.0), # look-at point (near drone spawn height)
+        eye=(4.0, 4.0, 3.0),  # camera position (metres)
+        lookat=(0.0, 0.0, 1.0),  # look-at point (near drone spawn height)
     )
 
     # simulation
@@ -43,17 +52,21 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     )
 
     # robot(s)
-    robot_cfg: ArticulationCfg = CRAZYFLIE_CFG.replace(prim_path="/World/envs/env_.*/drone_.*")
+    robot_cfg: ArticulationCfg = CRAZYFLIE_CFG.replace(
+        prim_path="/World/envs/env_.*/drone_.*"
+    )
 
     # swarm specific
     thrust_to_weight: float = 1.9
     moment_scale: float = 0.01
     graph_connectivity_radius: float = 2.0  # (metres) for L2 adjacency matrix
-    spawn_yaw_range: float = 3.14159        # ± range for random yaw (rad)
-    target_formation_dist: float = 1.5      # desired inter-agent spacing (m)
+    spawn_yaw_range: float = 3.14159  # ± range for random yaw (rad)
+    target_formation_dist: float = 1.5  # desired inter-agent spacing (m)
 
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=32, env_spacing=5.0, replicate_physics=True)
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(
+        num_envs=32, env_spacing=5.0, replicate_physics=True
+    )
 
     # reward scales
     rew_scale_pos = 1.0
@@ -65,7 +78,7 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     rew_scale_formation = 2.0
     rew_scale_cohesion = 0.5
     rew_scale_separation = -5.0
-    
+
     # reward sigmas
     rew_pos_sigma = 0.5
     rew_formation_sigma = 0.3

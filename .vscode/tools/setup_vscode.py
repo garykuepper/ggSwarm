@@ -31,6 +31,9 @@ try:
     import isaacsim  # noqa: F401
 
     isaacsim_dir = os.environ.get("ISAAC_PATH", "")
+    if not isaacsim_dir:
+        import isaacsim as isaacsim_pkg
+        isaacsim_dir = os.path.dirname(os.path.abspath(isaacsim_pkg.__file__))
 except ModuleNotFoundError or ImportError:
     # Create a parser to get the isaac-sim path
     parser = argparse.ArgumentParser(description="Setup the VSCode settings for the project.")
@@ -164,7 +167,7 @@ def overwrite_default_python_interpreter(isaaclab_settings: str) -> str:
     # python interpreter in the Isaac Lab directory
     isaaclab_settings = re.sub(
         r"\"python.defaultInterpreterPath\": \".*?\"",
-        f'"python.defaultInterpreterPath": "{python_exe}"',
+        f'"python.defaultInterpreterPath": "{python_exe.replace(os.sep, "/")}"',
         isaaclab_settings,
         flags=re.DOTALL,
     )

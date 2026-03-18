@@ -1,0 +1,13 @@
+1773876633.1334271: Runner created
+1773876719.752185: Runner created
+1773876880.5709856: Runner created
+1773877118.2093563: Runner created
+1773877169.3037393: Runner created
+1773877169.3073063: Loading checkpoint file
+1773877169.4236436: Checkpoint file loaded
+1773877169.4271302: Falling back to standard agent.load
+1773877370.2965386: Runner created
+1773877370.3000536: Loading checkpoint file
+1773877370.5865707: Checkpoint file loaded
+1773877370.590635: MISSING POLICY KEY. Keys: ['drone_0', 'drone_1', 'drone_2', 'drone_3']
+1773877370.5940933: No policy-like keys found! Stopping to prevent Critic mismatch.

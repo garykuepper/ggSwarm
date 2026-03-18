@@ -56,12 +56,20 @@ class GGSwarmMarlEnv(DirectMARLEnv):
         self._prop_torques = torch.zeros(self.num_envs * self.cfg.num_agents, 4, 3, device=self.device)
 
     def _setup_scene(self):
+        # Create a bright yellow material for high visibility
+        yellow_material_cfg = sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 1.0, 0.0), metallic=0.5, roughness=0.5)
+        yellow_material_cfg.func("/World/Materials/DroneYellow", yellow_material_cfg)
+
         # Phase 1: Spawn source drones in environment 0
         for i in range(self.cfg.num_agents):
+            prim_path = f"/World/envs/env_0/drone_{i}"
             self.cfg.robot_cfg.spawn.func(
-                f"/World/envs/env_0/drone_{i}",
+                prim_path,
                 self.cfg.robot_cfg.spawn,
             )
+            # Apply the yellow material to the drone visuals
+            # Note: For Crazyflie, visuals are nested under the body
+            sim_utils.bind_visual_material(prim_path, "/World/Materials/DroneYellow")
 
         # Add ground plane
         spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
@@ -178,7 +186,6 @@ class GGSwarmMarlEnv(DirectMARLEnv):
         
         # Position (Hover) Reward (Fades OUT)
         rew_pos = torch.exp(-dist_to_goal / self.cfg.rew_pos_sigma) * self.cfg.rew_scale_pos * (1.0 - alpha)
-        
         # Formation Reward (Fades IN)
         # target_dist is desired spacing
         spacing_error = torch.abs(inter_agent_distances - self.cfg.target_formation_dist)
@@ -216,13 +223,13 @@ class GGSwarmMarlEnv(DirectMARLEnv):
 
         # Total rewards dict
         total_rewards = (
-            rew_pos 
-            + rew_formation 
-            + rew_cohesion 
-            + rew_separation 
-            + rew_vel 
-            + rew_ang_vel 
-            + rew_alive 
+            rew_pos
+            + rew_formation
+            + rew_cohesion
+            + rew_separation
+            + rew_vel
+            + rew_ang_vel
+            + rew_alive
             + rew_terminated
         )
         
