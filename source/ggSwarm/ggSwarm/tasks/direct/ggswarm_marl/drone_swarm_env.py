@@ -21,20 +21,20 @@ from isaaclab.utils.math import (
     subtract_frame_transforms,
 )
 
-from .drone_swarm_env_cfg import GgswarmMarlEnvCfg
+from .drone_swarm_env_cfg import GGSwarmMarlEnvCfg
 
 # import logger
 logger = logging.getLogger("isaaclab")
 
 
-class GgswarmMarlEnv(DirectMARLEnv):
+class GGSwarmMarlEnv(DirectMARLEnv):
     """MARL environment for drone swarm formation control."""
 
-    cfg: GgswarmMarlEnvCfg
+    cfg: GGSwarmMarlEnvCfg
 
     def __init__(
         self,
-        cfg: GgswarmMarlEnvCfg,
+        cfg: GGSwarmMarlEnvCfg,
         render_mode: str | None = None,
         **kwargs,
     ):
@@ -80,7 +80,7 @@ class GgswarmMarlEnv(DirectMARLEnv):
         # Add articulation to scene
         self.scene.articulations["robot"] = self.robot
 
-        logger.info("GgswarmMarlEnv._setup_scene done")
+        logger.info("GGSwarmMarlEnv._setup_scene done")
 
         # Filter collisions for CPU
         if self.device == "cpu":

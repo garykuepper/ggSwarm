@@ -10,9 +10,9 @@ Phase 1 of the ggSwarm project establishes the foundational Isaac Lab MARL envir
 
 | File | Purpose |
 | :--- | :--- |
-| `drone_swarm_env.py` | Main environment class (`GgswarmMarlEnv`). Scene setup, physics, observations, rewards, resets. |
-| `drone_swarm_env_cfg.py` | Configuration dataclass (`GgswarmMarlEnvCfg`). Agent count, spaces, reward scales, physics params. |
-| `__init__.py` | Gym registration under `Template-Ggswarm-Marl-Direct-v0`. |
+| `drone_swarm_env.py` | Main environment class (`GGSwarmMarlEnv`). Scene setup, physics, observations, rewards, resets. |
+| `drone_swarm_env_cfg.py` | Configuration dataclass (`GGSwarmMarlEnvCfg`). Agent count, spaces, reward scales, physics params. |
+| `__init__.py` | Gym registration under `Template-GGSwarm-Marl-Direct-v0`. |
 | `agents/skrl_mappo_cfg.yaml` | SKRL MAPPO hyperparameters for training. |
 
 ---
@@ -27,7 +27,7 @@ Phase 1 of the ggSwarm project establishes the foundational Isaac Lab MARL envir
 4. **Articulation Init:** Creates a single `Articulation` view using the regex prim path `/World/envs/env_.*/drone_.*`, which captures all drone instances.
 5. **Lighting:** Adds a dome light (intensity 2000.0).
 
-### Configuration (`GgswarmMarlEnvCfg`)
+### Configuration (`GGSwarmMarlEnvCfg`)
 
 | Parameter | Value | Description |
 | :--- | :--- | :--- |
@@ -110,7 +110,7 @@ Shape: `[num_envs, num_agents, num_agents]`
 **Script:** `scripts/phase1_demo.py`
 
 ```powershell
-..\IsaacLab\isaaclab.bat -p scripts\phase1_demo.py --task=Template-Ggswarm-Marl-Direct-v0
+..\IsaacLab\isaaclab.bat -p scripts\phase1_demo.py --task=Template-GGSwarm-Marl-Direct-v0
 ```
 
 **What it does:**

@@ -8,7 +8,7 @@
 
 ## 1. Executive Summary
 
-This project introduces a **decentralized coordination framework** for large UAV swarms to eliminate single points of failure and high latency inherent in centralized systems. By integrating **Graph Neural Networks (GNN)** for spatial reasoning and **Minimum Control (MINCO)** trajectory optimization, the system achieves robust, fault-tolerant behavior. The architecture features a "brain" (Graph Attention Network) for scalable awareness and "muscles" (trajectory optimization) for smooth maneuvers. **SwarmRaft** consensus logic ensures autonomous recovery after agent failure. Implementation occurs in **NVIDIA Isaac Lab**, utilizing GPU-accelerated simulation to train thousands of agents in complex environments like forests and urban canyons.
+This project introduces a **decentralized coordination framework** for large UAV swarms to eliminate single points of failure and high latency inherent in centralized systems. By integrating **Graph Neural Networks (GNN)** for spatial reasoning and **Minimum Control (MINCO)** trajectory optimization, the system achieves robust, fault-tolerant behavior. The architecture features a "brain" (Graph Attention Network) for scalable awareness and "muscles" (trajectory optimization) for smooth maneuvers. **SwarmRaft**—a decentralized adaptation of the Raft consensus algorithm—ensures autonomous recovery after agent failure. Implementation occurs in **NVIDIA Isaac Lab**, utilizing GPU-accelerated simulation to train thousands of agents in complex environments like forests and urban canyons.
 
 ---
 
@@ -26,7 +26,7 @@ The project employs a **Centralized Training, Decentralized Execution (CTDE)** w
 
 * **L1 - Local Sensing:** Agents collect LiDAR and IMU perception data locally within Isaac Lab.
 * **L2 - GNN Message Passing:** Information is aggregated within a K-hop neighborhood using **GATv2** to establish spatial awareness.
-* **L3 - Distributed Consensus:** **SwarmRaft** logic allows agents to align on global formation objectives through local peer interactions.
+* **L3 - Distributed Consensus:** **SwarmRaft** logic (a peer-to-peer consensus mechanism) allows agents to align on global formation objectives through local peer interactions without a central leader.
 * **L4 - Runtime Safety Shields:** **Control Barrier Functions (CBFs)** enforce hard safety constraints to ensure zero inter-agent collisions.
 * **L5 - Mission Execution:** The swarm executes high-level commands, such as "Move to Goal" or "Change Formation Shape".
 
@@ -55,11 +55,24 @@ The project employs a **Centralized Training, Decentralized Execution (CTDE)** w
 * **Platform:** NVIDIA Isaac Lab 2.3 and Isaac Sim 5.1.
 * **RL Library:** SKRL using Proximal Policy Optimization (PPO).
 * **Software Stack:** `PyTorch` 2.5+ and `OpenUSD`.
-* **Compute:** Local RTX 3070 (8GB VRAM) for development; cloud-based NVIDIA `Brev` or AWS Batch (`g6.2xlarge`) for heavy training.
+* **Compute:** Local RTX 3070 (8GB VRAM) for development; cloud-based **NVIDIA Brev (A100 80GB)** for large-scale multi-agent training to ensure convergence within the project timeline.
 
 ---
 
-## 6. Risks and Mitigations
+## 6. Methodology: Reward Shaping
+
+To achieve stable formation control, the reinforcement learning agent is trained using a multi-objective reward function $R$:
+
+$$R = w_{pos} \cdot R_{pos} + w_{vel} \cdot R_{vel} + w_{ang\_vel} \cdot R_{ang\_vel} + w_{alive} \cdot R_{alive} + w_{term} \cdot R_{term}$$
+
+* **Formation Error ($R_{pos}$):** A Gaussian-shaped reward based on the Euclidean distance to the desired formation coordinate.
+* **Stability ($R_{vel}, R_{ang\_vel}$):** Penalties on linear and angular velocity jitter to encourage smooth hovering.
+* **Resilience ($R_{alive}$):** A constant positive bonus for each timestep the agent remains within safety bounds.
+* **Termination ($R_{term}$):** A significant negative penalty for collisions or exceeding altitude limits ($0.1m < z < 3.0m$).
+
+---
+
+## 7. Risks and Mitigations
 
 * **VRAM Saturation:** Mitigation involves using **headless training** locally and offloading heavy workloads to the cloud.
 * **GNN Over-smoothing:** Deep graph layers can cause identical node features; mitigation involves restricting message passing to **3-hops**.
@@ -74,7 +87,7 @@ The project employs a **Centralized Training, Decentralized Execution (CTDE)** w
 | # | Weeks | Phase | Activity | Milestone |
 | :--- | :--- | :--- | :--- | :--- |
 | 1 | 5-6 | Foundation | Install NVIDIA Isaac Lab; configure simulated multirotor assets; finalize graph connectivity logic. | - |
-| 2 | 7-8 | Brain Development | Train the GATv2 policy using Proximal Policy Optimization (PPO); test basic formation keeping in empty space. | **M1 (Week 8):** GNN policy training |
+| 2 | 7-8 | Brain Development | Train the GATv2 policy using **Multi-Agent PPO (MAPPO)**; test basic formation keeping in empty space. | **M1 (Week 8):** GNN policy training |
 | 3 | 9–10 | Muscle Refinement | Integrate MINCO trajectory optimization as a post-processing layer; implement SwarmRaft consensus logic. | **M2 (Week 10):** Logic integration |
 | 4 | 11–12 | Stress Testing | Conduct simulated agent loss tests; benchmark swarm navigation in high-density obstacle environments. | - |
 | 5 | 13-15 | Showcase Prep | Finalize RTX Tiled Rendering; record HD demonstration; compile results into the final Testing Report. | **M3 (Week 14):** Mission success validation; **M4 (Week 15):** HD showcase completion |

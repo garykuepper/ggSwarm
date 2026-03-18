@@ -34,18 +34,6 @@ repos:
       - id: check-shebang-scripts-are-executable
       - id: detect-private-key
       - id: debug-statements
-  - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.1
-    hooks:
-      - id: codespell
-        additional_dependencies:
-        - tomli
-        exclude: "CONTRIBUTORS.md|docs/source/setup/walkthrough/concepts_env_design.rst"
-  # FIXME: Figure out why this is getting stuck under VPN.
-  # - repo: https://github.com/RobertCraigie/pyright-python
-  #   rev: v1.1.315
-  #   hooks:
-  #   - id: pyright
   - repo: https://github.com/Lucas-C/pre-commit-hooks
     rev: v1.5.5
     hooks:

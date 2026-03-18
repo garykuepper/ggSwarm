@@ -5,10 +5,10 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Isaac Lab](https://img.shields.io/badge/Isaac%20Lab-2.3-76B900?logo=nvidia&logoColor=white)](https://isaac-sim.github.io/IsaacLab/)
 [![Isaac Sim](https://img.shields.io/badge/Isaac%20Sim-5.1-76B900?logo=nvidia&logoColor=white)](https://developer.nvidia.com/isaac-sim)
-[![skrl](https://img.shields.io/badge/skrl-1.1.0-blueviolet?logo=github&logoColor=white)](https://skrl.readthedocs.io/)
+[![SKRL](https://img.shields.io/badge/skrl-1.1.0-blueviolet?logo=github&logoColor=white)](https://skrl.readthedocs.io/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
-[![Status](https://img.shields.io/badge/Status-In%20Development-orange)](#)
+[![Status](https://img.shields.io/badge/Status-In%20Development-orange)]
 
 This project develops a **decentralized coordination framework** for Unmanned Aerial Vehicle (UAV) swarms to eliminate single points of failure and high latency inherent in centralized systems. The system is built within **NVIDIA Isaac Lab**, utilizing GPU-accelerated reinforcement learning to enable autonomous, resilient swarm behavior.
 
@@ -35,7 +35,7 @@ The project utilizes a **Centralized Training, Decentralized Execution (CTDE)** 
 | Phase | Weeks | Focus | Status |
 | :--- | :--- | :--- | :--- |
 | **1. Foundation** | 5–6 | Isaac Lab env, drone spawning, graph connectivity | ✅ Complete |
-| **2. Brain Development** | 7–8 | GATv2 policy training with PPO/MAPPO | 🔄 In Progress |
+| **2. Brain Development** | 7–8 | GATv2 policy training with MAPPO | 🔄 In Progress |
 | **3. Muscle Refinement** | 9–10 | MINCO optimization, SwarmRaft consensus | ⬜ Planned |
 | **4. Stress Testing** | 11–12 | Agent failure tests, obstacle environments | ⬜ Planned |
 | **5. Showcase Prep** | 13–15 | HD rendering, final validation, demo video | ⬜ Planned |
@@ -50,52 +50,135 @@ The project utilizes a **Centralized Training, Decentralized Execution (CTDE)** 
 * **Layers**:
   * Layer 1: Simulated Multirotor (`Crazyflie`)
   * Layer 2: Graph Connectivity (Distance-based)
-  * Layer 3: GATv2 Policy (SKRL/PPO)
+  * Layer 3: GATv2 Policy (SKRL/MAPPO)
   * Layer 4: Consensus Mechanism (Phase 3)
   * Layer 5: Mission Planning (Phase 4)
 
+## Prerequisites
+
+Before installing, ensure the following requirements are met:
+
+* **Python 3.11** — Isaac Sim 5.1 requires Python 3.11 exactly.
+  Download from [python.org](https://www.python.org/downloads/) if needed.
+* **NVIDIA GPU Driver** — Version ≥ 552.86 (CUDA 12) required on Windows.
+  Download the latest from [NVIDIA Drivers](https://www.nvidia.com/en-us/drivers/).
+* **Windows Long Path Support** — Required to avoid installation errors.
+  Enable via the registry: `HKLM\SYSTEM\CurrentControlSet\Control\FileSystem\LongPathsEnabled = 1`
+  or run `New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Value 1 -PropertyType DWORD -Force` in an elevated PowerShell.
+* **Isaac Lab** — Clone to a sibling directory of `ggSwarm` (i.e., `../IsaacLab`):
+
+  ```powershell
+  git clone https://github.com/isaac-sim/IsaacLab.git ../IsaacLab
+  ```
+
+  The resulting layout must be:
+
+  ```text
+  isaaclab\
+  ├── IsaacLab\      ← cloned Isaac Lab repo
+  └── ggSwarm\       ← this project
+  ```
+
+  All run commands use `..\IsaacLab\isaaclab.bat` and rely on this sibling structure.
+
 ## Installation
 
-```bash
-# Clone the repository
+### Step 1 — Clone ggSwarm
+
+```powershell
 git clone https://github.com/garykuepper/ggSwarm.git
 cd ggSwarm
 ```
 
-## Setup Environment
+### Step 2 — Create a Python 3.11 Virtual Environment
 
-```bash
-# Create the conda environment
-conda create -n env_isaaclab python=3.10
-conda activate env_isaaclab
+```powershell
+# Use the py launcher if python3.11 is not your default
+py -3.11 -m venv env_isaaclab
+
+# Activate the environment
+env_isaaclab\Scripts\activate
+
+# Upgrade pip
+python -m pip install --upgrade pip
 ```
 
-## Install Dependencies
+> **Important:** Run `env_isaaclab\Scripts\activate` at the start of **every new terminal session**
+> before calling `isaaclab.bat`. The script delegates to whatever Python is on your active `PATH`,
+> so without the `venv` active it will not find `isaacsim`.
 
-```bash
-# Install Isaac Lab (ensure ISAACLAB_PATH is set)
+### Step 3 — Install Isaac Sim
+
+Isaac Sim 5.1 is distributed as a pip package from NVIDIA's `PyPI` index:
+
+```powershell
+pip install "isaacsim[all,extscache]==5.1.0" --extra-index-url https://pypi.nvidia.com
+```
+
+> **Note:** This download is large (~10 GB). Ensure you have sufficient disk space.
+
+### Step 4 — Install `PyTorch` (CUDA 12.8)
+
+```powershell
+pip install torch==2.7.0 torchvision==0.22.0 --index-url https://download.pytorch.org/whl/cu128
+```
+
+### Step 5 — Install Isaac Lab Extensions
+
+From the `ggSwarm` directory, invoke the Isaac Lab installer (installs Isaac Lab
+source extensions and the `skrl` learning framework):
+
+```powershell
+..\IsaacLab\isaaclab.bat --install skrl
+```
+
+After this completes, **pin `h5py` to a version compatible with Isaac Sim's bundled
+HDF5 DLLs**. Without this, Isaac Sim's HDF5 1.12.x DLLs conflict with the
+`h5py 3.16+` wheel (which bundles HDF5 2.x), causing a fatal Windows DLL crash:
+
+```powershell
+pip install "h5py>=3.9.0,<3.12" --force-reinstall
+```
+
+### Step 6 — Install ggSwarm Package
+
+```powershell
 pip install -e source/ggSwarm
 ```
 
 ### Running the Phase 1 Demo
 
-To verify the Phase 1 Foundation is working (spawning drones and calculating graph connectivity), run the Phase 1 demonstration script:
+To verify the Phase 1 Foundation is working (spawning drones and calculating graph
+connectivity), run the Phase 1 demonstration script:
 
-```bash
-..\IsaacLab\isaaclab.bat -p scripts/phase1_demo.py --task=Template-Ggswarm-Marl-Direct-v0
+```powershell
+..\IsaacLab\isaaclab.bat -p scripts/phase1_demo.py --task=Template-GGSwarm-Marl-Direct-v0
 ```
 
-*Note: For a detailed breakdown of the Phase 1 codebase, please read [Phase 1 Documentation](docs/phase1_foundation.md).*
+*Note: For a detailed breakdown of the Phase 1 codebase, please read
+[Phase 1 Documentation](docs/phase1_foundation.md).*
 
 ### Running the Training (Phase 2)
 
-To start training with SKRL, run (from `ggSwarm` directory):
+To start training with SKRL, run from the `ggSwarm` directory:
 
-```bash
-..\IsaacLab\isaaclab.bat -p scripts/skrl/train.py --task=Template-Ggswarm-Marl-Direct-v0 --algorithm=MAPPO
+```powershell
+..\IsaacLab\isaaclab.bat -p scripts/skrl/train.py --task=Template-GGSwarm-Marl-Direct-v0 --algorithm=MAPPO
 ```
 
-*Note: For the full Phase 2 plan including GATv2 integration and reward tuning, see [Phase 2 Documentation](docs/phase2_brain_development.md).*
+*Note: For the full Phase 2 plan including GATv2 integration and reward tuning, see
+[Phase 2 Documentation](docs/phase2_brain_development.md).*
+
+## Troubleshooting
+
+| Error | Cause | Fix |
+| :--- | :--- | :--- |
+| `isaaclab.bat: not recognized` | Script is not on your `PATH` | Always use the relative path: `..\IsaacLab\isaaclab.bat` |
+| `ModuleNotFoundError: No module named 'isaacsim'` | venv not activated | Run `env_isaaclab\Scripts\activate` first |
+| `ModuleNotFoundError: No module named 'isaaclab'` | Isaac Lab not installed | Run Step 5 (`isaaclab.bat --install skrl`) |
+| Long path errors during install | Windows path limit (260 chars) | Enable long path support (see Prerequisites) |
+| `ModuleNotFoundError: No module named 'pxr'` | Isaac Lab imports before `AppLauncher` starts | All `isaaclab`/task imports must come **after** `app_launcher = AppLauncher(args_cli)`. See `scripts/phase1_demo.py` for the correct pattern. |
+| `ImportError: DLL load failed while importing _errors` on `h5py` | `h5py 3.16+` bundles HDF5 2.x DLLs that conflict with Isaac Sim's HDF5 1.12.x DLLs | Run `pip install "h5py>=3.9.0,<3.12" --force-reinstall` (Step 5 covers this) |
 
 ## Code Quality
 

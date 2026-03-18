@@ -103,13 +103,13 @@ Current `skrl_mappo_cfg.yaml` needs these adjustments:
 
 ```powershell
 # Train with MAPPO (default)
-..\IsaacLab\isaaclab.bat -p scripts\skrl\train.py --task=Template-Ggswarm-Marl-Direct-v0 --algorithm=MAPPO
+..\IsaacLab\isaaclab.bat -p scripts\skrl\train.py --task=Template-GGSwarm-Marl-Direct-v0 --algorithm=MAPPO
 
 # Train headless (no GUI, faster)
-..\IsaacLab\isaaclab.bat -p scripts\skrl\train.py --task=Template-Ggswarm-Marl-Direct-v0 --algorithm=MAPPO --headless
+..\IsaacLab\isaaclab.bat -p scripts\skrl\train.py --task=Template-GGSwarm-Marl-Direct-v0 --algorithm=MAPPO --headless
 
 # Evaluate a checkpoint
-..\IsaacLab\isaaclab.bat -p scripts\skrl\play.py --task=Template-Ggswarm-Marl-Direct-v0 --checkpoint=<path>
+..\IsaacLab\isaaclab.bat -p scripts\skrl\play.py --task=Template-GGSwarm-Marl-Direct-v0 --checkpoint=<path>
 
 # Monitor training
 tensorboard --logdir=logs/skrl/ggswarm_marl

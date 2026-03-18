@@ -7,14 +7,10 @@
 
 import argparse
 
-import ggSwarm.tasks  # noqa: F401, E402
-import gymnasium as gym  # noqa: E402
-import torch  # noqa: E402
-
+# AppLauncher must be imported and the simulation app started BEFORE any
+# isaaclab or isaacsim modules are imported, because pxr (USD/Omniverse)
+# is only bootstrapped by the AppLauncher kernel initialisation.
 from isaaclab.app import AppLauncher
-
-import isaaclab_tasks  # noqa: F401, E402
-from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Random agent for Isaac Lab environments.")
@@ -36,11 +32,20 @@ AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
 args_cli = parser.parse_args()
 
-# launch omniverse app
+# launch omniverse app — must happen before any pxr/isaaclab imports
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
 """Rest everything follows."""
+
+# All imports below are intentionally placed after AppLauncher (noqa: E402),
+# because pxr/USD is only available once the simulation kernel has started.
+import ggSwarm.tasks  # noqa: F401, E402
+import gymnasium as gym  # noqa: E402
+import torch  # noqa: E402
+
+import isaaclab_tasks  # noqa: F401, E402
+from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
 
 
 def main():

@@ -8,7 +8,7 @@ ggSwarm is a decentralized formation control framework for large-scale Unmanned 
 
 | Layer | Responsibility | Implementation Component | Phase |
 | :--- | :--- | :--- | :--- |
-| **L1: Local Sensing** | LiDAR/IMU data collection | `GgswarmMarlEnv` perception buffers (12-dim obs) | ✅ Phase 1 |
+| **L1: Local Sensing** | LiDAR/IMU data collection | `GGSwarmMarlEnv` perception buffers (12-dim obs) | ✅ Phase 1 |
 | **L2: GNN Messaging** | Spatial awareness / GNN | Distance-based adjacency matrix → GATv2 policy | 🔄 Phase 2 |
 | **L3: Consensus** | Formation alignment | `SwarmRaft` logic | ⬜ Phase 3 |
 | **L4: Safety Shield** | Collision avoidance | Control Barrier Functions (CBF) | ⬜ Phase 3 |

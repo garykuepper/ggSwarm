@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: MIT
 
 from isaaclab.assets import ArticulationCfg
-from isaaclab.envs import DirectMARLEnvCfg
+from isaaclab.envs import DirectMARLEnvCfg, ViewerCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim import SimulationCfg
 from isaaclab.utils import configclass
@@ -13,7 +13,7 @@ from isaaclab_assets import CRAZYFLIE_CFG
 
 
 @configclass
-class GgswarmMarlEnvCfg(DirectMARLEnvCfg):
+class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     # env
     decimation = 2
     episode_length_s = 10.0
@@ -29,6 +29,12 @@ class GgswarmMarlEnvCfg(DirectMARLEnvCfg):
         self.possible_agents = [f"drone_{i}" for i in range(self.num_agents)]
         self.action_spaces = {agent: 4 for agent in self.possible_agents}
         self.observation_spaces = {agent: 12 for agent in self.possible_agents}
+
+    # viewer
+    viewer: ViewerCfg = ViewerCfg(
+        eye=(4.0, 4.0, 3.0),    # camera position (metres)
+        lookat=(0.0, 0.0, 1.0), # look-at point (near drone spawn height)
+    )
 
     # simulation
     sim: SimulationCfg = SimulationCfg(

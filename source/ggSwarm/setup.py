@@ -18,10 +18,15 @@ EXTENSION_TOML_DATA = toml.load(os.path.join(EXTENSION_PATH, "config", "extensio
 
 # Minimum dependencies required prior to installation
 INSTALL_REQUIRES = [
+    # h5py>=3.12 bundles HDF5 2.x DLLs that conflict with Isaac Sim's
+    # bundled HDF5 1.12.x DLLs on Windows (fatal DLL entry-point error).
+    # Pin to <3.12 until Isaac Sim ships a compatible HDF5 version.
+    "h5py>=3.9.0,<3.12",
     "psutil",
     "skrl>=1.1.0",
     "toml",
 ]
+
 
 # Installation operation
 setup(

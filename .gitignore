@@ -21,7 +21,18 @@
 **/.pytest_cache/
 **/*.pyc
 **/*.pb
-
+env_isaaclab
+.venv/
+venv/
+env/
+.env/
+_env/
+.ruff_cache/
+.ipynb_checkpoints/
+*.swp
+*.tmp
+scratch/
+2.7.0+cu128
 # Docker/Singularity
 **/*.sif
 docker/cluster/exports/
