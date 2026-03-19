@@ -1,5 +1,6 @@
 ---
-trigger: always_on
+description: ggSwarm project rules - architecture, tensor shapes, rewards, training
+alwaysApply: true
 ---
 
 # Project Rules: ggSwarm
@@ -8,9 +9,7 @@ trigger: always_on
 
 The file `docs/architecture.md` is the source of truth for the system design.
 
-- **RULE:** Any change to the environment structure, message passing logic, or
-  coordination layers MUST be accompanied by an update to
-  `docs/architecture.md`.
+- **RULE:** Any change to the environment structure, message passing logic, or coordination layers MUST be accompanied by an update to `docs/architecture.md`.
 - **RATIONALE:** Ensures scalability and maintainability of the decentralized control logic.
 
 ## 2. Status Reporting (MANDATORY)
@@ -23,8 +22,7 @@ The file `docs/architecture.md` is the source of truth for the system design.
 
 - Follow the global Python standards defined in the user settings (PEP 8, Snake_case for filenames, Type Hinting).
 - Explicitly documented public interfaces in all module-level components.
-- **RULE:** Always auto-resolve common linting issues like "line too long" (wrap
-  at 88-100 chars) and "unused imports" (remove them) as they occur.
+- **RULE:** Always auto-resolve common linting issues like "line too long" (wrap at 88-100 chars) and "unused imports" (remove them) as they occur.
 
 ## 4. Documentation Standards
 
@@ -34,12 +32,10 @@ The file `docs/architecture.md` is the source of truth for the system design.
 
 ## 5. Technical Terminology (Spelling Exceptions)
 
-- **RULE:** The following terms are correct technical jargon for this project and
-  should NOT be flagged as spelling errors:
+- **RULE:** The following terms are correct technical jargon for this project and should NOT be flagged as spelling errors:
   - **Frameworks/Tools:** Isaac Lab, `isaaclab`, `isaacsim`, `conda`, `PyPI`, `Py`.
   - **Project Specific:** `ggSwarm`, `ggswarm`, `Crazyflie`.
-  - **Technical Shorthand:** `cfg`, `envs`, `quat`, `lin_vel`, `ang_vel`,
-    `pos_w`, `rel_pos`, `multirotor`, `multirotors`.
+  - **Technical Shorthand:** `cfg`, `envs`, `quat`, `lin_vel`, `ang_vel`, `pos_w`, `rel_pos`, `multirotor`, `multirotors`.
   - **User Context:** `gkuep`.
 - **RATIONALE:** Prevents false positives in spelling checks for common robotics and simulation terminology.
 
@@ -74,7 +70,7 @@ The file `docs/architecture.md` is the source of truth for the system design.
 
 ## 9. Reward Function Versioning (MANDATORY)
 - **RULE:** Every reward component MUST have a corresponding scale 
-  parameter in `GgswarmMarlEnvCfg` (e.g. `rew_scale_formation`).
+  parameter in `GGSwarmMarlEnvCfg` (e.g. `rew_scale_formation`).
 - **RULE:** Reward components that are planned but not yet active MUST 
   be set to `0.0` in the config, NOT commented out.
 - **RULE:** Any change to the reward function MUST be logged in 
@@ -106,7 +102,7 @@ The file `docs/architecture.md` is the source of truth for the system design.
 
 ## 12. No Magic Numbers in Environment Code
 - **RULE:** All numerical constants in `drone_swarm_env.py` MUST be 
-  defined as parameters in `GgswarmMarlEnvCfg`, not hardcoded inline.
+  defined as parameters in `GGSwarmMarlEnvCfg`, not hardcoded inline.
 - **KNOWN VIOLATIONS TO FIX:** 
   - Adjacency threshold `2.0` → `cfg.graph_connectivity_radius`
   - Yaw range `±3.14` → `cfg.spawn_yaw_range`

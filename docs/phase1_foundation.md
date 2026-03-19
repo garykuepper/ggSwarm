@@ -1,6 +1,8 @@
 # Phase 1: Foundation
 
-Phase 1 of the ggSwarm project establishes the foundational Isaac Lab MARL environment: spawning multirotor assets, applying physics, collecting observations, and computing the graph connectivity layer (L2) for the swarm.
+Phase 1 of the ggSwarm project establishes the foundational Isaac Lab MARL
+environment: spawning multirotor assets, applying physics, collecting
+observations, and computing the graph connectivity layer (L2) for the swarm.
 
 **Source Path:** `source/ggSwarm/ggSwarm/tasks/direct/ggswarm_marl/`
 
@@ -10,8 +12,8 @@ Phase 1 of the ggSwarm project establishes the foundational Isaac Lab MARL envir
 
 | File | Purpose |
 | :--- | :--- |
-| `drone_swarm_env.py` | Main environment class (`GGSwarmMarlEnv`). Scene setup, physics, observations, rewards, resets. |
-| `drone_swarm_env_cfg.py` | Configuration dataclass (`GGSwarmMarlEnvCfg`). Agent count, spaces, reward scales, physics params. |
+| `drone_swarm_env.py` | Main env class (`GGSwarmMarlEnv`). Scene setup, obs/rewards, resets. |
+| `drone_swarm_env_cfg.py` | Env config (`GGSwarmMarlEnvCfg`). Agents, spaces, reward scales, physics params. |
 | `__init__.py` | Gym registration under `Template-GGSwarm-Marl-Direct-v0`. |
 | `agents/skrl_mappo_cfg.yaml` | SKRL MAPPO hyperparameters for training. |
 
@@ -21,10 +23,14 @@ Phase 1 of the ggSwarm project establishes the foundational Isaac Lab MARL envir
 
 ### Scene Setup (`_setup_scene`)
 
-1. **Drone Spawning:** Iterates `num_agents` times, spawning each `CRAZYFLIE_CFG` asset at `/World/envs/env_0/drone_{i}`.
+1. **Drone Spawning:** Iterates `num_agents` times, spawning each
+   `CRAZYFLIE_CFG` asset at `/World/envs/env_0/drone_{i}`.
 2. **Ground Plane:** Adds a `GroundPlaneCfg` at `/World/ground`.
-3. **Environment Cloning:** Calls `scene.clone_environments()` to replicate the source drones across all `num_envs` parallel environments.
-4. **Articulation Init:** Creates a single `Articulation` view using the regex prim path `/World/envs/env_.*/drone_.*`, which captures all drone instances.
+3. **Environment Cloning:** Calls `scene.clone_environments()` to replicate
+   the source drones across all `num_envs` parallel environments.
+4. **Articulation Init:** Creates a single `Articulation` view using the
+   regex prim path `/World/envs/env_.*/drone_.*`, which captures all drone
+   instances.
 5. **Lighting:** Adds a dome light (intensity 2000.0).
 
 ### Configuration (`GGSwarmMarlEnvCfg`)
@@ -98,7 +104,8 @@ Shape: `[num_envs, num_agents, num_agents]`
 
 ## Reset Logic (`_reset_idx`)
 
-1. **Random positions:** Uniformly sampled within `±spawn_dist` (1.5m) of the environment origin, Z height between 0.5–1.5m.
+1. **Random positions:** Uniformly sampled within `±spawn_dist` (1.5m) of the
+   environment origin, Z height between 0.5–1.5m.
 2. **Random yaw:** Uniform in `[-π, π]`.
 3. **Goals:** Set to the initial spawn position (hover-in-place for Phase 1).
 4. **Joints:** Reset rotor positions and velocities to defaults.

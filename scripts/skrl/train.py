@@ -38,6 +38,12 @@ parser.add_argument(
     help="Interval between video recordings (in steps).",
 )
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
+parser.add_argument(
+    "--num_agents",
+    type=int,
+    default=None,
+    help="Number of agents (override env config).",
+)
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument(
     "--agent",
@@ -174,6 +180,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # Configure environment overrides from CLI
     env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
     env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
+    if hasattr(env_cfg, "num_agents") and args_cli.num_agents is not None:
+        env_cfg.num_agents = args_cli.num_agents
+        env_cfg.possible_agents = [f"drone_{i}" for i in range(env_cfg.num_agents)]
+        env_cfg.action_spaces = {agent: 4 for agent in env_cfg.possible_agents}
+        env_cfg.observation_spaces = {agent: 12 for agent in env_cfg.possible_agents}
 
     # Check for invalid combination of CPU device with distributed training
     if args_cli.distributed and args_cli.device is not None and "cpu" in args_cli.device:

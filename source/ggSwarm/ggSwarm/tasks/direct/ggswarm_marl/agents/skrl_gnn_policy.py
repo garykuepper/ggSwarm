@@ -5,6 +5,8 @@
 
 """GNN policy wrapper bridging PyTorch Geometric and SKRL."""
 
+from typing import Any, cast
+
 import torch
 import torch.nn as nn
 from skrl.models.torch import GaussianMixin, Model
@@ -55,7 +57,18 @@ class GGSwarmGNNPolicy(GaussianMixin, Model):
 
     def compute(self, inputs, role):
         # shape: [num_envs * num_agents, obs_dim]
-        obs = inputs["states"]
+        if isinstance(inputs, dict):
+            # SKRL provides tensors in a dict-like structure; cast for static typing.
+            obs = cast(torch.Tensor, inputs["states"])
+            extras: Any = inputs.get("extras", {})
+            if isinstance(extras, dict):
+                adj_matrix = cast(torch.Tensor | None, extras.get("adj_matrix", None))
+            else:
+                adj_matrix = None
+        else:
+            # If SKRL ever passes states directly, treat `inputs` as `obs`.
+            obs = cast(torch.Tensor, inputs)
+            adj_matrix = None
 
         # Enforce 2D shape for torch_geometric
         if obs.dim() > 2:
@@ -63,8 +76,6 @@ class GGSwarmGNNPolicy(GaussianMixin, Model):
 
         # Fetch the adjacency matrix passed from the environment extras
         # shape expected: [num_envs, num_agents, num_agents]
-        adj_matrix = inputs.get("extras", {}).get("adj_matrix", None)
-
         if adj_matrix is not None:
             num_envs, num_agents, _ = adj_matrix.shape
 

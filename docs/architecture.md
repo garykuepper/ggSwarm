@@ -2,7 +2,10 @@
 
 ## 1. Overview
 
-ggSwarm is a decentralized formation control framework for large-scale Unmanned Aerial Vehicle (UAV) swarms, built on the NVIDIA Isaac Lab simulation platform. It follows the **Graph Neural Swarm Control (GNSC)** 5-Layer model with a **Centralized Training, Decentralized Execution (CTDE)** workflow.
+ggSwarm is a decentralized formation control framework for large-scale Unmanned
+Aerial Vehicle (UAV) swarms, built on the NVIDIA Isaac Lab simulation platform.
+It follows the **Graph Neural Swarm Control (GNSC)** 5-Layer model with a
+**Centralized Training, Decentralized Execution (CTDE)** workflow.
 
 ## 2. GNSC 5-Layer Model Mapping
 

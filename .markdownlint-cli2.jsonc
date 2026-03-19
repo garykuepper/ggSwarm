@@ -1,0 +1,20 @@
+{
+  "globs": [
+    "README.md",
+    "docs/**/*.md",
+    ".agent/rules/**/*.md",
+    ".cursor/rules/**/*.md"
+  ],
+  "config": {
+    "MD013": {
+      "line_length": 250
+    },
+    "MD009": false,
+    "MD022": false,
+    "MD024": false,
+    "MD032": false,
+    "MD040": false,
+    "MD047": false
+  }
+}
+

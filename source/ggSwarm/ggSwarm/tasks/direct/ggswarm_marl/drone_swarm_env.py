@@ -124,6 +124,9 @@ class GGSwarmMarlEnv(DirectMARLEnv):
             forces=self._prop_forces,
             torques=self._prop_torques,
         )
+        # Ensure the composed wrenches are pushed to the simulator this step.
+        # The NVIDIA quadcopter demo calls `robot.write_data_to_sim()` after setting forces/torques.
+        self.robot.write_data_to_sim()
 
     def _get_observations(self) -> dict[str, torch.Tensor]:
         # Issue 5: Cache GPU memory reads once per step
@@ -256,7 +259,7 @@ class GGSwarmMarlEnv(DirectMARLEnv):
 
         return terminated, time_outs
 
-    def _reset_idx(self, env_ids: Sequence[int] | None):
+    def _reset_idx(self, env_ids: Sequence[int] | torch.Tensor | None):
         if env_ids is None:
             env_ids = torch.arange(self.num_envs, device=self.device)
         super()._reset_idx(env_ids)
@@ -272,7 +275,7 @@ class GGSwarmMarlEnv(DirectMARLEnv):
         ).view(-1)
 
         # Reset robot states to random positions centered around origin
-        num_resets = len(env_ids)
+        num_resets = len(env_ids_tensor)
         # [num_resets, num_agents, 3]
         random_pos = sample_uniform(
             -self.cfg.spawn_dist,

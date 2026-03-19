@@ -27,7 +27,7 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     decimation = 2
     episode_length_s = 10.0
     # multi-agent specification and spaces definition
-    num_agents = 10
+    num_agents = 4
 
     possible_agents: list[str] = []
     action_spaces: dict = {}
@@ -57,11 +57,14 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     )
 
     # swarm specific
-    thrust_to_weight: float = 1.9
+    # With the current thrust mapping in `drone_swarm_env.py`,
+    # `action_z = 0.0 -> thrust_val = 0.5`, so `thrust_to_weight = 2.0`
+    # makes the neutral action hover (total thrust ~= 1.0 * weight).
+    thrust_to_weight: float = 2.0
     moment_scale: float = 0.01
     graph_connectivity_radius: float = 2.0  # (metres) for L2 adjacency matrix
     spawn_yaw_range: float = 3.14159  # ± range for random yaw (rad)
-    target_formation_dist: float = 1.5  # desired inter-agent spacing (m)
+    target_formation_dist: float = 0.5  # desired inter-agent spacing (m)
 
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(
@@ -89,5 +92,5 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     spawn_dist = 1.5  # max distance from origin for spawning drones
 
     # curriculum
-    curriculum_start_step: int = 25000
+    curriculum_start_step: int = 10000
     curriculum_end_step: int = 50000

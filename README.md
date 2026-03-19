@@ -10,7 +10,11 @@
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
 ![Status](https://img.shields.io/badge/Status-In%20Development-orange)
 
-This project develops a **decentralized coordination framework** for Unmanned Aerial Vehicle (UAV) swarms to eliminate single points of failure and high latency inherent in centralized systems. The system is built within **NVIDIA Isaac Lab**, utilizing GPU-accelerated reinforcement learning to enable autonomous, resilient swarm behavior.
+This project develops a **decentralized coordination framework** for Unmanned
+Aerial Vehicle (UAV) swarms to eliminate single points of failure and high
+latency inherent in centralized systems. The system is built within
+**NVIDIA Isaac Lab**, utilizing GPU-accelerated reinforcement learning to enable
+autonomous, resilient swarm behavior.
 
 ## Core Architecture (GNSC 5-Layer Model)
 
