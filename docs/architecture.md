@@ -33,6 +33,11 @@ It follows the **Graph Neural Swarm Control (GNSC)** 5-Layer model with a
 4. **Optimization:** (Phase 4) MINCO refines actions into smooth trajectories.
 5. **Control:** Propeller forces and torques are applied via `permanent_wrench_composer`.
 
+**Phase 2 prerequisite baseline:** `GGS-Hover-v0` trains a single drone to hold
+its spawn pose before multi-agent formation tuning. This task keeps the same
+observation/action interfaces but disables formation objectives and introduces an
+explicit ground-hit penalty to prevent reward artifacts while grounded.
+
 ## 4. Training Pipeline
 
 | Component | Technology |
@@ -49,10 +54,14 @@ It follows the **Graph Neural Swarm Control (GNSC)** 5-Layer model with a
 | :--- | :--- |
 | `drone_swarm_env.py` | MARL environment (scene, physics, obs, rewards, resets) |
 | `drone_swarm_env_cfg.py` | Environment configuration (agents, spaces, params) |
+| `drone_hover_env.py` | Hover-only baseline env (`GGS-Hover-v0`) with spawn-hold reward |
+| `drone_hover_env_cfg.py` | Hover config (single-agent + ground-hit penalty params) |
 | `agents/skrl_mappo_cfg.yaml` | SKRL MAPPO hyperparameters |
+| `agents/skrl_mappo_hover_cfg.yaml` | SKRL MAPPO hyperparameters for hover baseline |
 | `agents/skrl_gnn_policy.py` | GATv2 GNN policy wrapper (PyG bridge) |
 | `scripts/skrl/train.py` | Training entry point |
 | `scripts/skrl/play.py` | Evaluation / playback entry point |
+| `scripts/eval_hover.py` | Hover baseline metrics and pass/fail evaluation |
 | `scripts/phase1_demo.py` | Phase 1 verification script |
 
 ---

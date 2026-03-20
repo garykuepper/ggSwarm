@@ -1,0 +1,292 @@
+"""Unified helper for hover, phase2, and debug workflows."""
+
+from __future__ import annotations
+
+import argparse
+import subprocess
+import sys
+from pathlib import Path
+
+HOVER_TASK = "GGS-Hover-v0"
+PHASE2_TASK = "Template-GGSwarm-Marl-Direct-v0"
+HOVER_LOG_DIR = Path("logs") / "skrl" / "ggswarm_hover"
+PHASE2_LOG_DIR = Path("logs") / "skrl" / "ggswarm_marl"
+
+
+def _run_command(command: list[str]) -> None:
+    """Run a command and stream output."""
+    try:
+        subprocess.run(command, check=True)
+    except subprocess.CalledProcessError as exc:
+        print(f"[ERROR] Command failed: {exc}")
+        sys.exit(exc.returncode)
+    except KeyboardInterrupt:
+        print("\n[INFO] Interrupted by user.")
+        sys.exit(130)
+
+
+def _find_latest_checkpoint(log_root: Path, prefer_best: bool = True) -> str:
+    """Return the newest checkpoint path under a log root."""
+    if not log_root.exists():
+        raise FileNotFoundError(f"Log root not found: {log_root}")
+
+    candidates: list[Path] = []
+    for ckpt_dir in log_root.glob("**/checkpoints"):
+        if not ckpt_dir.is_dir():
+            continue
+        if prefer_best:
+            best = ckpt_dir / "best_agent.pt"
+            if best.exists():
+                candidates.append(best)
+        candidates.extend(sorted(ckpt_dir.glob("agent_*.pt")))
+
+    if not candidates:
+        raise FileNotFoundError(f"No checkpoints found under: {log_root}")
+    return str(max(candidates, key=lambda p: p.stat().st_mtime).resolve())
+
+
+def _add_common_sim_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--headless", action="store_true", default=False)
+    parser.add_argument("--device", type=str, default=None)
+    parser.add_argument("--num_envs", type=int, default=None)
+    parser.add_argument("--num_agents", type=int, default=None)
+
+
+def _cmd_train(args: argparse.Namespace, *, task: str, gnn_default: bool) -> None:
+    cmd = [
+        sys.executable,
+        "scripts/skrl/train.py",
+        "--task",
+        task,
+        "--algorithm",
+        "MAPPO",
+        "--ml_framework",
+        "torch",
+    ]
+    if args.headless:
+        cmd.append("--headless")
+    if args.device:
+        cmd.extend(["--device", args.device])
+    if args.num_envs is not None:
+        cmd.extend(["--num_envs", str(args.num_envs)])
+    if args.num_agents is not None:
+        cmd.extend(["--num_agents", str(args.num_agents)])
+    if args.max_iterations is not None:
+        cmd.extend(["--max_iterations", str(args.max_iterations)])
+    if args.checkpoint:
+        cmd.extend(["--checkpoint", args.checkpoint])
+    if gnn_default and not args.no_gnn:
+        cmd.append("--gnn")
+    _run_command(cmd)
+
+
+def _cmd_play(args: argparse.Namespace, *, task: str, gnn_default: bool) -> None:
+    cmd = [
+        sys.executable,
+        "scripts/skrl/play.py",
+        "--task",
+        task,
+        "--algorithm",
+        "MAPPO",
+        "--ml_framework",
+        "torch",
+    ]
+    if args.headless:
+        cmd.append("--headless")
+    if args.device:
+        cmd.extend(["--device", args.device])
+    if args.num_envs is not None:
+        cmd.extend(["--num_envs", str(args.num_envs)])
+    if args.num_agents is not None:
+        cmd.extend(["--num_agents", str(args.num_agents)])
+    if args.max_steps is not None:
+        cmd.extend(["--max_steps", str(args.max_steps)])
+    if args.checkpoint:
+        cmd.extend(["--checkpoint", args.checkpoint])
+    if gnn_default and not args.no_gnn:
+        cmd.append("--gnn")
+    if args.hover_debug:
+        cmd.append("--hover_debug")
+    _run_command(cmd)
+
+
+def _cmd_eval_hover(args: argparse.Namespace) -> None:
+    cmd = [
+        sys.executable,
+        "scripts/eval_hover.py",
+        "--task",
+        HOVER_TASK,
+        "--algorithm",
+        "MAPPO",
+        "--ml_framework",
+        "torch",
+    ]
+    if args.headless:
+        cmd.append("--headless")
+    if args.device:
+        cmd.extend(["--device", args.device])
+    if args.num_envs is not None:
+        cmd.extend(["--num_envs", str(args.num_envs)])
+    if args.num_episodes is not None:
+        cmd.extend(["--num_episodes", str(args.num_episodes)])
+    if args.checkpoint:
+        cmd.extend(["--checkpoint", args.checkpoint])
+    _run_command(cmd)
+
+
+def _cmd_eval_phase2(args: argparse.Namespace) -> None:
+    cmd = [
+        sys.executable,
+        "scripts/eval_phase2.py",
+        "--task",
+        PHASE2_TASK,
+        "--algorithm",
+        "MAPPO",
+        "--ml_framework",
+        "torch",
+        "--gnn",
+    ]
+    if args.headless:
+        cmd.append("--headless")
+    if args.device:
+        cmd.extend(["--device", args.device])
+    if args.num_envs is not None:
+        cmd.extend(["--num_envs", str(args.num_envs)])
+    if args.num_agents is not None:
+        cmd.extend(["--num_agents", str(args.num_agents)])
+    if args.num_episodes is not None:
+        cmd.extend(["--num_episodes", str(args.num_episodes)])
+    if args.checkpoint:
+        cmd.extend(["--checkpoint", args.checkpoint])
+    _run_command(cmd)
+
+
+def _cmd_monitor(log_dir: Path) -> None:
+    _run_command(["tensorboard", "--logdir", str(log_dir)])
+
+
+def _cmd_debug_latest_checkpoint(args: argparse.Namespace) -> None:
+    log_root = HOVER_LOG_DIR if args.family == "hover" else PHASE2_LOG_DIR
+    checkpoint = _find_latest_checkpoint(log_root=log_root, prefer_best=not args.no_prefer_best)
+    print(checkpoint)
+
+
+def _cmd_debug_smoke(args: argparse.Namespace) -> None:
+    cmd = [
+        sys.executable,
+        "scripts/skrl/train.py",
+        "--task",
+        args.task,
+        "--algorithm",
+        "MAPPO",
+        "--ml_framework",
+        "torch",
+        "--max_iterations",
+        str(args.iterations),
+    ]
+    if args.headless:
+        cmd.append("--headless")
+    if args.device:
+        cmd.extend(["--device", args.device])
+    if args.num_envs is not None:
+        cmd.extend(["--num_envs", str(args.num_envs)])
+    if args.num_agents is not None:
+        cmd.extend(["--num_agents", str(args.num_agents)])
+    if args.gnn:
+        cmd.append("--gnn")
+    _run_command(cmd)
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Unified ggSwarm run helper")
+    families = parser.add_subparsers(dest="family")
+
+    hover = families.add_parser("hover", help="Hover baseline workflows")
+    hover_cmds = hover.add_subparsers(dest="command")
+
+    hover_train = hover_cmds.add_parser("train", help="Train hover policy")
+    _add_common_sim_args(hover_train)
+    hover_train.add_argument("--max_iterations", type=int, default=None)
+    hover_train.add_argument("--checkpoint", type=str, default=None)
+    hover_train.add_argument("--no_gnn", action="store_true", default=False)
+    hover_train.set_defaults(handler=lambda a: _cmd_train(a, task=HOVER_TASK, gnn_default=False))
+
+    hover_play = hover_cmds.add_parser("play", help="Play hover policy")
+    _add_common_sim_args(hover_play)
+    hover_play.add_argument("--checkpoint", type=str, default=None)
+    hover_play.add_argument("--max_steps", type=int, default=None)
+    hover_play.add_argument("--hover_debug", action="store_true", default=False)
+    hover_play.add_argument("--no_gnn", action="store_true", default=False)
+    hover_play.set_defaults(handler=lambda a: _cmd_play(a, task=HOVER_TASK, gnn_default=False))
+
+    hover_eval = hover_cmds.add_parser("eval", help="Evaluate hover checkpoint")
+    _add_common_sim_args(hover_eval)
+    hover_eval.add_argument("--checkpoint", type=str, default=None)
+    hover_eval.add_argument("--num_episodes", type=int, default=10)
+    hover_eval.set_defaults(handler=_cmd_eval_hover)
+
+    hover_monitor = hover_cmds.add_parser("monitor", help="Monitor hover TensorBoard logs")
+    hover_monitor.set_defaults(handler=lambda _a: _cmd_monitor(HOVER_LOG_DIR))
+
+    phase2 = families.add_parser("phase2", help="Phase 2 formation workflows")
+    phase2_cmds = phase2.add_subparsers(dest="command")
+
+    phase2_train = phase2_cmds.add_parser("train", help="Train phase2 policy")
+    _add_common_sim_args(phase2_train)
+    phase2_train.add_argument("--max_iterations", type=int, default=None)
+    phase2_train.add_argument("--checkpoint", type=str, default=None)
+    phase2_train.add_argument("--no_gnn", action="store_true", default=False)
+    phase2_train.set_defaults(handler=lambda a: _cmd_train(a, task=PHASE2_TASK, gnn_default=True))
+
+    phase2_play = phase2_cmds.add_parser("play", help="Play phase2 policy")
+    _add_common_sim_args(phase2_play)
+    phase2_play.add_argument("--checkpoint", type=str, default=None)
+    phase2_play.add_argument("--max_steps", type=int, default=None)
+    phase2_play.add_argument("--hover_debug", action="store_true", default=False)
+    phase2_play.add_argument("--no_gnn", action="store_true", default=False)
+    phase2_play.set_defaults(handler=lambda a: _cmd_play(a, task=PHASE2_TASK, gnn_default=True))
+
+    phase2_eval = phase2_cmds.add_parser("eval", help="Evaluate phase2 checkpoint")
+    _add_common_sim_args(phase2_eval)
+    phase2_eval.add_argument("--checkpoint", type=str, default=None)
+    phase2_eval.add_argument("--num_episodes", type=int, default=10)
+    phase2_eval.set_defaults(handler=_cmd_eval_phase2)
+
+    phase2_monitor = phase2_cmds.add_parser(
+        "monitor", help="Monitor phase2 TensorBoard logs"
+    )
+    phase2_monitor.set_defaults(handler=lambda _a: _cmd_monitor(PHASE2_LOG_DIR))
+
+    debug = families.add_parser("debug", help="Debug utilities")
+    debug_cmds = debug.add_subparsers(dest="command")
+
+    smoke = debug_cmds.add_parser("smoke", help="Run a very short training smoke test")
+    _add_common_sim_args(smoke)
+    smoke.add_argument("--task", type=str, default=HOVER_TASK)
+    smoke.add_argument("--iterations", type=int, default=1)
+    smoke.add_argument("--gnn", action="store_true", default=False)
+    smoke.set_defaults(handler=_cmd_debug_smoke)
+
+    latest = debug_cmds.add_parser(
+        "latest-checkpoint", help="Print latest checkpoint path"
+    )
+    latest.add_argument("--family", choices=["hover", "phase2"], default="hover")
+    latest.add_argument("--no_prefer_best", action="store_true", default=False)
+    latest.set_defaults(handler=_cmd_debug_latest_checkpoint)
+
+    return parser
+
+
+def main() -> None:
+    """CLI entrypoint."""
+    parser = _build_parser()
+    args = parser.parse_args()
+    handler = getattr(args, "handler", None)
+    if handler is None:
+        parser.print_help()
+        return
+    handler(args)
+
+
+if __name__ == "__main__":
+    main()

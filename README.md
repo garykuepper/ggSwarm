@@ -74,6 +74,25 @@ Use the dedicated run guide for current commands and workflows:
 
 - [`docs/running_demos.md`](docs/running_demos.md)
 
+Quick unified helper examples:
+
+```powershell
+# Hover baseline
+python scripts/run.py hover train --headless
+python scripts/run.py hover play --checkpoint <path_to_checkpoint>
+python scripts/run.py hover eval --num_episodes 10
+python scripts/run.py hover monitor
+
+# Phase 2 formation
+python scripts/run.py phase2 train --headless
+python scripts/run.py phase2 eval --num_episodes 10
+python scripts/run.py phase2 monitor
+
+# Debug utilities
+python scripts/run.py debug smoke --task GGS-Hover-v0 --iterations 1 --headless
+python scripts/run.py debug latest-checkpoint --family hover
+```
+
 ## Schedule and Milestones
 
 The schedule and milestone plan is maintained in the proposal:
