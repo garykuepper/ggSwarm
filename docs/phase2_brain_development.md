@@ -8,12 +8,34 @@ Phase 2 trains the GATv2 coordination policy using MAPPO so agents learn basic f
 
 | ID | Objective | Success Criteria |
 | :--- | :--- | :--- |
-| P2.1 | Train a shared MAPPO policy that keeps agents in a stable formation | Mean formation error < 0.5m within 50k timesteps |
+| P2.1 | Train a shared MAPPO policy that keeps agents in a stable formation | **Mean formation error < 0.5m** (defined below) after **≤ 50k environment steps** |
 | P2.2 | Integrate GATv2 as the policy backbone | Policy handles batched graphs from `extras["adj_matrix"]` |
 | P2.3 | Implement Curriculum Reward Shaping | Smooth transition from hover-in-place to formation-aware |
 | P2.4 | Validate training pipeline end-to-end | TensorBoard logs show converging reward curve without collapsing |
 
 Aligns with proposal **Milestone M1 (Week 8):** "GNN policy training."
+
+> **Note on proposal targets:** The proposal’s steady-state objective of **< 0.1m** formation error is a *project-level* target and is expected to be reached after later phases (e.g., safety constraints, trajectory smoothing, stress testing). Phase 2’s goal is to establish a working GNN coordination policy and demonstrate basic formation keeping.
+
+---
+
+## Phase 2 Definition of “Mean Formation Error”
+
+For an environment with \(N\) agents and desired spacing `target_formation_dist`, define the per-step spacing error as the mean absolute pairwise spacing error over unique pairs:
+
+\[
+e_t = \frac{2}{N(N-1)} \sum_{i < j} \left| d_{ij}(t) - d^* \right|
+\]
+
+Where \(d_{ij}(t)\) is the Euclidean distance between agents \(i\) and \(j\) at step \(t\), and \(d^* =\) `target_formation_dist`.
+
+The **mean formation error** for an evaluation run is the average of \(e_t\) over all evaluation steps across all evaluation episodes.
+
+### Evaluation Procedure (Pass/Fail)
+
+- **Checkpoint**: evaluate `best_agent.pt` (or the newest `agent_*.pt`) under `logs/skrl/ggswarm_marl/**/checkpoints/`.\n+- **Episodes**: 10 evaluation episodes.\n+- **Episode length**: use the environment’s configured episode length.\n+- **Pass condition**: mean formation error < 0.5m.\n+- **Secondary metrics (sanity)**:\n+  - separation event rate (fraction of steps where any pair violates minimum separation)\n+  - mean linear speed \(\|\mathrm{lin\_vel}\|\) (jitter proxy)
+
+Implementation lives in `scripts/eval_phase2.py`.
 
 ---
 
@@ -46,7 +68,7 @@ Rewards dynamically scale based on training progress to prevent early-stage trai
 | Velocity penalty | `-0.05` | `‖lin_vel_b‖` |
 | Alive bonus | `+0.1` | Constant |
 
-*(Where `α` scales from 0.0 to 1.0 between 25k and 50k timesteps).*
+*(Where `α` scales from 0.0 to 1.0 between `curriculum_start_step` and `curriculum_end_step` in `GGSwarmMarlEnvCfg`, currently 10k → 50k environment steps).*
 
 ---
 

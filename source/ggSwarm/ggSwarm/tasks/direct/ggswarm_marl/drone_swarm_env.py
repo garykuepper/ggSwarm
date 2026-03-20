@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+import math
 from collections.abc import Sequence
 
 import torch
@@ -130,15 +131,22 @@ class GGSwarmMarlEnv(DirectMARLEnv):
 
     def _get_observations(self) -> dict[str, torch.Tensor]:
         # Issue 5: Cache GPU memory reads once per step
+        # shape: [num_envs, num_agents, 3]
         pos_w = self.robot.data.root_pos_w.view(self.num_envs, self.cfg.num_agents, 3)
+        # shape: [num_envs, num_agents, 4]
         quat_w = self.robot.data.root_quat_w.view(self.num_envs, self.cfg.num_agents, 4)
+        # shape: [num_envs, num_agents, 3]
         lin_vel_b = self.robot.data.root_lin_vel_b.view(self.num_envs, self.cfg.num_agents, 3)
+        # shape: [num_envs, num_agents, 3]
         ang_vel_b = self.robot.data.root_ang_vel_b.view(self.num_envs, self.cfg.num_agents, 3)
+        # shape: [num_envs, num_agents, 3]
         proj_grav_b = self.robot.data.projected_gravity_b.view(self.num_envs, self.cfg.num_agents, 3)
 
         # Calculate relative position to individual goals in body frame
+        # shape: [num_envs * num_agents, 3]
         target_pos = self._desired_pos_w.view(-1, 3)
         rel_pos_b, _ = subtract_frame_transforms(pos_w.view(-1, 3), quat_w.view(-1, 4), target_pos)
+        # shape: [num_envs, num_agents, 3]
         rel_pos_b = rel_pos_b.view(self.num_envs, self.cfg.num_agents, 3)
 
         # Calculate Adjacency Matrix (Distance-based)
@@ -169,7 +177,9 @@ class GGSwarmMarlEnv(DirectMARLEnv):
     def _get_rewards(self) -> dict[str, torch.Tensor]:
         # shape: [num_envs, num_agents, 3]
         pos_w = self.robot.data.root_pos_w.view(self.num_envs, self.cfg.num_agents, 3)
+        # shape: [num_envs, num_agents, 3]
         lin_vel_b = self.robot.data.root_lin_vel_b.view(self.num_envs, self.cfg.num_agents, 3)
+        # shape: [num_envs, num_agents, 3]
         ang_vel_b = self.robot.data.root_ang_vel_b.view(self.num_envs, self.cfg.num_agents, 3)
 
         # 1. Define Curriculum Scale (alpha)
@@ -185,7 +195,8 @@ class GGSwarmMarlEnv(DirectMARLEnv):
         inter_agent_distances = torch.norm(diff, dim=-1)
 
         # 3. Component Rewards (Vectorized)
-        dist_to_goal = torch.norm(self._desired_pos_w - pos_w, dim=-1) # [num_envs, num_agents]
+        # shape: [num_envs, num_agents]
+        dist_to_goal = torch.norm(self._desired_pos_w - pos_w, dim=-1)
         
         # Position (Hover) Reward (Fades OUT)
         rew_pos = torch.exp(-dist_to_goal / self.cfg.rew_pos_sigma) * self.cfg.rew_scale_pos * (1.0 - alpha)
@@ -209,8 +220,7 @@ class GGSwarmMarlEnv(DirectMARLEnv):
         # Separation Penalty (ALWAYS ON)
         # shape: [num_envs, num_agents]
         # Applied if drones are too close (clipping risk)
-        # shape: [num_envs, num_agents]
-        collision_mask = (inter_agent_distances < (2.0 * 0.05)) & (1.0 - eye).bool()
+        collision_mask = (inter_agent_distances < self.cfg.min_separation_dist) & (1.0 - eye).bool()
         rew_separation = self.cfg.rew_scale_separation * collision_mask.any(dim=2).float()
 
         # Velocity penalties
@@ -308,8 +318,34 @@ class GGSwarmMarlEnv(DirectMARLEnv):
             random_yaw,
         )
 
-        # Goals: hovering at initial position for Phase 1
-        self._desired_pos_w[env_ids_tensor] = root_pos_w
+        # Goals: assign deterministic formation slots (Phase 2)
+        # This provides a stable per-agent reference for `rel_pos_b` so the
+        # formation task is learnable and doesn't rely purely on emergent symmetry breaking.
+        #
+        # shape: [num_agents]
+        angles = torch.linspace(
+            0.0,
+            2.0 * math.pi,
+            self.cfg.num_agents + 1,
+            device=self.device,
+            dtype=torch.float32,
+        )[:-1]
+        # For desired spacing `d`, choose a circle radius with circumference ~= N*d.
+        radius = (self.cfg.num_agents * self.cfg.target_formation_dist) / (2.0 * math.pi)
+        # shape: [num_agents, 3]
+        offsets = torch.stack(
+            [
+                radius * torch.cos(angles),
+                radius * torch.sin(angles),
+                torch.zeros_like(angles),
+            ],
+            dim=-1,
+        )
+        # shape: [num_resets, num_agents, 3]
+        desired_pos_w = env_origins + offsets.unsqueeze(0)
+        # Keep Z goal equal to each agent's spawn height to avoid fighting altitude early.
+        desired_pos_w[:, :, 2] = root_pos_w[:, :, 2]
+        self._desired_pos_w[env_ids_tensor] = desired_pos_w
 
         # Write to sim using robot_indices
         self.robot.write_root_pose_to_sim(root_state[:, :, :7].view(-1, 7), robot_indices)

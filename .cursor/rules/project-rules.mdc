@@ -5,107 +5,78 @@ alwaysApply: true
 
 # Project Rules: ggSwarm
 
-## 1. Architecture Maintenance (MANDATORY)
+## 1. Architecture + Interfaces (MANDATORY)
 
-The file `docs/architecture.md` is the source of truth for the system design.
+- **Source of truth**: `docs/architecture.md`.
+- **Update required when changing**:
+  - environment structure / observation & action contracts
+  - message passing interface (`extras["adj_matrix"]`) or coordination layer boundaries
+- **Rationale**: keeps CTDE + layer boundaries coherent.
 
-- **RULE:** Any change to the environment structure, message passing logic, or coordination layers MUST be accompanied by an update to `docs/architecture.md`.
-- **RATIONALE:** Ensures scalability and maintainability of the decentralized control logic.
+## 2. Phase Boundary Protection (MANDATORY)
 
-## 2. Status Reporting (MANDATORY)
+- Do **not** implement future-phase logic (SwarmRaft, CBF, MINCO) until that phase
+  starts.
+- Future work may be added only as `# TODO (Phase N): ...` placeholders.
+- **Rationale**: prevents premature complexity.
 
-- **RULE:** A weekly status summary must be added to `docs/status/weekly_updates.md` every Monday.
-- **RULE:** Major phase transitions and technical milestones must be logged in `docs/status/changelog.md`.
-- **RATIONALE:** Provides transparency for project stakeholders and website updates.
+## 3. Tensor Shape Contracts (MANDATORY)
 
-## 3. Python Coding Standards
+- Any function manipulating swarm tensors must add a shape comment on first access:
+  - `# shape: [num_envs, num_agents, dim]` (or appropriate)
+- Required for: `pos_w`, `quat_w`, `lin_vel_b`, `ang_vel_b`, `actions`, `rewards`,
+  `adj_matrix`, and intermediate tensors.
+- **Rationale**: shape bugs are the #1 failure mode.
 
-- Follow the global Python standards defined in the user settings (PEP 8, Snake_case for filenames, Type Hinting).
-- Explicitly documented public interfaces in all module-level components.
-- **RULE:** Always auto-resolve common linting issues like "line too long" (wrap at 88-100 chars) and "unused imports" (remove them) as they occur.
+## 4. Graph / Adjacency Contract (MANDATORY)
 
-## 4. Documentation Standards
+- `extras["adj_matrix"]` is the **Phase 2 env→policy contract**.
+- Must always be:
+  - shape `[num_envs, num_agents, num_agents]`
+  - diagonal zeros (no self edges)
+  - radius controlled by config (no hardcoded threshold)
+- Any consumer must assert or document the expected shape.
+- **Rationale**: prevents silent graph corruption.
 
-- **RULE:** Use professional, clear language in all `.md` files.
-- **RULE:** Always auto-resolve any problems indicated by `markdownlint` to maintain formatting consistency.
-- **RATIONALE:** Ensures high-quality, professional-grade documentation for the project.
+## 5. Reward + Hyperparameter Hygiene (MANDATORY)
 
-## 5. Technical Terminology (Spelling Exceptions)
+- Every reward term must have:
+  - a scale in `GGSwarmMarlEnvCfg`
+  - (if applicable) a sigma/threshold parameter in `GGSwarmMarlEnvCfg`
+- Planned-but-disabled reward terms must be **0.0 in cfg** (not commented out).
+- Any reward change must be logged in `docs/status/changelog.md` with rationale.
+- **Rationale**: preserves training curve interpretability.
 
-- **RULE:** The following terms are correct technical jargon for this project and should NOT be flagged as spelling errors:
-  - **Frameworks/Tools:** Isaac Lab, `isaaclab`, `isaacsim`, `conda`, `PyPI`, `Py`.
-  - **Project Specific:** `ggSwarm`, `ggswarm`, `Crazyflie`.
-  - **Technical Shorthand:** `cfg`, `envs`, `quat`, `lin_vel`, `ang_vel`, `pos_w`, `rel_pos`, `multirotor`, `multirotors`.
-  - **User Context:** `gkuep`.
-- **RATIONALE:** Prevents false positives in spelling checks for common robotics and simulation terminology.
+## 6. No Tunable Magic Numbers in Env Core (MANDATORY)
 
-## 6. Tensor Shape Contracts (MANDATORY)
-- **RULE:** Every function that manipulates swarm tensors MUST include 
-  a shape comment on the first access of each major tensor.
-- **FORMAT:** `# shape: [num_envs, num_agents, dim]`
-- **REQUIRED FOR:** pos_w, quat_w, lin_vel_b, ang_vel_b, adj_matrix, 
-  actions, rewards, and any intermediate computation tensors.
-- **RATIONALE:** Silent shape mismatches (e.g. [num_envs*num_agents, dim] 
-  vs [num_envs, num_agents, dim]) are the #1 source of bugs in this codebase.
+- In `drone_swarm_env.py`, any tunable constant (thresholds, sigmas, radii, limits)
+  must be a `GGSwarmMarlEnvCfg` parameter.
+- **Rationale**: supports systematic tuning and reproducibility.
 
-## 7. Adjacency Matrix Integrity (MANDATORY)
-- **RULE:** The adjacency matrix MUST always have zeros on the diagonal 
-  (no self-connections) before being stored in `self.extras["adj_matrix"]`.
-- **RULE:** Any function consuming `extras["adj_matrix"]` must assert or 
-  document the expected shape: [num_envs, num_agents, num_agents].
-- **RULE:** Do NOT modify the adjacency threshold (2.0m) without updating 
-  `docs/architecture.md` and the Phase 2 GATv2 edge construction logic.
-- **RATIONALE:** The adjacency matrix is the contract between L1 sensing 
-  and L2 GATv2. Silent changes corrupt the message-passing graph.
+## 7. Training Safety Checklist (MANDATORY for runs > 10k steps)
 
-## 8. Logging Standards
-- **RULE:** NEVER use bare `print()` statements in environment or training 
-  code. Always use `logger.info()`, `logger.debug()`, or `logger.warning()`.
-- **RULE:** `sys.stdout.flush()` calls are forbidden outside of 
-  standalone demo scripts.
-- **EXCEPTION:** `scripts/phase1_demo.py` and other standalone scripts 
-  may use print for human-readable output.
-- **RATIONALE:** Bare prints spam the console during 100k+ timestep 
-  training runs and cannot be filtered by log level.
+Before long runs, verify:
+- logging directory is correct (`ggswarm_marl`)
+- timesteps match intended run length
+- `entropy_loss_scale` non-zero early-phase (unless deliberately disabled)
+- network capacity matches phase goal
+- If you change `skrl_mappo_cfg.yaml`, call out the diff + rationale in the
+  PR/commit message (human review).
+- **Rationale**: avoids wasting GPU hours.
 
-## 9. Reward Function Versioning (MANDATORY)
-- **RULE:** Every reward component MUST have a corresponding scale 
-  parameter in `GGSwarmMarlEnvCfg` (e.g. `rew_scale_formation`).
-- **RULE:** Reward components that are planned but not yet active MUST 
-  be set to `0.0` in the config, NOT commented out.
-- **RULE:** Any change to the reward function MUST be logged in 
-  `docs/status/changelog.md` with the rationale.
-- **RATIONALE:** Reward shaping is the primary control lever across 
-  phases. Silent reward changes make training curves uninterpretable.
+## 8. Logging Policy (MANDATORY)
 
-## 10. Training Config Checklist (MANDATORY)
-- **RULE:** Before any training run exceeding 10,000 timesteps, verify:
-  1. `experiment.directory` is set to `"ggswarm_marl"` (not a template name)
-  2. `trainer.timesteps` reflects the intended run length
-  3. `entropy_loss_scale` is non-zero during early-phase training
-  4. `network.layers` matches the current phase target capacity
-- **RULE:** The agent MUST NOT modify `skrl_mappo_cfg.yaml` autonomously 
-  without flagging the change for human review.
-- **RATIONALE:** Misconfigured training runs waste GPU hours and produce 
-  uninterpretable results.
+- No `print()` inside **per-step** environment code; use `logger.*`.
+- `print()` is allowed in `scripts/` and demos for user-facing CLI output.
+- **Rationale**: prevents log spam while keeping scripts ergonomic.
 
-## 11. Phase Boundary Protection (MANDATORY)
-- **RULE:** Code for a future phase MUST NOT be added to current-phase 
-  files. Use `# TODO (Phase N):` comments as placeholders only.
-- **RULE:** The agent MUST NOT implement SwarmRaft, CBF, or MINCO logic 
-  until the corresponding phase is explicitly started.
-- **RULE:** `self.extras["adj_matrix"]` is the ONLY data channel between 
-  the environment and the GATv2 policy. Do not add extra keys to 
-  `self.extras` without updating `docs/architecture.md`.
-- **RATIONALE:** Premature implementation of future phases introduces 
-  untested complexity and breaks the incremental validation strategy.
+## 9. Documentation + Status (SHOULD)
 
-## 12. No Magic Numbers in Environment Code
-- **RULE:** All numerical constants in `drone_swarm_env.py` MUST be 
-  defined as parameters in `GGSwarmMarlEnvCfg`, not hardcoded inline.
-- **KNOWN VIOLATIONS TO FIX:** 
-  - Adjacency threshold `2.0` → `cfg.graph_connectivity_radius`
-  - Yaw range `±3.14` → `cfg.spawn_yaw_range`
-  - Reward sigma `0.5` in `exp(-dist/0.5)` → `cfg.rew_pos_sigma`
-- **RATIONALE:** Hardcoded constants make hyperparameter tuning 
-  impossible without modifying environment logic.
+- Keep `.md` professional and markdownlint-clean **for files you touch**.
+- Add weekly updates to `docs/status/weekly_updates.md` (preferred Mondays).
+- Log phase transitions / major milestones in `docs/status/changelog.md`.
+- **Rationale**: stakeholder visibility with less overhead.
+
+## 10. Spelling / terminology (MOVE OUT OF RULES)
+
+- Maintain spelling exceptions in `cspell.json` (single source of truth).

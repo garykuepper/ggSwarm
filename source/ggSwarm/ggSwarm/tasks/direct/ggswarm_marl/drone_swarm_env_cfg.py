@@ -65,6 +65,8 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     graph_connectivity_radius: float = 2.0  # (metres) for L2 adjacency matrix
     spawn_yaw_range: float = 3.14159  # ± range for random yaw (rad)
     target_formation_dist: float = 0.5  # desired inter-agent spacing (m)
+    drone_radius: float = 0.05  # (metres) approximate collision radius
+    min_separation_dist: float = 0.10  # (metres) minimum allowed inter-agent distance
 
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(

@@ -94,3 +94,19 @@
 1773890155.417858: Evaluation mode set
 1773890155.4203677: Resetting environment
 1773890155.522542: Environment reset complete
+1773967520.3372977: Runner created
+1773967520.339296: Loading checkpoint file
+1773967520.764336: Checkpoint file loaded
+1773967520.7673686: Policy state dict loaded from: checkpoint['drone_0']['policy']
+1773967520.7699308: Finalizing policy load
+1773967520.7714362: Evaluation mode set
+1773967520.774435: Resetting environment
+1773967520.8922436: Environment reset complete
+1773967676.76033: Runner created
+1773967676.76279: Loading checkpoint file
+1773967677.2546618: Checkpoint file loaded
+1773967677.2546618: Policy state dict loaded from: checkpoint['drone_0']['policy']
+1773967677.2617388: Finalizing policy load
+1773967677.2623432: Evaluation mode set
+1773967677.2623432: Resetting environment
+1773967677.370218: Environment reset complete
