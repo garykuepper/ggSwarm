@@ -27,6 +27,18 @@ gym.register(
     },
 )
 
+# IsaacLab's generic "play" helper sometimes expects an `Isaac-*-Play` task id.
+# We provide a compatibility alias that maps to the same underlying env/cfg.
+gym.register(
+    id="Isaac-GGSwarm-Marl-Play",
+    entry_point=f"{__name__}.drone_swarm_env:GGSwarmMarlEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.drone_swarm_env_cfg:GGSwarmMarlEnvCfg",
+        "skrl_mappo_cfg_entry_point": f"{agents.__name__}:skrl_mappo_cfg.yaml",
+    },
+)
+
 gym.register(
     id="GGS-Hover-v0",
     entry_point=f"{__name__}.drone_hover_env:GGSwarmHoverEnv",

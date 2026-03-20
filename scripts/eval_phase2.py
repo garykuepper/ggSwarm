@@ -247,6 +247,13 @@ def main() -> None:
                 run_dir=f".*_{algorithm}_{args_cli.ml_framework}",
                 other_dirs=["checkpoints"],
             )
+        run_name = os.path.basename(
+            os.path.dirname(os.path.dirname(resume_path)).rstrip("/\\")
+        )
+
+        # Ensure eval writer outputs (if any) stay under logs/skrl.
+        cfg["agent"]["experiment"]["directory"] = log_root_path
+        cfg["agent"]["experiment"]["experiment_name"] = run_name
 
         # Create isaac environment
         env = gym.make(args_cli.task, cfg=env_cfg)

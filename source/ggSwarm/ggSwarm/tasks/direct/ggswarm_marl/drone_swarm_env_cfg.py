@@ -27,7 +27,7 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     decimation = 2
     episode_length_s = 10.0
     # multi-agent specification and spaces definition
-    num_agents = 4
+    num_agents = 3
 
     possible_agents: list[str] = []
     action_spaces: dict = {}
@@ -61,9 +61,11 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     # `action_z = 0.0 -> thrust_val = 0.5`, so `thrust_to_weight = 2.0`
     # makes the neutral action hover (total thrust ~= 1.0 * weight).
     thrust_to_weight: float = 2.0
-    moment_scale: float = 0.01
+    # Reduced from 0.01 to avoid instant tumbling from high angular acceleration.
+    moment_scale: float = 0.001
     graph_connectivity_radius: float = 2.0  # (metres) for L2 adjacency matrix
-    spawn_yaw_range: float = 3.14159  # ± range for random yaw (rad)
+    # Tight yaw range keeps drones near-level at spawn, reducing early tumbling.
+    spawn_yaw_range: float = 0.3  # ± range for random yaw (rad)
     target_formation_dist: float = 0.20  # desired inter-agent spacing (m)
     drone_radius: float = 0.05  # (metres) approximate collision radius
     min_separation_dist: float = 0.10  # (metres) minimum allowed inter-agent distance
@@ -77,8 +79,12 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     rew_scale_pos = 3.0
     rew_scale_vel = -0.10
     rew_scale_ang_vel = -0.02
-    rew_scale_alive = 0.2
-    rew_scale_terminated = -2.0
+    # Stronger alive bonus to reinforce staying airborne.
+    rew_scale_alive = 0.5
+    # Larger crash penalty to make recovery the top priority.
+    rew_scale_terminated = -10.0
+    # Uprightness reward: incentivizes drones to stay level (essential for thrust control).
+    rew_scale_upright: float = 1.0
     # Phase 2 rewards
     rew_scale_formation = 1.0
     rew_scale_cohesion = 0.2
@@ -91,8 +97,11 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     # reset states/conditions
     min_height = 0.1
     max_height = 3.0
-    spawn_dist = 1.5  # max distance from origin for spawning drones
+    # Smaller spawn radius so drones start close to goals for cleaner gradients.
+    spawn_dist = 0.5  # max distance from origin for spawning drones
 
-    # curriculum
-    curriculum_start_step: int = 40000
-    curriculum_end_step: int = 100000
+    # curriculum: delayed to ensure hover is mastered before formation is introduced.
+    # curriculum_pos_floor ensures hover signal never fully disappears.
+    curriculum_start_step: int = 200000
+    curriculum_end_step: int = 500000
+    curriculum_pos_floor: float = 0.3

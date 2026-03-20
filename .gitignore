@@ -68,6 +68,7 @@ _build
 **/runs/*
 **/logs/*
 **/recordings/*
+ggswarm_marl/
 
 # Pre-Trained Checkpoints
 /.pretrained_checkpoints/

@@ -58,8 +58,12 @@ class GGSwarmMarlEnv(DirectMARLEnv):
 
         # Buffers for actions and goal positions
         self._desired_pos_w = torch.zeros(self.num_envs, self.cfg.num_agents, 3, device=self.device)
+        # Thrust forces applied to propeller bodies; shape: [num_instances, 4, 3]
         self._prop_forces = torch.zeros(self.num_envs * self.cfg.num_agents, 4, 3, device=self.device)
+        # Zero-torque buffer for propeller bodies (torques must not be applied to props).
         self._prop_torques = torch.zeros(self.num_envs * self.cfg.num_agents, 4, 3, device=self.device)
+        # Roll/pitch/yaw moments applied to the main body; shape: [num_instances, 1, 3]
+        self._body_torques = torch.zeros(self.num_envs * self.cfg.num_agents, 1, 3, device=self.device)
 
     def _setup_scene(self):
         # Create a bright yellow material for high visibility
@@ -113,25 +117,35 @@ class GGSwarmMarlEnv(DirectMARLEnv):
         # Reshape to (num_instances, 4) (num_instances = num_envs * num_agents)
         flat_actions = all_actions.view(-1, 4)
 
-        # Map actions to thrust (Z-axis) and moments (XYZ)
-        # Issue 4: Document thrust mapping (neutral hover action is ~0.0)
+        # Map action[0] -> collective thrust on prop bodies (body-frame Z).
+        # Neutral action 0.0 -> thrust_val 0.5 -> total_thrust == weight (hover).
         thrust_val = (flat_actions[:, 0] + 1.0) / 2.0
         weight = self._robot_weight
         total_thrust = self.cfg.thrust_to_weight * weight * thrust_val
+        # shape: [num_instances, 4] -- equal thrust per prop
         self._prop_forces[:, :, 2] = total_thrust.unsqueeze(-1) / 4.0
 
-        # Apply moments
-        torques = self.cfg.moment_scale * flat_actions[:, 1:]
-        self._prop_torques[:, :, :] = torques.unsqueeze(-2) / 4.0
+        # Map actions[1:4] -> roll/pitch/yaw moments on main body only.
+        # Applying torques to prop bodies would physically spin the prop joints,
+        # corrupting the body-frame orientation of the thrust force.
+        # shape: [num_instances, 3]
+        moments = self.cfg.moment_scale * flat_actions[:, 1:]
+        self._body_torques[:, 0, :] = moments
 
     def _apply_action(self) -> None:
+        # Collective thrust onto prop bodies (zero torques -- applying torques to
+        # prop bodies would spin their revolute joints and corrupt thrust direction).
         self.robot.permanent_wrench_composer.set_forces_and_torques(
             body_ids=self._prop_body_indices,
             forces=self._prop_forces,
-            torques=self._prop_torques,
+            torques=self._prop_torques,  # all-zero
         )
-        # Ensure the composed wrenches are pushed to the simulator this step.
-        # The NVIDIA quadcopter demo calls `robot.write_data_to_sim()` after setting forces/torques.
+        # Roll/pitch/yaw moments onto the main body (zero forces).
+        self.robot.permanent_wrench_composer.set_forces_and_torques(
+            body_ids=self._body_indices,
+            forces=torch.zeros(self.num_envs * self.cfg.num_agents, 1, 3, device=self.device),
+            torques=self._body_torques,
+        )
         self.robot.write_data_to_sim()
 
     def _get_observations(self) -> dict[str, torch.Tensor]:
@@ -183,11 +197,14 @@ class GGSwarmMarlEnv(DirectMARLEnv):
         # shape: [num_envs, num_agents, 3]
         ang_vel_b = self.robot.data.root_ang_vel_b.view(self.num_envs, self.cfg.num_agents, 3)
         # shape: [num_envs, num_agents, 3]
+        proj_grav_b = self.robot.data.projected_gravity_b.view(self.num_envs, self.cfg.num_agents, 3)
+        # shape: [num_envs, num_agents, 3]
         desired_pos_w = self._desired_pos_w
 
         params = MarlRewardParams(
             curriculum_start_step=self.cfg.curriculum_start_step,
             curriculum_end_step=self.cfg.curriculum_end_step,
+            curriculum_pos_floor=self.cfg.curriculum_pos_floor,
             rew_scale_pos=self.cfg.rew_scale_pos,
             rew_scale_formation=self.cfg.rew_scale_formation,
             rew_scale_cohesion=self.cfg.rew_scale_cohesion,
@@ -196,6 +213,7 @@ class GGSwarmMarlEnv(DirectMARLEnv):
             rew_scale_ang_vel=self.cfg.rew_scale_ang_vel,
             rew_scale_alive=self.cfg.rew_scale_alive,
             rew_scale_terminated=self.cfg.rew_scale_terminated,
+            rew_scale_upright=self.cfg.rew_scale_upright,
             rew_pos_sigma=self.cfg.rew_pos_sigma,
             rew_formation_sigma=self.cfg.rew_formation_sigma,
             target_formation_dist=self.cfg.target_formation_dist,
@@ -211,6 +229,7 @@ class GGSwarmMarlEnv(DirectMARLEnv):
             desired_pos_w=desired_pos_w,
             lin_vel_b=lin_vel_b,
             ang_vel_b=ang_vel_b,
+            proj_grav_b=proj_grav_b,
             common_step_counter=int(self.common_step_counter),
             params=params,
         )
@@ -299,8 +318,11 @@ class GGSwarmMarlEnv(DirectMARLEnv):
             device=self.device,
             dtype=torch.float32,
         )[:-1]
-        # For desired spacing `d`, choose a circle radius with circumference ~= N*d.
-        radius = (self.cfg.num_agents * self.cfg.target_formation_dist) / (2.0 * math.pi)
+        # Chord-length formula: place agents on a circle such that the straight-line
+        # distance between adjacent agents equals target_formation_dist.
+        # d = 2*r*sin(pi/N)  =>  r = d / (2*sin(pi/N))
+        # Using arc-length (old formula) would misalign the formation reward target.
+        radius = self.cfg.target_formation_dist / (2.0 * math.sin(math.pi / self.cfg.num_agents))
         # shape: [num_agents, 3]
         offsets = torch.stack(
             [

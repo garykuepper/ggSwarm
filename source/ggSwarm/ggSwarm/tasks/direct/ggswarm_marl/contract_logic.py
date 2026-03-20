@@ -18,6 +18,8 @@ class MarlRewardParams:
     # Curriculum
     curriculum_start_step: int
     curriculum_end_step: int
+    # Minimum position-reward multiplier so hover signal never fully disappears.
+    curriculum_pos_floor: float
 
     # Reward scales
     rew_scale_pos: float
@@ -28,6 +30,8 @@ class MarlRewardParams:
     rew_scale_ang_vel: float
     rew_scale_alive: float
     rew_scale_terminated: float
+    # Uprightness: rewards the drone for staying level (projected_gravity_b[:,2] == -1).
+    rew_scale_upright: float
 
     # Reward sigmas / thresholds
     rew_pos_sigma: float
@@ -132,10 +136,15 @@ def compute_marl_rewards(
     desired_pos_w: torch.Tensor,
     lin_vel_b: torch.Tensor,
     ang_vel_b: torch.Tensor,
+    proj_grav_b: torch.Tensor,
     common_step_counter: int,
     params: MarlRewardParams,
 ) -> torch.Tensor:
     """Compute total MARL rewards per agent.
+
+    Args:
+        proj_grav_b: Gravity projected into each drone's body frame.
+            Shape [num_envs, num_agents, 3]. When level, z-component is -1.0.
 
     Returns:
         rewards: tensor of shape [num_envs, num_agents]
@@ -151,6 +160,8 @@ def compute_marl_rewards(
         )
     if lin_vel_b.shape != pos_w.shape or ang_vel_b.shape != pos_w.shape:
         raise ValueError("lin_vel_b and ang_vel_b must have the same shape as pos_w.")
+    if proj_grav_b.shape != pos_w.shape:
+        raise ValueError("proj_grav_b must have the same shape as pos_w.")
 
     num_envs, num_agents, _ = pos_w.shape
     if num_agents < 2:
@@ -169,11 +180,14 @@ def compute_marl_rewards(
     # shape: [num_envs, num_agents]
     dist_to_goal = torch.norm(desired_pos_w - pos_w, dim=-1)
 
-    # Position (Hover) Reward (fades out)
+    # Position (Hover) Reward.
+    # Fades out as formation takes over, but never below `curriculum_pos_floor`
+    # so the drone always has incentive to stay aloft and at its target position.
+    pos_scale = max(params.curriculum_pos_floor, 1.0 - alpha)
     rew_pos = (
         torch.exp(-dist_to_goal / params.rew_pos_sigma)
         * params.rew_scale_pos
-        * (1.0 - alpha)
+        * pos_scale
     )
 
     # Formation Reward (fades in)
@@ -199,6 +213,12 @@ def compute_marl_rewards(
     collision_mask = (inter_agent_distances < params.min_separation_dist) & (1.0 - eye).bool()
     rew_separation = params.rew_scale_separation * collision_mask.any(dim=2).float()
 
+    # Uprightness reward: proj_grav_b[:, :, 2] is -1.0 when level, +1.0 when inverted.
+    # Negating gives +1.0 when level and -1.0 when inverted.
+    # This ensures thrust (applied in body frame) actually lifts the drone.
+    # shape: [num_envs, num_agents]
+    rew_upright = params.rew_scale_upright * (-proj_grav_b[:, :, 2])
+
     # Velocity penalties
     rew_vel = torch.norm(lin_vel_b, dim=-1) * params.rew_scale_vel
     rew_ang_vel = torch.norm(ang_vel_b, dim=-1) * params.rew_scale_ang_vel
@@ -215,6 +235,7 @@ def compute_marl_rewards(
         + rew_formation
         + rew_cohesion
         + rew_separation
+        + rew_upright
         + rew_vel
         + rew_ang_vel
         + rew_alive

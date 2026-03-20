@@ -173,8 +173,33 @@ def _cmd_play(args: argparse.Namespace, *, task: str, gnn_default: bool) -> None
         cmd.extend(["--num_agents", str(args.num_agents)])
     if args.max_steps is not None:
         cmd.extend(["--max_steps", str(args.max_steps)])
-    if args.checkpoint:
-        cmd.extend(["--checkpoint", args.checkpoint])
+    if args.video:
+        cmd.append("--video")
+    if args.video_length is not None:
+        cmd.extend(["--video_length", str(args.video_length)])
+    if args.video_codec:
+        cmd.extend(["--video_codec", args.video_codec])
+    if args.video_bitrate:
+        cmd.extend(["--video_bitrate", args.video_bitrate])
+    if args.video_preset:
+        cmd.extend(["--video_preset", args.video_preset])
+    if args.video_ffmpeg_params:
+        cmd.extend(["--video_ffmpeg_params", args.video_ffmpeg_params])
+    rendering_mode = args.rendering_mode
+    if args.video and rendering_mode is None:
+        rendering_mode = "quality"
+    if rendering_mode is not None:
+        cmd.extend(["--rendering_mode", rendering_mode])
+    checkpoint_path = args.checkpoint
+    if checkpoint_path is None:
+        try:
+            log_root = PHASE2_LOG_DIR if task == PHASE2_TASK else HOVER_LOG_DIR
+            checkpoint_path = _find_latest_checkpoint(log_root=log_root, prefer_best=True)
+            print(f"[INFO] Auto-selected checkpoint: {checkpoint_path}")
+        except FileNotFoundError:
+            checkpoint_path = None
+    if checkpoint_path:
+        cmd.extend(["--checkpoint", checkpoint_path])
     if gnn_default and not args.no_gnn:
         cmd.append("--gnn")
     if args.hover_debug:
@@ -290,6 +315,18 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_common_sim_args(hover_play)
     hover_play.add_argument("--checkpoint", type=str, default=None)
     hover_play.add_argument("--max_steps", type=int, default=None)
+    hover_play.add_argument("--video", action="store_true", default=False)
+    hover_play.add_argument("--video_length", type=int, default=None)
+    hover_play.add_argument(
+        "--rendering_mode",
+        type=str,
+        choices=["performance", "balanced", "quality"],
+        default=None,
+    )
+    hover_play.add_argument("--video_codec", type=str, default=None)
+    hover_play.add_argument("--video_bitrate", type=str, default=None)
+    hover_play.add_argument("--video_preset", type=str, default=None)
+    hover_play.add_argument("--video_ffmpeg_params", type=str, default=None)
     hover_play.add_argument("--hover_debug", action="store_true", default=False)
     hover_play.add_argument("--no_gnn", action="store_true", default=False)
     hover_play.set_defaults(handler=lambda a: _cmd_play(a, task=HOVER_TASK, gnn_default=False))
@@ -320,6 +357,18 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_common_sim_args(phase2_play)
     phase2_play.add_argument("--checkpoint", type=str, default=None)
     phase2_play.add_argument("--max_steps", type=int, default=None)
+    phase2_play.add_argument("--video", action="store_true", default=False)
+    phase2_play.add_argument("--video_length", type=int, default=None)
+    phase2_play.add_argument(
+        "--rendering_mode",
+        type=str,
+        choices=["performance", "balanced", "quality"],
+        default=None,
+    )
+    phase2_play.add_argument("--video_codec", type=str, default=None)
+    phase2_play.add_argument("--video_bitrate", type=str, default=None)
+    phase2_play.add_argument("--video_preset", type=str, default=None)
+    phase2_play.add_argument("--video_ffmpeg_params", type=str, default=None)
     phase2_play.add_argument("--hover_debug", action="store_true", default=False)
     phase2_play.add_argument("--no_gnn", action="store_true", default=False)
     phase2_play.set_defaults(handler=lambda a: _cmd_play(a, task=PHASE2_TASK, gnn_default=True))

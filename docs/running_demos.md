@@ -32,6 +32,22 @@ python scripts/run.py phase2 eval --num_episodes 10
 python scripts/run.py phase2 monitor
 ```
 
+### Pause and Resume Phase 2 Training
+
+Pause a running training job in its terminal with `Ctrl+C`.
+
+Before restarting, print the newest Phase 2 checkpoint path:
+
+```powershell
+$ckpt = (Get-ChildItem "logs\skrl\ggswarm_marl" -Recurse -File -Include best_agent.pt,agent_*.pt | Sort-Object LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty FullName); $ckpt
+```
+
+Resume training from that checkpoint:
+
+```powershell
+python scripts/run.py phase2 train --headless --checkpoint "$ckpt"
+```
+
 ### Phase 2 Altitude-First Validation
 
 For recovery runs, evaluate both formation and altitude stability:
@@ -49,6 +65,28 @@ If needed, adjust the airborne threshold margin used during eval:
 
 ```powershell
 python scripts/eval_phase2.py --task Template-GGSwarm-Marl-Direct-v0 --algorithm MAPPO --ml_framework torch --num_agents 3 --num_episodes 10 --airborne_height_margin 0.2
+```
+
+### High-Quality Video Recording
+
+When using `play --video`, ggSwarm now defaults to:
+
+- `rendering_mode=quality` (unless explicitly overridden)
+- preferred encoder `hevc_nvenc` (GPU NVENC), with automatic fallback to CPU
+  codecs if NVENC is unavailable
+- single-env recording for stable, non-flashing output
+
+Examples:
+
+```powershell
+# Default high-quality video path (quality rendering + NVENC preferred)
+python scripts/run.py phase2 play --video --video_length 1500
+
+# Explicitly choose rendering mode and codec controls
+python scripts/run.py phase2 play --video --video_length 1500 --rendering_mode quality --video_codec hevc_nvenc --video_preset p5 --video_ffmpeg_params "-rc vbr -cq 19 -b:v 0"
+
+# Force CPU fallback codec if needed
+python scripts/run.py phase2 play --video --video_codec libx265 --video_preset slow --video_bitrate 8M
 ```
 
 ### Default Progress and ETA Reporting

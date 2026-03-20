@@ -18,6 +18,7 @@ a more user-friendly way.
 """Launch Isaac Sim Simulator first."""
 
 import argparse
+import shlex
 import os
 import sys
 import traceback
@@ -40,6 +41,30 @@ from isaaclab.app import AppLauncher
 parser = argparse.ArgumentParser(description="Play a checkpoint of an RL agent from skrl.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
 parser.add_argument("--video_length", type=int, default=200, help="Length of the recorded video (in steps).")
+parser.add_argument(
+    "--video_codec",
+    type=str,
+    default=None,
+    help="FFmpeg video codec (default with --video: hevc_nvenc, with CPU fallback).",
+)
+parser.add_argument(
+    "--video_bitrate",
+    type=str,
+    default=None,
+    help="Video bitrate like 8M. Leave unset to use codec-specific quality defaults.",
+)
+parser.add_argument(
+    "--video_preset",
+    type=str,
+    default=None,
+    help="FFmpeg preset. For NVENC, p1..p7 (quality/speed tradeoff).",
+)
+parser.add_argument(
+    "--video_ffmpeg_params",
+    type=str,
+    default=None,
+    help="Extra ffmpeg params as a single string, e.g. \"-cq 18 -rc vbr\".",
+)
 parser.add_argument(
     "--max_steps",
     type=int,
@@ -161,6 +186,103 @@ import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
 
+
+class EncodingRecordVideo(gym.wrappers.RecordVideo):
+    """RecordVideo wrapper with controllable ffmpeg codec settings."""
+
+    def __init__(
+        self,
+        *args,
+        preferred_codec: str,
+        bitrate: str | None,
+        preset: str | None,
+        ffmpeg_params: list[str] | None,
+        disable_logger: bool,
+        **kwargs,
+    ):
+        super().__init__(*args, disable_logger=disable_logger, **kwargs)
+        self.preferred_codec = preferred_codec
+        self.bitrate = bitrate
+        self.preset = preset
+        self.ffmpeg_params = ffmpeg_params
+        self.disable_logger = disable_logger
+
+    def _codec_fallback_chain(self) -> list[str]:
+        chain = [self.preferred_codec]
+        if self.preferred_codec.endswith("_nvenc"):
+            chain.extend(["libx265", "libx264"])
+        else:
+            chain.extend(["libx265", "libx264"])
+        deduped: list[str] = []
+        for codec in chain:
+            if codec not in deduped:
+                deduped.append(codec)
+        return deduped
+
+    def stop_recording(self):
+        """Stop recording and save video with codec fallback."""
+        assert self.recording, "stop_recording was called, but no recording was started"
+
+        if len(self.recorded_frames) == 0:
+            gym.logger.warn("Ignored saving a video as there were zero frames to save.")
+        else:
+            try:
+                from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
+            except ImportError as e:
+                raise gym.error.DependencyNotInstalled(
+                    'MoviePy is not installed, run `pip install "gymnasium[other]"`'
+                ) from e
+
+            clip = ImageSequenceClip(self.recorded_frames, fps=self.frames_per_sec)
+            moviepy_logger = None if self.disable_logger else "bar"
+            path = os.path.join(self.video_folder, f"{self._video_name}.mp4")
+
+            codecs = self._codec_fallback_chain()
+            last_error: Exception | None = None
+            for codec in codecs:
+                try:
+                    codec_preset = self.preset
+                    if codec_preset is None:
+                        codec_preset = "p5" if codec.endswith("_nvenc") else "slow"
+                    print(
+                        "[INFO] Video encode attempt: "
+                        f"codec={codec} preset={codec_preset} bitrate={self.bitrate}"
+                    )
+                    clip.write_videofile(
+                        path,
+                        codec=codec,
+                        bitrate=self.bitrate,
+                        preset=codec_preset,
+                        ffmpeg_params=self.ffmpeg_params,
+                        audio=False,
+                        logger=moviepy_logger,
+                        pixel_format="yuv420p",
+                    )
+                    last_error = None
+                    print(f"[INFO] Video encoded successfully with codec={codec}")
+                    break
+                except Exception as exc:  # pragma: no cover
+                    last_error = exc
+                    print(f"[WARN] Video encode failed with codec={codec}: {exc}")
+                    continue
+
+            del clip
+            if last_error is not None:
+                raise RuntimeError(
+                    "All video encoding attempts failed "
+                    f"(tried: {', '.join(codecs)})."
+                ) from last_error
+
+        del self.recorded_frames
+        self.recorded_frames = []
+        self.recording = False
+        self._video_name = None
+
+        if self.gc_trigger and self.gc_trigger(self.episode_id):
+            import gc
+
+            gc.collect()
+
 # config shortcuts
 if args_cli.agent is None:
     algorithm = args_cli.algorithm.lower()
@@ -179,6 +301,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
 
     # override configurations with non-hydra CLI arguments
     env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
+    if args_cli.video and args_cli.num_envs is None and env_cfg.scene.num_envs > 1:
+        # Recording from many parallel envs can produce unstable flashes as episodes reset asynchronously.
+        # Default to a single env for deterministic, cleaner playback videos unless user overrides --num_envs.
+        env_cfg.scene.num_envs = 1
+        print("[INFO] Video mode: forcing num_envs=1 for stable recording (override with --num_envs).")
     env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
     if hasattr(env_cfg, "num_agents") and args_cli.num_agents is not None:
         env_cfg.num_agents = args_cli.num_agents
@@ -216,6 +343,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
             log_root_path, run_dir=f".*_{algorithm}_{args_cli.ml_framework}", other_dirs=["checkpoints"]
         )
     log_dir = os.path.dirname(os.path.dirname(resume_path))
+    run_name = os.path.basename(log_dir.rstrip("/\\"))
+
+    # Keep all SKRL writer outputs rooted under logs/skrl.
+    experiment_cfg["agent"]["experiment"]["directory"] = log_root_path
+    experiment_cfg["agent"]["experiment"]["experiment_name"] = run_name
 
     # set the log directory for the environment (works for all environment types)
     env_cfg.log_dir = log_dir
@@ -235,15 +367,55 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
 
     # wrap for video recording
     if args_cli.video:
+        checkpoint_stem = os.path.splitext(os.path.basename(resume_path))[0]
+        raw_video_prefix = f"{run_name}__{checkpoint_stem}"
+        safe_video_prefix = "".join(
+            ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in raw_video_prefix
+        )
+        preferred_codec = args_cli.video_codec or "hevc_nvenc"
+        ffmpeg_params = (
+            shlex.split(args_cli.video_ffmpeg_params)
+            if args_cli.video_ffmpeg_params
+            else None
+        )
+        if ffmpeg_params is None and preferred_codec == "hevc_nvenc":
+            # Quality-oriented NVENC defaults: constant-quality style HEVC encode.
+            ffmpeg_params = [
+                "-rc",
+                "vbr",
+                "-cq",
+                "19",
+                "-b:v",
+                "0",
+                "-spatial_aq",
+                "1",
+                "-aq-strength",
+                "8",
+            ]
         video_kwargs = {
             "video_folder": os.path.join(log_dir, "videos", "play"),
             "step_trigger": lambda step: step == 0,
             "video_length": args_cli.video_length,
+            "name_prefix": safe_video_prefix,
             "disable_logger": True,
         }
         print("[INFO] Recording videos during training.")
+        print(
+            "[INFO] Video encoding config: "
+            f"preferred_codec={preferred_codec} "
+            f"bitrate={args_cli.video_bitrate} "
+            f"preset={args_cli.video_preset} "
+            f"ffmpeg_params={ffmpeg_params}"
+        )
         print_dict(video_kwargs, nesting=4)
-        env = gym.wrappers.RecordVideo(env, **video_kwargs)
+        env = EncodingRecordVideo(
+            env,
+            **video_kwargs,
+            preferred_codec=preferred_codec,
+            bitrate=args_cli.video_bitrate,
+            preset=args_cli.video_preset,
+            ffmpeg_params=ffmpeg_params,
+        )
 
     # wrap around environment for skrl
     env = SkrlVecEnvWrapper(env, ml_framework=args_cli.ml_framework)  # same as: `wrap_env(env, wrapper="auto")`
