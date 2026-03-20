@@ -73,6 +73,12 @@ def _cmd_train(args: argparse.Namespace, *, task: str, gnn_default: bool) -> Non
         cmd.extend(["--num_agents", str(args.num_agents)])
     if args.max_iterations is not None:
         cmd.extend(["--max_iterations", str(args.max_iterations)])
+    if args.no_progress:
+        cmd.append("--no_progress")
+    if args.progress_interval_s is not None:
+        cmd.extend(["--progress_interval_s", str(args.progress_interval_s)])
+    if args.eta_window_s is not None:
+        cmd.extend(["--eta_window_s", str(args.eta_window_s)])
     if args.checkpoint:
         cmd.extend(["--checkpoint", args.checkpoint])
     if gnn_default and not args.no_gnn:
@@ -207,6 +213,9 @@ def _build_parser() -> argparse.ArgumentParser:
     hover_train = hover_cmds.add_parser("train", help="Train hover policy")
     _add_common_sim_args(hover_train)
     hover_train.add_argument("--max_iterations", type=int, default=None)
+    hover_train.add_argument("--no_progress", action="store_true", default=False)
+    hover_train.add_argument("--progress_interval_s", type=float, default=10.0)
+    hover_train.add_argument("--eta_window_s", type=float, default=120.0)
     hover_train.add_argument("--checkpoint", type=str, default=None)
     hover_train.add_argument("--no_gnn", action="store_true", default=False)
     hover_train.set_defaults(handler=lambda a: _cmd_train(a, task=HOVER_TASK, gnn_default=False))
@@ -234,6 +243,9 @@ def _build_parser() -> argparse.ArgumentParser:
     phase2_train = phase2_cmds.add_parser("train", help="Train phase2 policy")
     _add_common_sim_args(phase2_train)
     phase2_train.add_argument("--max_iterations", type=int, default=None)
+    phase2_train.add_argument("--no_progress", action="store_true", default=False)
+    phase2_train.add_argument("--progress_interval_s", type=float, default=10.0)
+    phase2_train.add_argument("--eta_window_s", type=float, default=120.0)
     phase2_train.add_argument("--checkpoint", type=str, default=None)
     phase2_train.add_argument("--no_gnn", action="store_true", default=False)
     phase2_train.set_defaults(handler=lambda a: _cmd_train(a, task=PHASE2_TASK, gnn_default=True))

@@ -4,49 +4,78 @@ This document provides instructions on how to run the various simulation and tra
 
 > **Important:** All commands assume you have activated your virtual environment (run `.\env_isaaclab\Scripts\activate` in each new terminal session) and are running from the `ggSwarm` project root directory.
 
-## Phase 1: Foundation Demo
+## Unified Run Helper (Recommended)
 
-This demo validates the foundational environment: spawning the drone swarm, tracking state, and computing the distance-based adjacency matrices (Graph Connectivity) without any intelligent policy acting on it.
+For day-to-day runs, ggSwarm provides a small, unified helper CLI:
+
+- `scripts/run.py`
+
+It exposes consistent subcommands for:
+
+- **hover**: `train`, `play`, `eval`, `monitor` (task: `GGS-Hover-v0`)
+- **phase2**: `train`, `play`, `eval`, `monitor` (task: `Template-GGSwarm-Marl-Direct-v0`)
+- **debug**: `smoke`, `latest-checkpoint`
+
+### Common Commands
 
 ```powershell
-python scripts/phase1_demo.py --task=Template-GGSwarm-Marl-Direct-v0
+# Hover baseline (single drone)
+python scripts/run.py hover train --headless
+python scripts/run.py hover play
+python scripts/run.py hover eval --num_episodes 10
+python scripts/run.py hover monitor
+
+# Phase 2 formation (swarm)
+python scripts/run.py phase2 train --headless
+python scripts/run.py phase2 play
+python scripts/run.py phase2 eval --num_episodes 10
+python scripts/run.py phase2 monitor
 ```
+
+### Default Progress and ETA Reporting
+
+Training progress reporting is enabled by default for both `hover train` and
+`phase2 train`. The trainer prints periodic lines with:
+
+- steps completed vs total timesteps
+- elapsed time
+- rolling steps/second (over a recent time window)
+- ETA to completion
+
+Use `--no_progress` only when you want quiet output.
+
+```powershell
+# Default: progress/ETA enabled
+python scripts/run.py hover train --headless
+
+# Optional: hide periodic progress lines
+python scripts/run.py hover train --headless --no_progress
+```
+
+Optional tuning flags:
+
+- `--progress_interval_s` controls how often progress lines print (default `10`).
+- `--eta_window_s` controls the rolling window used for throughput and ETA
+  smoothing (default `120`).
 
 ## Phase 2: Brain Training & GNN Policy
 
 Phase 2 development introduces the **Graph Attention Network (GATv2)** policy to enable local message passing among the swarm.
 
-### 1. Training the Swarm
-
-To start training the drone swarm with the decentralized GATv2 model using MAPPO, run:
-
-```powershell
-python scripts\skrl\train.py --task=Template-GGSwarm-Marl-Direct-v0 --algorithm=MAPPO --headless --ml_framework torch --gnn
-```
-
-* This command runs headless for faster simulation.
-* Tensorboard logs and checkpoints are automatically saved to `logs/skrl/ggswarm_marl/`.
-
-### 2. Monitoring Training
-
-You can monitor the curriculum rewards and losses via TensorBoard:
+All Phase 2 training, playback, evaluation, and monitoring are accessed via
+`scripts/run.py`:
 
 ```powershell
-tensorboard --logdir=logs/skrl/ggswarm_marl
+python scripts/run.py phase2 train --headless
+python scripts/run.py phase2 play
+python scripts/run.py phase2 eval --num_episodes 10
+python scripts/run.py phase2 monitor
 ```
 
-### 3. Evaluating the Trained Swarm (Playback)
+## Unit Tests (Pure Torch Contracts)
 
-To watch the agents fly using the latest trained model checkpoint in the Isaac Sim GUI:
+These tests validate the core adjacency and reward contract logic without launching Isaac Sim.
 
 ```powershell
-python scripts\skrl\play.py --task=Template-GGSwarm-Marl-Direct-v0 --algorithm=MAPPO --ml_framework torch --gnn
+python -m pytest -q
 ```
-
-## Phase 2 Utility Shortcuts
-
-For convenience, you can use the centralized `run_phase2.py` script to handle training, playback, and monitoring:
-
-* **Train**: `python scripts/run_phase2.py train`
-* **Play**: `python scripts/run_phase2.py play`
-* **Monitor**: `python scripts/run_phase2.py monitor`

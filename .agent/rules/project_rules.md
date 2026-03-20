@@ -67,8 +67,8 @@ The file `docs/architecture.md` is the source of truth for the system design.
   code. Always use `logger.info()`, `logger.debug()`, or `logger.warning()`.
 - **RULE:** `sys.stdout.flush()` calls are forbidden outside of 
   standalone demo scripts.
-- **EXCEPTION:** `scripts/phase1_demo.py` and other standalone scripts 
-  may use print for human-readable output.
+- **EXCEPTION:** `scripts/run.py` and scripts under `scripts/reference/` may
+  use print for human-readable CLI output (standalone examples).
 - **RATIONALE:** Bare prints spam the console during 100k+ timestep 
   training runs and cannot be filtered by log level.
 

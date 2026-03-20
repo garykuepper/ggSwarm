@@ -12,6 +12,7 @@ from isaaclab.utils.math import quat_from_euler_xyz, sample_uniform
 
 from .drone_hover_env_cfg import GGSwarmHoverEnvCfg
 from .drone_swarm_env import GGSwarmMarlEnv
+from .contract_logic import HoverRewardParams, compute_hover_rewards
 
 
 class GGSwarmHoverEnv(GGSwarmMarlEnv):
@@ -30,31 +31,28 @@ class GGSwarmHoverEnv(GGSwarmMarlEnv):
         ang_vel_b = self.robot.data.root_ang_vel_b.view(
             self.num_envs, self.cfg.num_agents, 3
         )
+        # shape: [num_envs, num_agents, 3]
+        desired_pos_w = self._desired_pos_w
 
-        # shape: [num_envs, num_agents]
-        dist_to_goal = torch.norm(self._desired_pos_w - pos_w, dim=-1)
-        # shape: [num_envs, num_agents]
-        above_hover_floor = (pos_w[:, :, 2] >= self.cfg.hover_reward_min_height).float()
-        rew_pos = (
-            torch.exp(-dist_to_goal / self.cfg.rew_pos_sigma)
-            * self.cfg.rew_scale_pos
-            * above_hover_floor
+        params = HoverRewardParams(
+            rew_scale_pos=self.cfg.rew_scale_pos,
+            rew_pos_sigma=self.cfg.rew_pos_sigma,
+            rew_scale_vel=self.cfg.rew_scale_vel,
+            rew_scale_ang_vel=self.cfg.rew_scale_ang_vel,
+            rew_scale_alive=self.cfg.rew_scale_alive,
+            rew_scale_ground_hit=self.cfg.rew_scale_ground_hit,
+            rew_scale_terminated=self.cfg.rew_scale_terminated,
+            hover_reward_min_height=self.cfg.hover_reward_min_height,
+            ground_hit_height=self.cfg.ground_hit_height,
         )
 
         # shape: [num_envs, num_agents]
-        rew_vel = torch.norm(lin_vel_b, dim=-1) * self.cfg.rew_scale_vel
-        rew_ang_vel = torch.norm(ang_vel_b, dim=-1) * self.cfg.rew_scale_ang_vel
-        rew_alive = torch.full_like(rew_pos, self.cfg.rew_scale_alive)
-
-        # Major crash penalty near/at ground.
-        # shape: [num_envs, num_agents]
-        ground_hit = pos_w[:, :, 2] < self.cfg.ground_hit_height
-        rew_ground_hit = ground_hit.float() * self.cfg.rew_scale_ground_hit
-        rew_terminated = ground_hit.float() * self.cfg.rew_scale_terminated
-
-        # shape: [num_envs, num_agents]
-        total_rewards = (
-            rew_pos + rew_vel + rew_ang_vel + rew_alive + rew_ground_hit + rew_terminated
+        total_rewards = compute_hover_rewards(
+            pos_w=pos_w,
+            desired_pos_w=desired_pos_w,
+            lin_vel_b=lin_vel_b,
+            ang_vel_b=ang_vel_b,
+            params=params,
         )
         return {
             agent: total_rewards[:, i] for i, agent in enumerate(self.cfg.possible_agents)

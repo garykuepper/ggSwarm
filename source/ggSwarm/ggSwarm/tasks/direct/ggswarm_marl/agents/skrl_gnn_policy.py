@@ -12,6 +12,8 @@ import torch.nn as nn
 from skrl.models.torch import GaussianMixin, Model
 from torch_geometric.nn import GATv2Conv
 
+from ..contract_logic import adjacency_to_edge_index
+
 
 class GGSwarmGNNPolicy(GaussianMixin, Model):
     """GATv2-based policy network for decentralized swarm coordination.
@@ -77,21 +79,8 @@ class GGSwarmGNNPolicy(GaussianMixin, Model):
         # Fetch the adjacency matrix passed from the environment extras
         # shape expected: [num_envs, num_agents, num_agents]
         if adj_matrix is not None:
-            num_envs, num_agents, _ = adj_matrix.shape
-
             # Flatten the batched 3D adjacency matrix to a 2D sparse edge_index
-            # Find all non-zero elements (edges)
-            # indices shape: [num_edges, 3] -> (env_idx, agent_i, agent_j)
-            indices = adj_matrix.nonzero(as_tuple=False)
-
-            env_idx = indices[:, 0]
-
-            # Shift node indices so each environment's graph is disconnected but in the same batch
-            src = indices[:, 1] + (env_idx * num_agents)
-            dst = indices[:, 2] + (env_idx * num_agents)
-
-            # shape: [2, num_edges]
-            edge_index = torch.stack([src, dst], dim=0)
+            edge_index = adjacency_to_edge_index(adj_matrix)
         else:
             # Fallback if no adj_matrix is provided (e.g., self-loops only)
             num_nodes = obs.shape[0]

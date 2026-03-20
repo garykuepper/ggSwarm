@@ -34,7 +34,9 @@ class GGSwarmHoverEnvCfg(GGSwarmMarlEnvCfg):
     rew_scale_separation = 0.0
 
     # Height thresholds for reward gating and crash detection.
-    hover_reward_min_height: float = 0.20
+    # Keep the position-reward gate aligned with the termination "ground hit" floor.
+    # This reduces reward discontinuity right when the drone starts to dip.
+    hover_reward_min_height: float = 0.10
     ground_hit_height: float = 0.10
 
     # No curriculum needed for pure hover learning.

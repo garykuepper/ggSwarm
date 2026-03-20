@@ -112,19 +112,16 @@ Shape: `[num_envs, num_agents, num_agents]`
 
 ---
 
-## Demo Script
+## Running
 
-**Script:** `scripts/phase1_demo.py`
+ggSwarm consolidates all user-facing runs under the unified helper CLI.
 
 ```powershell
-..\IsaacLab\isaaclab.bat -p scripts\phase1_demo.py --task=Template-GGSwarm-Marl-Direct-v0
+python scripts/run.py --help
 ```
 
-**What it does:**
-
-1. Spawns `num_agents` Crazyflie drones with random actions.
-2. Prints live adjacency matrix statistics: `"[Phase 1 Evidence] Drones connected (Distance < 2.0m): N pairs"`.
-3. Provides visual confirmation (Isaac Sim 3D render) alongside mathematical proof of L2 graph connectivity.
+Phase 1 is primarily a verification step; Phase 2+ training and evaluation are
+driven from the same entrypoint.
 
 ---
 

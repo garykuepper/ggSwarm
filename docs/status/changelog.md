@@ -14,7 +14,8 @@ This document tracks major technical changes and milestone completions for each 
 - [2026-03-16] Implemented distance-based adjacency matrix (L2 graph connectivity, threshold 2.0m).
 - [2026-03-16] Implemented reward function (Gaussian position reward, velocity penalties, alive bonus).
 - [2026-03-16] Implemented reset logic with random spawn positions and yaw.
-- [2026-03-16] Created `phase1_demo.py` for visual verification and adjacency matrix proof.
+- [2026-03-16] Added an early Phase 1 verification script for visual adjacency evidence
+  (superseded; use `scripts/run.py` for current workflows).
 - [2026-03-16] Registered environment as `Template-GGSwarm-Marl-Direct-v0`.
 - [2026-03-16] Set up SKRL MAPPO training pipeline (`train.py`, `play.py`, `skrl_mappo_cfg.yaml`).
 - [2026-03-16] Renamed env files to `drone_swarm_env.py` / `drone_swarm_env_cfg.py` for clarity.
@@ -35,4 +36,9 @@ This document tracks major technical changes and milestone completions for each 
   hover-specific MAPPO config and metrics script (`scripts/eval_hover.py`) to
   validate airborne stability before formation training.
 - [2026-03-19] Added explicit major ground-hit penalty (`rew_scale_ground_hit`) and immediate crash termination in hover rewards/dones to prevent false improvement while grounded.
+- [2026-03-20] Aligned `hover_reward_min_height` with `ground_hit_height` to reduce reward gating discontinuity during early dip events, improving the chance to recover altitude after brief ground touches.
 - [2026-03-19] Added a unified CLI helper `scripts/run.py` with consistent subcommands for `hover`, `phase2`, and `debug` workflows (train/play/eval/monitor, smoke test, latest-checkpoint), while keeping older scripts for backward compatibility.
+- [2026-03-20] Fixed MAPPO training for single-agent MARL (e.g. `GGS-Hover-v0`): SKRL
+  `single_agent_train` omitted `infos['shared_states']` (`KeyError`). `train.py` now
+  wraps the vec env to inject shared states from `env.state()` when `MAPPO` and
+  `num_agents==1`.

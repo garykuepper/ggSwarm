@@ -48,6 +48,11 @@ explicit ground-hit penalty to prevent reward artifacts while grounded.
 | Optimizer | PPO with KL-adaptive learning rate |
 | Compute | Local RTX 3070 (dev) / Cloud GPU (heavy training) |
 
+Single-agent MARL with MAPPO (e.g. `GGS-Hover-v0`): SKRL's sequential trainer uses a
+code path that does not populate `infos['shared_states']`; `scripts/skrl/train.py`
+injects them from `DirectMARLEnv.state()` when `num_agents == 1` so the centralized
+critic receives valid inputs.
+
 ## 5. Key Files
 
 | File | Purpose |
@@ -62,7 +67,7 @@ explicit ground-hit penalty to prevent reward artifacts while grounded.
 | `scripts/skrl/train.py` | Training entry point |
 | `scripts/skrl/play.py` | Evaluation / playback entry point |
 | `scripts/eval_hover.py` | Hover baseline metrics and pass/fail evaluation |
-| `scripts/phase1_demo.py` | Phase 1 verification script |
+| `scripts/run.py` | Unified helper CLI for runs (hover/phase2/debug) |
 
 ---
 

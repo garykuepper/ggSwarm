@@ -69,6 +69,24 @@ parser.add_argument(
 )
 parser.add_argument("--max_iterations", type=int, default=None, help="RL Policy training iterations.")
 parser.add_argument(
+    "--no_progress",
+    action="store_true",
+    default=False,
+    help="Disable periodic training progress and ETA logs.",
+)
+parser.add_argument(
+    "--progress_interval_s",
+    type=float,
+    default=10.0,
+    help="Seconds between periodic progress/ETA updates.",
+)
+parser.add_argument(
+    "--eta_window_s",
+    type=float,
+    default=120.0,
+    help="Rolling window in seconds for throughput-based ETA estimation.",
+)
+parser.add_argument(
     "--export_io_descriptors",
     action="store_true",
     default=False,
@@ -121,8 +139,13 @@ simulation_app = app_launcher.app
 import logging
 import os
 import random
+import re
 import time
+from collections import deque
 from datetime import datetime
+from pathlib import Path
+from threading import Event, Thread
+from typing import Any
 
 import gymnasium as gym
 import skrl
@@ -162,6 +185,162 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 logger = logging.getLogger(__name__)
 
 import ggSwarm.tasks  # noqa: F401
+
+
+def _format_duration(seconds: float) -> str:
+    """Format duration in HH:MM:SS."""
+    total_seconds = max(0, int(seconds))
+    hours, rem = divmod(total_seconds, 3600)
+    minutes, secs = divmod(rem, 60)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+
+
+def _latest_checkpoint_step(checkpoint_dir: Path) -> int:
+    """Return the highest checkpoint step from files like agent_10000.pt."""
+    if not checkpoint_dir.exists():
+        return 0
+
+    max_step = 0
+    for ckpt in checkpoint_dir.glob("agent_*.pt"):
+        match = re.match(r"agent_(\d+)\.pt$", ckpt.name)
+        if match:
+            max_step = max(max_step, int(match.group(1)))
+    return max_step
+
+
+def _latest_event_step(log_dir: Path) -> int:
+    """Return the latest scalar step from TensorBoard event files."""
+    event_files = sorted(log_dir.glob("events.out.tfevents.*"), key=lambda p: p.stat().st_mtime)
+    if not event_files:
+        return 0
+
+    try:
+        from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+    except Exception:
+        return 0
+
+    max_step = 0
+    for event_path in event_files[-2:]:
+        try:
+            accumulator = EventAccumulator(str(event_path))
+            accumulator.Reload()
+            scalar_tags = accumulator.Tags().get("scalars", [])
+            for tag in scalar_tags:
+                scalars = accumulator.Scalars(tag)
+                if scalars:
+                    max_step = max(max_step, int(scalars[-1].step))
+        except Exception:
+            continue
+    return max_step
+
+
+def _progress_monitor(
+    *,
+    stop_event: Event,
+    checkpoint_dir: Path,
+    log_dir: Path,
+    total_timesteps: int,
+    poll_interval_s: float,
+    eta_window_s: float,
+) -> None:
+    """Emit periodic progress and throughput-based ETA logs."""
+    start_time = time.time()
+    history: deque[tuple[float, int]] = deque()
+    last_reported_step = -1
+    last_emitted_step = -1
+    last_heartbeat_time = start_time
+    heartbeat_interval_s = max(30.0, poll_interval_s * 3.0)
+
+    while not stop_event.wait(timeout=max(1.0, poll_interval_s)):
+        now = time.time()
+        event_step = _latest_event_step(log_dir)
+        checkpoint_step = _latest_checkpoint_step(checkpoint_dir)
+        current_step = max(event_step, checkpoint_step)
+        elapsed = now - start_time
+
+        # Keep a rolling history of progress points for stable ETA.
+        if current_step > 0 and current_step != last_reported_step:
+            history.append((now, current_step))
+            last_reported_step = current_step
+        while history and (now - history[0][0]) > max(10.0, eta_window_s):
+            history.popleft()
+
+        rolling_sps = None
+        if len(history) >= 2:
+            dt = history[-1][0] - history[0][0]
+            ds = history[-1][1] - history[0][1]
+            if dt > 0 and ds > 0:
+                rolling_sps = ds / dt
+
+        percent = (100.0 * current_step / max(1, total_timesteps))
+        if rolling_sps and current_step < total_timesteps:
+            remaining = total_timesteps - current_step
+            eta = _format_duration(remaining / rolling_sps)
+            sps_txt = f"{rolling_sps:,.1f}"
+        else:
+            eta = "unknown"
+            sps_txt = "unknown"
+
+        is_new_progress = current_step != last_emitted_step
+        is_heartbeat_due = (now - last_heartbeat_time) >= heartbeat_interval_s
+        if not is_new_progress and not is_heartbeat_due:
+            continue
+
+        status_suffix = ""
+        if not is_new_progress:
+            status_suffix = " | status=waiting_for_next_metrics"
+
+        print(
+            "[PROGRESS] "
+            f"{current_step:,}/{total_timesteps:,} ({percent:5.1f}%) | "
+            f"elapsed={_format_duration(elapsed)} | "
+            f"steps_per_sec={sps_txt} | eta={eta}"
+            f"{status_suffix}"
+        )
+        last_emitted_step = current_step
+        last_heartbeat_time = now
+
+
+def patch_mappo_single_agent_shared_states(env: Any) -> Any:
+    """Patch env reset/step to inject MAPPO shared critic states.
+
+    SKRL's ``SequentialTrainer.single_agent_train`` does not populate
+    ``infos['shared_states']`` / ``infos['shared_next_states']``. MAPPO expects those keys.
+    This patch keeps the wrapper type unchanged and monkey-patches ``reset`` and ``step``.
+    """
+    shared_states: Any = None
+    original_reset = env.reset
+    original_step = env.step
+
+    def patched_reset(*args: Any, **kwargs: Any) -> tuple[Any, Any]:
+        nonlocal shared_states
+        obs, info = original_reset(*args, **kwargs)
+        shared_states = env.state()
+        if shared_states is not None and isinstance(info, dict):
+            info = dict(info)
+            info["shared_states"] = shared_states
+            info["shared_next_states"] = shared_states
+        return obs, info
+
+    def patched_step(actions: Any) -> tuple[Any, Any, Any, Any, Any]:
+        nonlocal shared_states
+        obs, rewards, terminated, truncated, info = original_step(actions)
+        shared_next_states = env.state()
+        if (
+            shared_states is not None
+            and shared_next_states is not None
+            and isinstance(info, dict)
+        ):
+            info = dict(info)
+            info["shared_states"] = shared_states
+            info["shared_next_states"] = shared_next_states
+        shared_states = shared_next_states
+        return obs, rewards, terminated, truncated, info
+
+    env.reset = patched_reset
+    env.step = patched_step
+    return env
+
 
 # Determine the agent configuration entry point based on algorithm or explicit argument
 if args_cli.agent is None:
@@ -287,6 +466,14 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # Wrap environment for skrl compatibility (handles device and data format conversion)
     env = SkrlVecEnvWrapper(env, ml_framework=args_cli.ml_framework)
 
+    # MAPPO + single agent: SKRL uses single_agent_train, which omits shared_states in infos.
+    if algorithm == "mappo" and getattr(env, "num_agents", 0) == 1:
+        logger.info(
+            "Wrapping env for MAPPO single-agent: injecting shared_states / shared_next_states "
+            "into infos (required by skrl MAPPO.record_transition)."
+        )
+        env = patch_mappo_single_agent_shared_states(env)
+
     # Initialize the skrl Runner to manage the training loop
     # Docs: https://skrl.readthedocs.io/en/latest/api/utils/runner.html
     runner = Runner(env, agent_cfg)
@@ -296,8 +483,39 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         print(f"[INFO] Loading model checkpoint from: {resume_path}")
         runner.agent.load(resume_path)
 
-    # Execute the training process
-    runner.run()
+    # Execute the training process with optional periodic progress/ETA updates.
+    monitor_stop_event: Event | None = None
+    monitor_thread: Thread | None = None
+    total_timesteps = int(agent_cfg["trainer"]["timesteps"])
+    checkpoint_dir = Path(log_dir) / "checkpoints"
+    if not args_cli.no_progress:
+        monitor_stop_event = Event()
+        monitor_thread = Thread(
+            target=_progress_monitor,
+            kwargs={
+                "stop_event": monitor_stop_event,
+                "checkpoint_dir": checkpoint_dir,
+                "log_dir": Path(log_dir),
+                "total_timesteps": total_timesteps,
+                "poll_interval_s": args_cli.progress_interval_s,
+                "eta_window_s": args_cli.eta_window_s,
+            },
+            daemon=True,
+        )
+        monitor_thread.start()
+        print(
+            "[INFO] Progress reporting enabled "
+            f"(interval={args_cli.progress_interval_s:.1f}s, "
+            f"eta_window={args_cli.eta_window_s:.1f}s)."
+        )
+
+    try:
+        runner.run()
+    finally:
+        if monitor_stop_event is not None:
+            monitor_stop_event.set()
+        if monitor_thread is not None:
+            monitor_thread.join(timeout=2.0)
 
     print(f"Training time: {round(time.time() - start_time, 2)} seconds")
 

@@ -15,7 +15,11 @@ Phase 2 trains the GATv2 coordination policy using MAPPO so agents learn basic f
 
 Aligns with proposal **Milestone M1 (Week 8):** "GNN policy training."
 
-> **Note on proposal targets:** The proposal’s steady-state objective of **< 0.1m** formation error is a *project-level* target and is expected to be reached after later phases (e.g., safety constraints, trajectory smoothing, stress testing). Phase 2’s goal is to establish a working GNN coordination policy and demonstrate basic formation keeping.
+> **Note on proposal targets:** The proposal’s steady-state objective of **< 0.1m**
+> formation error is a *project-level* target and is expected to be reached after
+> later phases (e.g., safety constraints, trajectory smoothing, stress testing).
+> Phase 2’s goal is to establish a working GNN coordination policy and
+> demonstrate basic formation keeping.
 
 ---
 
@@ -33,7 +37,14 @@ The **mean formation error** for an evaluation run is the average of \(e_t\) ove
 
 ### Evaluation Procedure (Pass/Fail)
 
-- **Checkpoint**: evaluate `best_agent.pt` (or the newest `agent_*.pt`) under `logs/skrl/ggswarm_marl/**/checkpoints/`.\n+- **Episodes**: 10 evaluation episodes.\n+- **Episode length**: use the environment’s configured episode length.\n+- **Pass condition**: mean formation error < 0.5m.\n+- **Secondary metrics (sanity)**:\n+  - separation event rate (fraction of steps where any pair violates minimum separation)\n+  - mean linear speed \(\|\mathrm{lin\_vel}\|\) (jitter proxy)
+- **Checkpoint**: evaluate `best_agent.pt` (or the newest `agent_*.pt`) under
+  `logs/skrl/ggswarm_marl/**/checkpoints/`.
+- **Episodes**: 10 evaluation episodes.
+- **Episode length**: use the environment’s configured episode length.
+- **Pass condition**: mean formation error < 0.5m.
+- **Secondary metrics (sanity)**:
+  - separation event rate (fraction of steps where any pair violates minimum separation)
+  - mean linear speed \(\|\mathrm{lin\_vel}\|\) (jitter proxy)
 
 Implementation lives in `scripts/eval_phase2.py`.
 
@@ -243,17 +254,15 @@ This goes into your environment's reward computation block to ensure the agents 
 ## Training Workflow
 
 ```powershell
-# Train with MAPPO (default)
-..\IsaacLab\isaaclab.bat -p scripts\skrl\train.py --task=Template-GGSwarm-Marl-Direct-v0 --algorithm=MAPPO
+# Recommended: unified helper (Phase 2 formation)
+python scripts/run.py phase2 train --headless
+python scripts/run.py phase2 play
+python scripts/run.py phase2 eval --num_episodes 10
+python scripts/run.py phase2 monitor
 
-# Train headless (no GUI, faster)
-..\IsaacLab\isaaclab.bat -p scripts\skrl\train.py --task=Template-GGSwarm-Marl-Direct-v0 --algorithm=MAPPO --headless
-
-# Evaluate a checkpoint
-..\IsaacLab\isaaclab.bat -p scripts\skrl\play.py --task=Template-GGSwarm-Marl-Direct-v0 --checkpoint=<path>
-
-# Monitor training
-tensorboard --logdir=logs/skrl/ggswarm_marl
+# Recommended: unified helper (hover baseline prerequisite)
+python scripts/run.py hover train --headless
+python scripts/run.py hover eval --num_episodes 10
 ```
 
 ---

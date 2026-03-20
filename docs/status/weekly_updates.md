@@ -2,7 +2,6 @@
 
 Baseline timeline is in the [Proposal](../proposal.md#7-timeline-and-milestones)
 
-
 | Weeks | Dates | Phase | Activity | Milestone |
 | :--- | :--- | :--- | :--- | :--- |
 | 5–6 | Feb 5 – Feb 17 | 1. Foundation | Install NVIDIA Isaac Lab; configure simulated multirotor assets; finalize graph connectivity logic. | - |
@@ -34,7 +33,9 @@ Baseline timeline is in the [Proposal](../proposal.md#7-timeline-and-milestones)
 
 ## Week 10 (2026-03-17)
 
-- **Milestones:** Finalized foundational MARL environment (`GGSwarmMarlEnv`) including multi-agent spawning, graph connectivity, and reward shaping. Validated MAPPO pipeline via `phase1_demo.py`. Replanned schedule to catch up.
+- **Milestones:** Finalized foundational MARL environment (`GGSwarmMarlEnv`) including multi-agent spawning,
+  graph connectivity, and reward shaping. Validated the MAPPO pipeline using the new hover baseline and
+  unified run helper workflow. Replanned schedule to catch up.
 - **Next Week's Plan:** Complete Phase 2 (GATv2 coordination policy) over the next two days, then transition to Phase 3 (MINCO trajectory optimization and SwarmRaft consensus).
 - **Challenges:** High learning curve integrating Isaac Lab, PyTorch Geometric, SKRL, and MARL concepts. No instructor assistance needed yet.
 
