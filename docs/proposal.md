@@ -94,14 +94,14 @@ $$R = w_{pos} \times R_{pos} + w_{vel} \times R_{vel} + w_{ang\_vel} \times R_{a
 
 ### Timeline and Milestones
 
-| # | Weeks | Dates | Phase | Activity | Milestone |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| 1 | 5–6 | Feb 5 – Feb 17 | Foundation | Install NVIDIA Isaac Lab; configure simulated multirotor assets; finalize graph connectivity logic. | - |
-| 2 | 7–8 | Feb 18 – Mar 3 | Brain Development | Train the GATv2 policy using **Multi-Agent PPO (MAPPO)**; test basic formation keeping in empty space. | **M1 (Week 8):** GNN policy training |
-| 3 | 9–11 | Mar 4 – Mar 24 | Muscle Refinement | Integrate MINCO trajectory optimization as a post-processing layer; implement SwarmRaft consensus logic. | **M2 (Week 11, by 3/24):** Logic integration |
-| 4 | 12–13 | Mar 25 – Apr 7 | Stress Testing | Conduct simulated agent loss tests; benchmark swarm navigation in high-density obstacle environments. | - |
-| 5 | 14–15 | Apr 8 – Apr 21 | Showcase Prep | Finalize RTX Tiled Rendering; record HD demo; compile results. | **M3 (Week 14, by 4/14):** Mission success validation; **M4 (Week 15):** HD showcase + Testing Report |
-| 6 | 16 | Apr 22 – Apr 24 | Delivery | Present at Capstone Festival; submit Portfolio and Learning Journals. | Final Presentation due 4/24/26 |
+| Weeks | Dates | Phase | Activity | Milestone |
+| :--- | :--- | :--- | :--- | :--- |
+| 5–6 | Feb 5 – Feb 17 | 1. Foundation | Install NVIDIA Isaac Lab; configure simulated multirotor assets; finalize graph connectivity logic. | - |
+| 7–8 | Feb 18 – Mar 3 | 2. Brain Development | Train the GATv2 policy using **Multi-Agent PPO (MAPPO)**; test basic formation keeping in empty space. | **M1 (Week 8):** GNN policy training |
+| 9–11 | Mar 4 – Mar 24 | 3. Muscle Refinement | Integrate MINCO trajectory optimization as a post-processing layer; implement SwarmRaft consensus logic. | **M2 (Week 11, by 3/24):** Logic integration |
+| 12–13 | Mar 25 – Apr 7 | 4. Stress Testing | Conduct simulated agent loss tests; benchmark swarm navigation in high-density obstacle environments. | - |
+| 14–15 | Apr 8 – Apr 21 | 5. Showcase Prep | Finalize RTX Tiled Rendering; record HD demo; compile results. | **M3 (Week 14, by 4/14):** Mission success validation; **M4 (Week 15):** HD showcase + Testing Report |
+| 16 | Apr 22 – Apr 24 | 6. Delivery | Present at Capstone Festival; submit Portfolio and Learning Journals. | Final Presentation due 4/24/26 |
 
 ---
 
