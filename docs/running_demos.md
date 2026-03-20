@@ -32,6 +32,25 @@ python scripts/run.py phase2 eval --num_episodes 10
 python scripts/run.py phase2 monitor
 ```
 
+### Phase 2 Altitude-First Validation
+
+For recovery runs, evaluate both formation and altitude stability:
+
+- `mean_formation_error_m` should trend down toward the Phase 2 target.
+- `mean_altitude_error_m` should remain low.
+- `ground_hit_rate` should remain near zero.
+- `airborne_ratio` should remain high.
+
+```powershell
+python scripts/run.py phase2 eval --num_agents 3 --num_episodes 10
+```
+
+If needed, adjust the airborne threshold margin used during eval:
+
+```powershell
+python scripts/eval_phase2.py --task Template-GGSwarm-Marl-Direct-v0 --algorithm MAPPO --ml_framework torch --num_agents 3 --num_episodes 10 --airborne_height_margin 0.2
+```
+
 ### Default Progress and ETA Reporting
 
 Training progress reporting is enabled by default for both `hover train` and

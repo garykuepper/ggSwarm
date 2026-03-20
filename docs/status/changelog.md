@@ -42,3 +42,16 @@ This document tracks major technical changes and milestone completions for each 
   `single_agent_train` omitted `infos['shared_states']` (`KeyError`). `train.py` now
   wraps the vec env to inject shared states from `env.state()` when `MAPPO` and
   `num_agents==1`.
+- [2026-03-20] Tuned Phase 2 triangle baseline visibility and spacing: set closer
+  viewer camera in `drone_swarm_env_cfg.py` and reduced
+  `target_formation_dist` to `0.20m` for tighter 3-drone formation training.
+- [2026-03-20] Shifted Phase 2 to altitude-first recovery tuning:
+  increased early hover stabilization influence, delayed curriculum onset for
+  formation pressure, set deterministic `write_interval` /
+  `checkpoint_interval`, and set a 50k-step corrective training budget.
+- [2026-03-20] Extended `scripts/eval_phase2.py` with altitude stability metrics:
+  `mean_altitude_error_m`, `ground_hit_rate`, and `airborne_ratio`.
+- [2026-03-20] Phase 2 recovery tuning: increased `rew_scale_pos` and `rew_scale_alive` and
+  moved `curriculum_start_step`/`curriculum_end_step` later so formation pressure ramps up
+  after altitude stabilization. Increased Phase 2 default MAPPO `trainer.timesteps` to
+  `100000` so the curriculum reaches the full formation regime within a single run.

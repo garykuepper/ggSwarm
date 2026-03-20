@@ -75,8 +75,8 @@ agent:
   experiment:
     directory: "ggswarm_marl"
     experiment_name: ""
-    write_interval: auto
-    checkpoint_interval: auto
+    write_interval: 1000
+    checkpoint_interval: 10000
 
 
 # Sequential trainer

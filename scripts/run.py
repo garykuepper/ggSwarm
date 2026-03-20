@@ -3,14 +3,70 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 HOVER_TASK = "GGS-Hover-v0"
 PHASE2_TASK = "Template-GGSwarm-Marl-Direct-v0"
-HOVER_LOG_DIR = Path("logs") / "skrl" / "ggswarm_hover"
-PHASE2_LOG_DIR = Path("logs") / "skrl" / "ggswarm_marl"
+
+# Use absolute paths so subprocesses spawned with a different CWD
+# still share the same lock file and log roots.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+HOVER_LOG_DIR = REPO_ROOT / "logs" / "skrl" / "ggswarm_hover"
+PHASE2_LOG_DIR = REPO_ROOT / "logs" / "skrl" / "ggswarm_marl"
+LOCK_DIR = REPO_ROOT / "logs" / "skrl" / "locks"
+PHASE2_TRAIN_LOCK_PATH = LOCK_DIR / "phase2_train.lock"
+# Stale lock tolerance (in seconds). If a previous run crashed, we don't want to block forever.
+LOCK_TTL_S = 24 * 60 * 60
+
+
+def _acquire_single_instance_lock(lock_path: Path) -> None:
+    """Prevent launching the same long-running training job multiple times.
+
+    This avoids accidental duplicate IsaacSim spawns when the wrapper CLI is invoked repeatedly.
+    """
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    pid = os.getpid()
+    now_s = time.time()
+
+    for _attempt in range(2):
+        try:
+            # O_EXCL makes lock creation atomic across processes.
+            fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            try:
+                lock_contents = f"pid={pid} time_s={int(now_s)}\n"
+                os.write(fd, lock_contents.encode("utf-8"))
+            finally:
+                os.close(fd)
+            return
+        except FileExistsError:
+            try:
+                age_s = now_s - lock_path.stat().st_mtime
+            except OSError:
+                age_s = LOCK_TTL_S + 1
+            if age_s <= LOCK_TTL_S:
+                raise SystemExit(
+                    f"[ERROR] Another phase2 training run appears active (lock: {lock_path}). "
+                    "If this is unexpected, stop the old run and rerun."
+                )
+            # Lock is stale (previous run likely crashed). Remove and retry once.
+            try:
+                lock_path.unlink()
+            except OSError:
+                pass
+
+    raise SystemExit(f"[ERROR] Failed to acquire lock: {lock_path}")
+
+
+def _release_lock(lock_path: Path) -> None:
+    """Remove the single-instance lock file if it exists."""
+    try:
+        lock_path.unlink()
+    except FileNotFoundError:
+        pass
 
 
 def _run_command(command: list[str]) -> None:
@@ -83,7 +139,17 @@ def _cmd_train(args: argparse.Namespace, *, task: str, gnn_default: bool) -> Non
         cmd.extend(["--checkpoint", args.checkpoint])
     if gnn_default and not args.no_gnn:
         cmd.append("--gnn")
-    _run_command(cmd)
+
+    # Phase 2 training is long-running; prevent accidental duplicate spawns.
+    lock_held = False
+    try:
+        if task == PHASE2_TASK:
+            _acquire_single_instance_lock(PHASE2_TRAIN_LOCK_PATH)
+            lock_held = True
+        _run_command(cmd)
+    finally:
+        if lock_held:
+            _release_lock(PHASE2_TRAIN_LOCK_PATH)
 
 
 def _cmd_play(args: argparse.Namespace, *, task: str, gnn_default: bool) -> None:

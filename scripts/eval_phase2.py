@@ -20,6 +20,12 @@ class EvalStats:
     separation_event_count: int = 0
     mean_speed_sum: float = 0.0
     mean_speed_count: int = 0
+    altitude_error_sum: float = 0.0
+    altitude_error_count: int = 0
+    ground_hit_rate_sum: float = 0.0
+    ground_hit_rate_count: int = 0
+    airborne_ratio_sum: float = 0.0
+    airborne_ratio_count: int = 0
 
     def update(
         self,
@@ -27,6 +33,9 @@ class EvalStats:
         formation_error: torch.Tensor,
         separation_event_rate: torch.Tensor,
         mean_speed: torch.Tensor,
+        mean_altitude_error: torch.Tensor,
+        ground_hit_rate: torch.Tensor,
+        airborne_ratio: torch.Tensor,
     ) -> None:
         self.formation_error_sum += float(formation_error.item())
         self.formation_error_count += 1
@@ -34,6 +43,12 @@ class EvalStats:
         self.separation_event_count += 1
         self.mean_speed_sum += float(mean_speed.item())
         self.mean_speed_count += 1
+        self.altitude_error_sum += float(mean_altitude_error.item())
+        self.altitude_error_count += 1
+        self.ground_hit_rate_sum += float(ground_hit_rate.item())
+        self.ground_hit_rate_count += 1
+        self.airborne_ratio_sum += float(airborne_ratio.item())
+        self.airborne_ratio_count += 1
 
     def summarize(self) -> dict[str, float]:
         return {
@@ -42,6 +57,11 @@ class EvalStats:
             "separation_event_rate": self.separation_event_sum
             / max(1, self.separation_event_count),
             "mean_speed_mps": self.mean_speed_sum / max(1, self.mean_speed_count),
+            "mean_altitude_error_m": self.altitude_error_sum
+            / max(1, self.altitude_error_count),
+            "ground_hit_rate": self.ground_hit_rate_sum
+            / max(1, self.ground_hit_rate_count),
+            "airborne_ratio": self.airborne_ratio_sum / max(1, self.airborne_ratio_count),
         }
 
 
@@ -117,6 +137,12 @@ def main() -> None:
         type=int,
         default=10,
         help="Number of evaluation episodes.",
+    )
+    parser.add_argument(
+        "--airborne_height_margin",
+        type=float,
+        default=0.2,
+        help="Height margin above min_height to count as airborne/stable.",
     )
     parser.add_argument(
         "--seed",
@@ -370,10 +396,25 @@ def main() -> None:
                 )
                 mean_speed = torch.norm(lin_vel_b, dim=-1).mean()
 
+                # shape: [num_envs, num_agents]
+                desired_altitude = base_env._desired_pos_w[:, :, 2]
+                current_altitude = pos_w[:, :, 2]
+                mean_altitude_error = torch.abs(current_altitude - desired_altitude).mean()
+                ground_hit_rate = (current_altitude < float(base_env.cfg.min_height)).any(
+                    dim=1
+                ).float().mean()
+                airborne_threshold = float(base_env.cfg.min_height) + float(
+                    args_cli.airborne_height_margin
+                )
+                airborne_ratio = (current_altitude > airborne_threshold).float().mean()
+
                 stats.update(
                     formation_error=formation_error,
                     separation_event_rate=separation_event_rate,
                     mean_speed=mean_speed,
+                    mean_altitude_error=mean_altitude_error,
+                    ground_hit_rate=ground_hit_rate,
+                    airborne_ratio=airborne_ratio,
                 )
 
             steps += 1
@@ -384,7 +425,10 @@ def main() -> None:
                     f"step={steps}/{total_steps} "
                     f"mean_formation_error={s['mean_formation_error_m']:.3f}m "
                     f"separation_event_rate={s['separation_event_rate']:.3f} "
-                    f"mean_speed={s['mean_speed_mps']:.3f}m/s"
+                    f"mean_speed={s['mean_speed_mps']:.3f}m/s "
+                    f"mean_altitude_error={s['mean_altitude_error_m']:.3f}m "
+                    f"ground_hit_rate={s['ground_hit_rate']:.3f} "
+                    f"airborne_ratio={s['airborne_ratio']:.3f}"
                 )
 
         summary = stats.summarize()
@@ -394,6 +438,9 @@ def main() -> None:
         print(f"mean_formation_error_m: {summary['mean_formation_error_m']:.6f}")
         print(f"separation_event_rate: {summary['separation_event_rate']:.6f}")
         print(f"mean_speed_mps: {summary['mean_speed_mps']:.6f}")
+        print(f"mean_altitude_error_m: {summary['mean_altitude_error_m']:.6f}")
+        print(f"ground_hit_rate: {summary['ground_hit_rate']:.6f}")
+        print(f"airborne_ratio: {summary['airborne_ratio']:.6f}")
 
         env.close()
 

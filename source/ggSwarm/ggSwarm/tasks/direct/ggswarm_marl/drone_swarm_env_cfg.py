@@ -41,8 +41,8 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
 
     # viewer
     viewer: ViewerCfg = ViewerCfg(
-        eye=(4.0, 4.0, 3.0),  # camera position (metres)
-        lookat=(0.0, 0.0, 1.0),  # look-at point (near drone spawn height)
+        eye=(1.2, 1.2, 1.4),  # closer camera for small drones
+        lookat=(0.0, 0.0, 0.9),  # look-at near typical hover/formation altitude
     )
 
     # simulation
@@ -64,7 +64,7 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     moment_scale: float = 0.01
     graph_connectivity_radius: float = 2.0  # (metres) for L2 adjacency matrix
     spawn_yaw_range: float = 3.14159  # ± range for random yaw (rad)
-    target_formation_dist: float = 0.5  # desired inter-agent spacing (m)
+    target_formation_dist: float = 0.20  # desired inter-agent spacing (m)
     drone_radius: float = 0.05  # (metres) approximate collision radius
     min_separation_dist: float = 0.10  # (metres) minimum allowed inter-agent distance
 
@@ -74,14 +74,14 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     )
 
     # reward scales
-    rew_scale_pos = 1.0
-    rew_scale_vel = -0.05
-    rew_scale_ang_vel = -0.01
-    rew_scale_alive = 0.1
+    rew_scale_pos = 3.0
+    rew_scale_vel = -0.10
+    rew_scale_ang_vel = -0.02
+    rew_scale_alive = 0.2
     rew_scale_terminated = -2.0
     # Phase 2 rewards
-    rew_scale_formation = 2.0
-    rew_scale_cohesion = 0.5
+    rew_scale_formation = 1.0
+    rew_scale_cohesion = 0.2
     rew_scale_separation = -5.0
 
     # reward sigmas
@@ -94,5 +94,5 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     spawn_dist = 1.5  # max distance from origin for spawning drones
 
     # curriculum
-    curriculum_start_step: int = 10000
-    curriculum_end_step: int = 50000
+    curriculum_start_step: int = 40000
+    curriculum_end_step: int = 100000
