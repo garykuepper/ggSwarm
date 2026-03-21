@@ -55,3 +55,18 @@ This document tracks major technical changes and milestone completions for each 
   moved `curriculum_start_step`/`curriculum_end_step` later so formation pressure ramps up
   after altitude stabilization. Increased Phase 2 default MAPPO `trainer.timesteps` to
   `100000` so the curriculum reaches the full formation regime within a single run.
+- [2026-03-20] Documented GCE training and monitoring (`docs/gce_training_and_monitoring.md`):
+  VM train commands, `nohup` log tail via `gcloud compute ssh`, TensorBoard over SSH `-L`,
+  and `tensorboard --inspect` sanity check on the VM log root.
+- [2026-03-20] Implemented GCS sync workflow for results transfer between GCE VM and Windows PC:
+  - Added `docs/gce_results_sync.md` with bucket setup, `gsutil rsync` push/pull examples, auth config, and dry-run workflow.
+  - Added `scripts/cloud/sync_gcs.ps1` (PowerShell) and `scripts/cloud/sync_gcs.sh` (bash) with env-based URI, `--family marl|hover`, `--include-videos`, and dry-run support.
+  - Added optional `scripts/cloud/train_and_push.sh` for VM to auto-upload logs to GCS after training completes or on SIGINT.
+  - Added `.cursor/quick-start.md` section documenting GCE instance details, SSH, and links to full docs.
+  - Cross-linked training/monitoring and GCS sync docs from README, commands.md, and GCE docs.
+- [2026-03-20] Created GCS bucket `gs://gg-swarm-training-logs` in GCP project `gg-swarm` for training artifact storage.
+- [2026-03-20] Added helper scripts for training results workflow (videos excluded):
+  - `scripts/cloud/push_results_to_gcs.sh` (VM): Push training logs to GCS after training, exclude videos
+  - `scripts/cloud/pull_results_from_gcs.ps1` (Windows): Mirror GCS logs to local machine, exclude videos
+  - `scripts/cloud/list_checkpoints.ps1` (Windows): List available checkpoints with metadata and print path for playback
+  - Updated `docs/gce_results_sync.md` with quick-start guide and helper script examples

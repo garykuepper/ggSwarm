@@ -130,6 +130,9 @@ reportPrivateUsage = "warning"
 
 [tool.pytest.ini_options]
 
+testpaths = ["tests"]
+
 markers = [
-    "isaacsim_ci: mark test to run in isaacsim ci",
+    "isaacsim_ci: mark test to run with Isaac Sim + GPU (integration tests, normally skipped)",
+    "slow: mark test as slow (use -m slow to run)",
 ]

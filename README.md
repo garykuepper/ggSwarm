@@ -22,12 +22,14 @@ kept intentionally concise: quick setup, run links, and project navigation.
 
 ## Project Navigation
 
-- Proposal and project scope: [`docs/proposal.md`](docs/proposal.md)
-- Architecture source of truth: [`docs/architecture.md`](docs/architecture.md)
-- Demo/training command guide: [`docs/running_demos.md`](docs/running_demos.md)
+- Proposal and project scope: [`docs/project/proposal.md`](docs/project/proposal.md)
+- Architecture source of truth: [`docs/design/architecture.md`](docs/design/architecture.md)
+- Commands reference (train, play, eval, video): [`docs/ops/commands.md`](docs/ops/commands.md)
+- GCE training + monitoring: [`docs/ops/gce_training_and_monitoring.md`](docs/ops/gce_training_and_monitoring.md)
+- GCS sync workflow: [`docs/ops/gce_results_sync.md`](docs/ops/gce_results_sync.md)
 - Phase notes:
-  - [`docs/phase1_foundation.md`](docs/phase1_foundation.md)
-  - [`docs/phase2_brain_development.md`](docs/phase2_brain_development.md)
+  - [`docs/design/phase1_foundation.md`](docs/design/phase1_foundation.md)
+  - [`docs/design/phase2_brain_development.md`](docs/design/phase2_brain_development.md)
 - Status and change tracking:
   - [`docs/status/weekly_updates.md`](docs/status/weekly_updates.md)
   - [`docs/status/changelog.md`](docs/status/changelog.md)
@@ -72,7 +74,7 @@ kept intentionally concise: quick setup, run links, and project navigation.
 
 Use the dedicated run guide for current commands and workflows:
 
-- [`docs/running_demos.md`](docs/running_demos.md)
+- [`docs/ops/commands.md`](docs/ops/commands.md)
 
 Quick unified helper examples:
 
@@ -97,7 +99,7 @@ python scripts/run.py debug latest-checkpoint --family hover
 
 The schedule and milestone plan is maintained in the proposal:
 
-- [`docs/proposal.md` timeline section](docs/proposal.md#7-timeline-and-milestones)
+- [`docs/project/proposal.md` timeline section](docs/project/proposal.md#7-timeline-and-milestones)
 
 Progress and timeline changes are tracked over time in:
 

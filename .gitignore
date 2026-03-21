@@ -85,3 +85,9 @@ tests/
 # TacSL sensor
 **/tactile_record/*
 **/gelsight_r15_data/*
+
+# GCS sync configuration (user-specific, not committed)
+scripts/cloud/local.env
+scripts/cloud/gcs_credentials.json
+scripts/cloud/.env.local
+

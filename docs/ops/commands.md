@@ -1,6 +1,6 @@
-# Running ggSwarm Demonstrations
+# ggSwarm Commands Reference
 
-This document provides instructions on how to run the various simulation and training demonstrations for the ggSwarm project.
+This document provides instructions on how to train, evaluate, play, and record videos with ggSwarm.
 
 > **Important:** All commands assume you have activated your virtual environment (run `.\env_isaaclab\Scripts\activate` in each new terminal session) and are running from the `ggSwarm` project root directory.
 
@@ -129,10 +129,41 @@ python scripts/run.py phase2 eval --num_episodes 10
 python scripts/run.py phase2 monitor
 ```
 
+## Google Compute Engine (remote training)
+
+For SSH, `nohup`/`tmux`, tailing `[PROGRESS]` lines, and TensorBoard over an SSH
+tunnel, see [`gce_training_and_monitoring.md`](gce_training_and_monitoring.md).
+
+For syncing runs to your PC via GCS, see [`gce_results_sync.md`](gce_results_sync.md).
+
 ## Unit Tests (Pure Torch Contracts)
 
-These tests validate the core adjacency and reward contract logic without launching Isaac Sim.
+These tests validate the core adjacency and reward contract logic without launching Isaac Sim. They run quickly on any machine with PyTorch installed.
+
+### Running Tests
 
 ```powershell
-python -m pytest -q
+# Run all Tier 1 unit tests (fast, CPU-only, always runs)
+python -m pytest tests/ -q
+
+# Run only specific test class or function
+python -m pytest tests/test_contract_logic.py::TestComputeAdjacencyMatrix -v
+
+# Run with verbose output
+python -m pytest tests/ -v
 ```
+
+### Test Structure
+
+- **Tier 1 (Unit Tests)**: `tests/test_contract_logic.py` – Tests pure torch functions (`compute_adjacency_matrix`, `compute_marl_rewards`, `compute_hover_rewards`, etc.). Runs anywhere without Isaac Sim.
+- **Tier 2 (Integration Tests)**: `tests/test_env_smoke.py` – Tests full environment with Isaac Sim (marked `@pytest.mark.isaacsim_ci`, skipped by default). Only runs with `python -m pytest tests/ -m isaacsim_ci` on GPU machines.
+
+### Test Coverage
+
+- **29 unit tests** covering:
+  - Curriculum alpha scheduling
+  - Adjacency matrix computation (connectivity, diagonal constraint, batching)
+  - Graph edge_index conversion and batched node index shifting
+  - MARL rewards (position, formation, cohesion, separation, termination)
+  - Hover rewards (goal tracking, ground hit penalty, height gating)
+  - Shape validation and error handling

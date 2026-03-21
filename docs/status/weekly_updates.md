@@ -1,6 +1,6 @@
 # Weekly Status Updates
 
-Baseline timeline is in the [Proposal](../proposal.md#7-timeline-and-milestones)
+Baseline timeline is in the [Proposal](../project/proposal.md#7-timeline-and-milestones)
 
 | Weeks | Dates | Phase | Activity | Milestone |
 | :--- | :--- | :--- | :--- | :--- |

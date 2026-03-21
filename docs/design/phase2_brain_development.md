@@ -6,24 +6,24 @@ Phase 2 trains the GATv2 coordination policy using MAPPO so agents learn basic f
 
 ## Objectives
 
-| ID | Objective | Success Criteria |
-| :--- | :--- | :--- |
-| P2.1 | Train a shared MAPPO policy that keeps agents in a stable formation | **Mean formation error < 0.5m** (defined below) after **≤ 50k environment steps** |
-| P2.2 | Integrate GATv2 as the policy backbone | Policy handles batched graphs from `extras["adj_matrix"]` |
-| P2.3 | Implement Curriculum Reward Shaping | Smooth transition from hover-in-place to formation-aware |
-| P2.4 | Validate training pipeline end-to-end | TensorBoard logs show converging reward curve without collapsing |
+|| ID | Objective | Success Criteria |
+|| :--- | :--- | :--- |
+|| P2.1 | Train a shared MAPPO policy that keeps agents in a stable formation | **Mean formation error < 0.5m** (defined below) after **≤ 50k environment steps** |
+|| P2.2 | Integrate GATv2 as the policy backbone | Policy handles batched graphs from `extras["adj_matrix"]` |
+|| P2.3 | Implement Curriculum Reward Shaping | Smooth transition from hover-in-place to formation-aware |
+|| P2.4 | Validate training pipeline end-to-end | TensorBoard logs show converging reward curve without collapsing |
 
 Aligns with proposal **Milestone M1 (Week 8):** "GNN policy training."
 
-> **Note on proposal targets:** The proposal’s steady-state objective of **< 0.1m**
+> **Note on proposal targets:** The proposal's steady-state objective of **< 0.1m**
 > formation error is a *project-level* target and is expected to be reached after
 > later phases (e.g., safety constraints, trajectory smoothing, stress testing).
-> Phase 2’s goal is to establish a working GNN coordination policy and
+> Phase 2's goal is to establish a working GNN coordination policy and
 > demonstrate basic formation keeping.
 
 ---
 
-## Phase 2 Definition of “Mean Formation Error”
+## Phase 2 Definition of "Mean Formation Error"
 
 For an environment with \(N\) agents and desired spacing `target_formation_dist`, define the per-step spacing error as the mean absolute pairwise spacing error over unique pairs:
 
@@ -40,7 +40,7 @@ The **mean formation error** for an evaluation run is the average of \(e_t\) ove
 - **Checkpoint**: evaluate `best_agent.pt` (or the newest `agent_*.pt`) under
   `logs/skrl/ggswarm_marl/**/checkpoints/`.
 - **Episodes**: 10 evaluation episodes.
-- **Episode length**: use the environment’s configured episode length.
+- **Episode length**: use the environment's configured episode length.
 - **Pass condition**: mean formation error < 0.5m.
 - **Secondary metrics (sanity)**:
   - separation event rate (fraction of steps where any pair violates minimum separation)
@@ -70,14 +70,14 @@ MLP Head → Actions (4-dim)
 **Curriculum-Based Rewards**
 Rewards dynamically scale based on training progress to prevent early-stage training collapse.
 
-| Component | Scale | Formula |
-| :--- | :--- | :--- |
-| **Separation Penalty** | `-5.0` | Applied if `dist < 2 * drone_radius` (prevents physical clipping/collapse) |
-| **Formation error** | `+2.0 * α` | `exp(-mean_spacing_error / 0.3)` where spacing error = `\|actual_dist - target_dist\|` |
-| **Cohesion** | `+0.5 * α` | `exp(-max_neighbor_dist / connectivity_threshold)` |
-| Position (Hover) | `+1.0 * (1-α)` | `exp(-dist_to_goal / 0.5)` |
-| Velocity penalty | `-0.05` | `‖lin_vel_b‖` |
-| Alive bonus | `+0.1` | Constant |
+|| Component | Scale | Formula |
+|| :--- | :--- | :--- |
+|| **Separation Penalty** | `-5.0` | Applied if `dist < 2 * drone_radius` (prevents physical clipping/collapse) |
+|| **Formation error** | `+2.0 * α` | `exp(-mean_spacing_error / 0.3)` where spacing error = `\|actual_dist - target_dist\|` |
+|| **Cohesion** | `+0.5 * α` | `exp(-max_neighbor_dist / connectivity_threshold)` |
+|| Position (Hover) | `+1.0 * (1-α)` | `exp(-dist_to_goal / 0.5)` |
+|| Velocity penalty | `-0.05` | `‖lin_vel_b‖` |
+|| Alive bonus | `+0.1` | Constant |
 
 *(Where `α` scales from 0.0 to 1.0 between `curriculum_start_step` and `curriculum_end_step` in `GGSwarmMarlEnvCfg`, currently 10k → 50k environment steps).*
 
@@ -85,15 +85,15 @@ Rewards dynamically scale based on training progress to prevent early-stage trai
 
 ## SKRL Configuration Tuning (`skrl_mappo_cfg.yaml`)
 
-| Parameter | Current | Target | Rationale |
-| :--- | :--- | :--- | :--- |
-| `network.layers` | `[32, 32]` | `[128, 64]` | Larger capacity for multi-agent coordination |
-| `trainer.timesteps` | `4800` | `100000+` | Sufficient training for convergence |
-| `experiment.directory` | `cart_double_pendulum_direct` | `ggswarm_marl` | Fix template leftover |
-| `agent.rollouts` | `16` | `32` | More experience per update |
-| `agent.mini_batches` | `(default)` | `4` or `8` | Prevents memory spikes with larger rollouts |
-| `agent.learning_rate` | `3.0e-04` | `1.0e-04` | Slower, more stable learning for MARL |
-| `agent.entropy_loss_scale` | `0.0` | `0.01` | Encourage exploration in early training |
+|| Parameter | Current | Target | Rationale |
+|| :--- | :--- | :--- | :--- |
+|| `network.layers` | `[32, 32]` | `[128, 64]` | Larger capacity for multi-agent coordination |
+|| `trainer.timesteps` | `4800` | `100000+` | Sufficient training for convergence |
+|| `experiment.directory` | `cart_double_pendulum_direct` | `ggswarm_marl` | Fix template leftover |
+|| `agent.rollouts` | `16` | `32` | More experience per update |
+|| `agent.mini_batches` | `(default)` | `4` or `8` | Prevents memory spikes with larger rollouts |
+|| `agent.learning_rate` | `3.0e-04` | `1.0e-04` | Slower, more stable learning for MARL |
+|| `agent.entropy_loss_scale` | `0.0` | `0.01` | Encourage exploration in early training |
 
 ---
 
@@ -277,9 +277,9 @@ python scripts/run.py hover eval --num_episodes 10
 
 ## Risks
 
-| Risk | Mitigation |
-| :--- | :--- |
-| GATv2 over-smoothing with deep layers | Limit to 2–3 attention heads, max 3-hop neighborhood |
-| VRAM saturation with 20+ agents | Use headless training; reduce `num_envs` if needed |
-| Reward hacking (agents collapse to same point) | Add minimum separation penalty to reward |
-| Training instability with formation rewards | Curriculum: start with hover rewards, gradually increase formation weight |
+|| Risk | Mitigation |
+|| :--- | :--- |
+|| GATv2 over-smoothing with deep layers | Limit to 2–3 attention heads, max 3-hop neighborhood |
+|| VRAM saturation with 20+ agents | Use headless training; reduce `num_envs` if needed |
+|| Reward hacking (agents collapse to same point) | Add minimum separation penalty to reward |
+|| Training instability with formation rewards | Curriculum: start with hover rewards, gradually increase formation weight |
