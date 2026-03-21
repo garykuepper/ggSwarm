@@ -2,7 +2,7 @@
 
 Operational guide for syncing training logs and checkpoints between your **Compute Engine VM** and your **local PC** via Google Cloud Storage (GCS). This doc describes the `gcloud storage rsync` workflow for bandwidth-efficient, resumable transfers.
 
-**Context:** Training on the VM writes to `logs/skrl/...` (see [`gce_training_and_monitoring.md`](gce_training_and_monitoring.md) for how to run and monitor training). This guide covers moving those artifacts to GCS, then pulling them locally.
+**Context:** Training on the VM writes to `logs/skrl/...` (see [`docs/ops/training_workflow.md`](training_workflow.md) Step 0 for how to deploy, launch, and monitor training). This guide covers moving those artifacts to GCS, then pulling them locally.
 
 **GCS Project & Bucket:**
 - **GCP Project**: `gg-swarm`
@@ -178,7 +178,7 @@ Verify IPs with `gcloud compute instances list` — external IPs can change if t
 
 For the full GCE workflow:
 
-1. **Train on VM:** [`gce_training_and_monitoring.md`](gce_training_and_monitoring.md) — start jobs, tail progress, view TensorBoard.
+1. **Deploy and train on VM:** [`training_workflow.md`](training_workflow.md) Steps 0-1 — resolve git conflicts, verify config, launch training, monitor progress.
 2. **Sync to GCS:** This doc — helper scripts or raw `gcloud storage rsync`.
 3. **Work locally:** Run `play`, `eval`, `monitor` on synced checkpoints.
 

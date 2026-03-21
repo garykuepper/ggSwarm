@@ -19,48 +19,107 @@ This document describes the iterative workflow for training, evaluating, and imp
 
 ---
 
+## Step 0: Deploy Updated Config to VM
+
+Before launching a new training run, ensure the latest code (with any reward tuning, curriculum changes, or L4 optimizations) is deployed to the VM.
+
+### Resolve Git Conflicts on VM
+
+The VM may have stale local edits to cloud scripts. Resolve these by discarding the local changes and pulling the latest remote:
+
+```bash
+# SSH into VM
+gcloud compute ssh isaacsim --zone=us-central1-a --project=gg-swarm
+
+# Navigate to repo
+cd ~/ggSwarm
+
+# Discard stale local cloud script edits
+git checkout -- scripts/cloud/
+
+# Pull latest changes from remote
+git pull
+```
+
+If the pull still fails, use the escape hatch:
+
+```bash
+git reset --hard origin/phase2
+```
+
+### Verify Config Values Landed
+
+After pulling, confirm critical parameters are present:
+
+```bash
+# Check reward tuning
+grep -E "rew_scale_upright|rew_scale_ang_vel|num_envs" \
+  source/ggSwarm/ggSwarm/tasks/direct/ggswarm_marl/drone_swarm_env_cfg.py
+
+# Check L4 optimization (rollouts, mini_batches)
+grep -E "rollouts|mini_batches" \
+  source/ggSwarm/ggSwarm/tasks/direct/ggswarm_marl/agents/skrl_mappo_cfg.yaml
+```
+
+Expected values for current run:
+- `rew_scale_upright: float = 3.0` (aggressive uprightness to prevent flipping)
+- `rew_scale_ang_vel = -0.25` (strong angular velocity penalty)
+- `num_envs=128` (L4 GPU scaling, 4x more parallel experience)
+- `rollouts: 64` (larger rollout buffer for stabler advantage estimates)
+- `mini_batches: 8` (more gradient updates per rollout)
+
+### Launch Training (Detached)
+
+Start training in a detached process so it survives SSH disconnection. The `train_and_push.sh` wrapper runs training and auto-uploads to GCS on completion or interrupt:
+
+```bash
+# Set GCS target
+export GGSWARM_GCS_URI=gs://gg-swarm-training-logs
+
+# Launch training (runs in background)
+nohup ./scripts/cloud/train_and_push.sh phase2 train --headless \
+  > ~/train_phase2.log 2>&1 &
+
+# Note the PID for later reference
+```
+
+The `train_and_push.sh` script:
+1. Runs `python scripts/run.py phase2 train --headless` for 300k timesteps
+2. On success or interrupt (Ctrl+C), calls `gcloud storage rsync` to push logs to GCS
+3. Exits with the training process's exit code
+
+### Monitor Training Progress
+
+From your local machine, monitor the VM's training log:
+
+```powershell
+# Check last 50 lines of training log (shows progress and errors)
+gcloud compute ssh isaacsim --zone=us-central1-a --project=gg-swarm `
+  --command="tail -50 ~/train_phase2.log"
+
+# Or tail in real-time (keep command running)
+gcloud compute ssh isaacsim --zone=us-central1-a --project=gg-swarm `
+  --command="tail -f ~/train_phase2.log"
+```
+
+Look for `[PROGRESS]` lines showing steps completed, throughput (steps/sec), and ETA. Early training should show:
+- `[PROGRESS] 0/300,000` → training started
+- `28-32 steps/sec` on L4 GPU (typical throughput with 128 envs)
+
+If you see errors (e.g. `OutOfMemory`, `CUDA error`), stop training with Ctrl+C and reduce `num_envs` to 64 in the config, then redeploy and retrain.
+
+---
+
 ## Step 1: TRAIN on GCE
 
-### Launch Training on VM
+For deployment, launching training, and monitoring on the VM, see **[Step 0: Deploy Updated Config to VM](#step-0-deploy-updated-config-to-vm)** above.
+
+Once training completes, results are automatically uploaded to GCS by `train_and_push.sh`. To manually push or check uploads:
 
 ```bash
-# SSH into GCE VM
-gcloud compute ssh isaacsim --zone us-central1-a
-
-# Navigate to project
-cd /path/to/ggSwarm
-
-# Start training (runs in background, output to log file)
-./scripts/cloud/train_and_push.sh
-
-# OR manually:
-python scripts/run.py phase2 train --headless --max_iterations 300000 2>&1 | tee training.log
-```
-
-### Monitor Training
-
-While training runs:
-
-```bash
-# Monitor GPU/CPU usage
-watch -n 1 nvidia-smi
-
-# Or stream TensorBoard over SSH tunnel (from local machine)
-ssh -L 6006:localhost:6006 user@vm_ip
-# Then open http://localhost:6006 in browser
-tensorboard --logdir logs/skrl/ggswarm_marl
-```
-
-### Push to GCS
-
-Once training completes (or periodically):
-
-```bash
-# Push logs to GCS
-gsutil -m rsync -r -d logs/skrl/ggswarm_marl gs://gg-swarm-training-logs/
-
-# Or use the helper script
-scripts/cloud/push_results_to_gcs.sh
+# On VM, push logs to GCS (if using nohup instead of train_and_push.sh)
+export GGSWARM_GCS_URI=gs://gg-swarm-training-logs
+gcloud storage rsync --recursive --exclude='videos/.*' logs/skrl/ggswarm_marl "$GGSWARM_GCS_URI/logs/skrl/ggswarm_marl"
 ```
 
 ---
@@ -298,30 +357,47 @@ Before retraining, update [`docs/status/changelog.md`](../../docs/status/changel
 
 ### Deploy Updated Config
 
+After making adjustments (Step 6) and documenting them (Step 7), deploy the new config to the VM and launch retraining.
+
+**Option A: Push changes via git, then follow Step 0 on VM (Recommended)**
+
 ```bash
-# Option A: Update config locally, then push to VM
-git add docs/
-git commit -m "Update reward config: boost uprightness and ang_vel penalties"
-git push origin main
+# Locally: commit and push config changes
+git add source/ docs/
+git commit -m "Adjust reward config: [specific changes]"
+git push origin phase2
 
-# On VM:
-git pull
-python scripts/run.py phase2 train --headless --max_iterations 300000
-
-# Option B: SSH and edit directly on VM
-ssh user@vm_ip
-# Edit config via ssh
-nano source/ggSwarm/ggSwarm/tasks/direct/ggswarm_marl/drone_swarm_env_cfg.py
-# Retrain
+# Then follow Step 0 on the VM to pull and launch
 ```
 
-### Monitor with Checkpointing
+**Option B: Edit directly on VM (Quick iteration)**
 
 ```bash
-# Training automatically saves at 10k, 20k, 30k, ... steps
-# If interrupted, resume with:
-python scripts/run.py phase2 train --headless \
-    --checkpoint "logs/skrl/ggswarm_marl/<run>/checkpoints/agent_150000.pt"
+# SSH into VM and edit config interactively
+ssh user@vm_ip
+nano source/ggSwarm/ggSwarm/tasks/direct/ggswarm_marl/drone_swarm_env_cfg.py
+
+# Then launch training (see Step 0 for canonical command)
+export GGSWARM_GCS_URI=gs://gg-swarm-training-logs
+nohup ./scripts/cloud/train_and_push.sh phase2 train --headless \
+  > ~/train_phase2.log 2>&1 &
+```
+
+For detailed deployment, conflict resolution, verification, and monitoring steps, see **[Step 0: Deploy Updated Config to VM](#step-0-deploy-updated-config-to-vm)**.
+
+### Resume Interrupted Training
+
+Training automatically saves checkpoints every ~10k steps. If interrupted (network loss, manual Ctrl+C), resume from the latest checkpoint:
+
+```bash
+# Find the latest checkpoint
+ls -1t logs/skrl/ggswarm_marl/<run>/checkpoints/ | head -5
+
+# Resume training (automatically continues from checkpoint step)
+export GGSWARM_GCS_URI=gs://gg-swarm-training-logs
+nohup ./scripts/cloud/train_and_push.sh phase2 train --headless \
+  --checkpoint "logs/skrl/ggswarm_marl/<run>/checkpoints/agent_150000.pt" \
+  > ~/train_phase2_resume.log 2>&1 &
 ```
 
 ---
