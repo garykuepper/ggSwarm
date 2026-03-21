@@ -278,3 +278,8 @@
 1774042382.794757: Evaluation mode set
 1774042382.79676: Resetting environment
 1774042382.8993125: Environment reset complete
+1774070370.2784476: Runner created
+1774070370.2851107: Loading checkpoint file
+1774070370.417771: Checkpoint file loaded
+1774070370.4247334: MISSING POLICY KEY. Keys: ['drone_0', 'drone_1', 'drone_2']
+1774070370.4247334: No policy-like keys found! Stopping to prevent Critic mismatch.
