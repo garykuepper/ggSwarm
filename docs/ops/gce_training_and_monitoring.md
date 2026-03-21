@@ -2,7 +2,7 @@
 
 Operational guide for running ggSwarm training on a **Compute Engine** VM and checking progress from your **local** machine. For copying runs off the VM, see [`gce_results_sync.md`](gce_results_sync.md) for the GCS mirror workflow.
 
-> **Instance (verify before use):** `isaacsim` in `us-central1-a`. Confirm with `gcloud compute instances list`. Maintainer notes: [`.cursor/quick-start.md`](../../.cursor/quick-start.md).
+> **Instance (verify before use):** `isaacsim` in `us-central1-a`, project `gg-swarm`. Confirm with `gcloud compute instances list --project=gg-swarm`. Note: your default `gcloud` project is `gary-gigabytes` — always pass `--project=gg-swarm` explicitly. Maintainer notes: [`.cursor/quick-start.md`](../../.cursor/quick-start.md).
 
 ## Layout on the VM
 
@@ -29,7 +29,7 @@ python scripts/run.py hover train --headless
 1. SSH:
 
    ```bash
-   gcloud compute ssh isaacsim --zone=us-central1-a
+   gcloud compute ssh isaacsim --zone=us-central1-a --project=gg-swarm
    ```
 
 2. From the repo root, activate the environment:
@@ -64,7 +64,7 @@ Resume and checkpoints follow [`commands.md`](commands.md) — pause with `Ctrl+
 Training emits periodic `[PROGRESS]` lines (steps, ETA, throughput). If you used `nohup` to `~/train_phase2.log`, from **your local** shell:
 
 ```powershell
-gcloud compute ssh isaacsim --zone=us-central1-a --command="grep PROGRESS ~/train_phase2.log | tail -5"
+gcloud compute ssh isaacsim --zone=us-central1-a --project=gg-swarm --command="grep PROGRESS ~/train_phase2.log | tail -5"
 ```
 
 Adjust the path if your transcript lives elsewhere.
@@ -90,7 +90,7 @@ To monitor a different family:
 1. Open an SSH tunnel (keep this terminal open):
 
    ```powershell
-   gcloud compute ssh isaacsim --zone=us-central1-a -- -N -L 6006:127.0.0.1:6006
+   gcloud compute ssh isaacsim --zone=us-central1-a --project=gg-swarm -- -N -L 6006:127.0.0.1:6006
    ```
 
 2. Open `http://localhost:6006` in your browser.
