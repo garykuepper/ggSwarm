@@ -242,9 +242,8 @@ def _cmd_eval_phase2(args: argparse.Namespace) -> None:
         "--ml_framework",
         "torch",
         "--gnn",
+        "--headless",
     ]
-    if args.headless:
-        cmd.append("--headless")
     if args.device:
         cmd.extend(["--device", args.device])
     if args.num_envs is not None:
@@ -376,7 +375,7 @@ def _build_parser() -> argparse.ArgumentParser:
     phase2_eval = phase2_cmds.add_parser("eval", help="Evaluate phase2 checkpoint")
     _add_common_sim_args(phase2_eval)
     phase2_eval.add_argument("--checkpoint", type=str, default=None)
-    phase2_eval.add_argument("--num_episodes", type=int, default=10)
+    phase2_eval.add_argument("--num_episodes", type=int, default=5)
     phase2_eval.set_defaults(handler=_cmd_eval_phase2)
 
     phase2_monitor = phase2_cmds.add_parser(

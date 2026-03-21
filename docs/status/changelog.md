@@ -153,3 +153,15 @@ This document tracks major technical changes and milestone completions for each 
   - New reward balance: `rew_scale_pos=3.0, rew_scale_upright=3.0, rew_scale_ang_vel=-0.25, rew_scale_alive=1.0, rew_scale_vel=-0.15, rew_scale_terminated=-15.0`
   - All other settings unchanged: curriculum (80k-250k, pos_floor=0.4), L4 optimization (num_envs=128, rollouts=64), architecture (GNN + MLP value function)
   - Next steps: Deploy to GCE L4 and train 300k steps; expect airborne_ratio > 0.9 and mean_roll/pitch < 15° if tuning successful
+
+- [2026-03-21] **CONVERGENCE FINDINGS**: Analysis of 300k-step run shows catastrophic divergence from the fix:
+  - Evaluated best_agent.pt from run (trained with fixed `rew_scale_upright=3.0`, `rew_scale_ang_vel=-0.25`)
+  - **Eval results**: mean_roll=63.5°, mean_pitch=62.0°, 53.5% ground_hit_rate, 64.9% airborne_ratio, 1.126m formation_error
+  - **Root cause analysis**: Policy learned to apply aggressive moments that tumble drones; when inverted, thrust pushes into ground
+  - **Convergence analysis tool created**: `scripts/cloud/check_convergence.py` reads TFEvents and detects policy convergence via entropy collapse
+  - **Key finding**: Training converged (entropy locked) at **105k steps**; last 195k steps (300k→105k) were wasted compute
+  - Recommended training budget for next run: **120k steps** (105k + 15% buffer) instead of 300k; saves ~60% GPU hours per run
+  - **New aggressive tuning**: `rew_scale_upright: 3.0 → 5.0` (exceed position reward), `rew_scale_ang_vel: -0.25 → -0.5` (2x stronger spin penalty), `rew_scale_terminated: -15.0 → -20.0`, `spawn_yaw_range: 0.3 → 0.1`
+  - Rationale: Even 3.0 uprightness was insufficient; position reward (3.0) still dominated over spin penalty (-0.25). New scaling makes uprightness the top priority: 5.0 > 3.0 + 1.0 (alive) + 0.2 (cohesion).
+  - **Faster eval**: Changed default `--num_episodes` from 10 to 5 and added `--headless` to eval by default (metrics converge by step 2500; halves eval time from ~15min to ~8min)
+  - Next steps: Deploy tuned config to GCE and train for 120k steps (not 300k); expect full stability recovery.

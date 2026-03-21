@@ -67,8 +67,8 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     # wide spawn yaw and lack of upright reward, both now addressed.
     moment_scale: float = 0.01
     graph_connectivity_radius: float = 2.0  # (metres) for L2 adjacency matrix
-    # Tight yaw range keeps drones near-level at spawn, reducing early tumbling.
-    spawn_yaw_range: float = 0.3  # ± range for random yaw (rad)
+    # Tighter yaw range (0.1 vs 0.3) keeps drones more level at spawn, reducing early tumble pressure.
+    spawn_yaw_range: float = 0.1  # ± range for random yaw (rad)
     target_formation_dist: float = 0.20  # desired inter-agent spacing (m)
     drone_radius: float = 0.05  # (metres) approximate collision radius
     min_separation_dist: float = 0.10  # (metres) minimum allowed inter-agent distance
@@ -81,14 +81,14 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     # reward scales
     rew_scale_pos = 3.0
     rew_scale_vel = -0.15
-    rew_scale_ang_vel = -0.25
+    rew_scale_ang_vel = -0.5
     # Stronger alive bonus to reinforce staying airborne.
     rew_scale_alive = 1.0
-    # Larger crash penalty to make recovery the top priority.
-    rew_scale_terminated = -15.0
-    # Uprightness reward: incentivizes drones to stay level (essential for thrust control).
-    # Matched to position reward (3.0) to prioritize "stay level" equally with "reach goal".
-    rew_scale_upright: float = 3.0
+    # Aggressive crash penalty to prioritize recovery over all else.
+    rew_scale_terminated = -20.0
+    # Uprightness reward: now exceeds position reward (5.0 vs 3.0) to make "stay level" the top priority.
+    # This ensures drones prioritize orientation control over reaching the goal while tumbling.
+    rew_scale_upright: float = 5.0
     # Phase 2 rewards
     rew_scale_formation = 1.0
     rew_scale_cohesion = 0.2
