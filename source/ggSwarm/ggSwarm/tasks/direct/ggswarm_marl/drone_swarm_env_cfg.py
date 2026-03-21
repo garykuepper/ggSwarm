@@ -58,11 +58,14 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
 
     # swarm specific
     # With the current thrust mapping in `drone_swarm_env.py`,
-    # `action_z = 0.0 -> thrust_val = 0.5`, so `thrust_to_weight = 2.0`
+    # `action_z = 0.0 -> thrust_val = 0.5`, so `thrust_to_weight = 1.9`
     # makes the neutral action hover (total thrust ~= 1.0 * weight).
-    thrust_to_weight: float = 2.0
-    # Reduced from 0.01 to avoid instant tumbling from high angular acceleration.
-    moment_scale: float = 0.001
+    # Aligned with Isaac Lab's Isaac-Quadcopter-Direct-v0 reference baseline.
+    thrust_to_weight: float = 1.9
+    # Restored to 0.01 (Isaac Lab reference for Crazyflie).
+    # Previous reduction to 0.001 was 10x overcorrection; tumbling was caused by
+    # wide spawn yaw and lack of upright reward, both now addressed.
+    moment_scale: float = 0.01
     graph_connectivity_radius: float = 2.0  # (metres) for L2 adjacency matrix
     # Tight yaw range keeps drones near-level at spawn, reducing early tumbling.
     spawn_yaw_range: float = 0.3  # ± range for random yaw (rad)
@@ -100,8 +103,9 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     # Smaller spawn radius so drones start close to goals for cleaner gradients.
     spawn_dist = 0.5  # max distance from origin for spawning drones
 
-    # curriculum: delayed to ensure hover is mastered before formation is introduced.
+    # curriculum: formation rewards fade in earlier to support 300k-step training budgets.
+    # Start at 50k (hover usually mastered), reach full strength by 200k (giving 100k steps of full signal).
     # curriculum_pos_floor ensures hover signal never fully disappears.
-    curriculum_start_step: int = 200000
-    curriculum_end_step: int = 500000
+    curriculum_start_step: int = 50000
+    curriculum_end_step: int = 200000
     curriculum_pos_floor: float = 0.3

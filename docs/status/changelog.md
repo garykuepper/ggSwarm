@@ -70,3 +70,14 @@ This document tracks major technical changes and milestone completions for each 
   - `scripts/cloud/pull_results_from_gcs.ps1` (Windows): Mirror GCS logs to local machine, exclude videos
   - `scripts/cloud/list_checkpoints.ps1` (Windows): List available checkpoints with metadata and print path for playback
   - Updated `docs/gce_results_sync.md` with quick-start guide and helper script examples
+- [2026-03-21] Restored physics parameters to Isaac Lab reference values for Crazyflie:
+  - `moment_scale`: 0.001 → 0.01 (10x increase). Previous reduction was 10x overcorrection; root causes (wide spawn yaw, missing upright reward) are now fixed. Restores physical attitude authority per Isaac-Quadcopter-Direct-v0 baseline.
+  - `thrust_to_weight`: 2.0 → 1.9 for consistency with Isaac Lab reference (minor change, neutral action still hovers).
+  - Rationale: Weak attitude correction in earlier playback indicated insufficient torque authority. Isaac Lab's validated Crazyflie parameters now provide accurate moment scaling.
+- [2026-03-21] Adjusted curriculum timing to support 300k-step training budgets:
+  - `curriculum_start_step`: 200000 → 50000 (formation rewards begin after basic hover is learned).
+  - `curriculum_end_step`: 500000 → 200000 (formation reaches full strength by 200k, allowing 100k steps of full signal vs. 33% signal in previous run).
+  - Rationale: Previous run to 300k steps only exposed agents to 33% formation reward. Early curriculum ensures agents learn coordination within typical training budgets.
+- [2026-03-21] Documented playback and training guidance:
+  - MLP policy trained without GNN cannot observe neighbors (12-dim obs: self state + goal; no neighbor info). GNN policy via `--gnn` flag uses adjacency matrix for neighbor-aware message passing.
+  - For formation behavior, train with `python scripts/run.py phase2 train --headless --gnn` to enable GATv2 policy with graph structure.
