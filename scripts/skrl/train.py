@@ -245,16 +245,26 @@ def _progress_monitor(
     checkpoint_dir: Path,
     log_dir: Path,
     total_timesteps: int,
+    progress_target: int,
     poll_interval_s: float,
     eta_window_s: float,
 ) -> None:
-    """Emit periodic progress and throughput-based ETA logs."""
+    """Emit periodic progress and throughput-based ETA logs.
+    
+    Args:
+        progress_target: Target for progress reporting (iterations or timesteps).
+                        When max_iterations is set, this is the iteration count.
+                        Otherwise, this equals total_timesteps.
+    """
     start_time = time.time()
     history: deque[tuple[float, int]] = deque()
     last_reported_step = -1
     last_emitted_step = -1
     last_heartbeat_time = start_time
     heartbeat_interval_s = max(30.0, poll_interval_s * 3.0)
+    # Determine unit label based on whether we're tracking iterations or timesteps
+    is_iteration_tracking = (progress_target != total_timesteps)
+    unit_label = "iters" if is_iteration_tracking else "steps"
 
     while not stop_event.wait(timeout=max(1.0, poll_interval_s)):
         now = time.time()
@@ -277,9 +287,9 @@ def _progress_monitor(
             if dt > 0 and ds > 0:
                 rolling_sps = ds / dt
 
-        percent = (100.0 * current_step / max(1, total_timesteps))
-        if rolling_sps and current_step < total_timesteps:
-            remaining = total_timesteps - current_step
+        percent = (100.0 * current_step / max(1, progress_target))
+        if rolling_sps and current_step < progress_target:
+            remaining = progress_target - current_step
             eta = _format_duration(remaining / rolling_sps)
             sps_txt = f"{rolling_sps:,.1f}"
         else:
@@ -297,9 +307,9 @@ def _progress_monitor(
 
         print(
             "[PROGRESS] "
-            f"{current_step:,}/{total_timesteps:,} ({percent:5.1f}%) | "
+            f"{current_step:,}/{progress_target:,} ({percent:5.1f}%) | "
             f"elapsed={_format_duration(elapsed)} | "
-            f"steps_per_sec={sps_txt} | eta={eta}"
+            f"{unit_label}_per_sec={sps_txt} | eta={eta}"
             f"{status_suffix}"
         )
         last_emitted_step = current_step
@@ -493,6 +503,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     monitor_thread: Thread | None = None
     total_timesteps = int(agent_cfg["trainer"]["timesteps"])
     checkpoint_dir = Path(log_dir) / "checkpoints"
+    # When max_iterations is provided, track progress in iteration-space (not timestep-space).
+    # Otherwise, fall back to timestep-space for backward compatibility.
+    progress_target = args_cli.max_iterations if args_cli.max_iterations else total_timesteps
     if not args_cli.no_progress:
         monitor_stop_event = Event()
         monitor_thread = Thread(
@@ -502,6 +515,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                 "checkpoint_dir": checkpoint_dir,
                 "log_dir": Path(log_dir),
                 "total_timesteps": total_timesteps,
+                "progress_target": progress_target,
                 "poll_interval_s": args_cli.progress_interval_s,
                 "eta_window_s": args_cli.eta_window_s,
             },
