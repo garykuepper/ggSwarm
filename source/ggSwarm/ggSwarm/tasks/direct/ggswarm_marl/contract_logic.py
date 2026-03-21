@@ -139,15 +139,19 @@ def compute_marl_rewards(
     proj_grav_b: torch.Tensor,
     common_step_counter: int,
     params: MarlRewardParams,
-) -> torch.Tensor:
+    return_terms: bool = False,
+) -> torch.Tensor | tuple[torch.Tensor, dict[str, torch.Tensor]]:
     """Compute total MARL rewards per agent.
 
     Args:
         proj_grav_b: Gravity projected into each drone's body frame.
             Shape [num_envs, num_agents, 3]. When level, z-component is -1.0.
+        return_terms: If True, return (total_rewards, terms_dict) for logging.
 
     Returns:
-        rewards: tensor of shape [num_envs, num_agents]
+        If return_terms is False: rewards tensor of shape [num_envs, num_agents]
+        If return_terms is True: (rewards, terms_dict) where terms_dict has keys
+            for each reward component (all have shape [num_envs, num_agents])
     """
 
     # shape: [num_envs, num_agents, 3]
@@ -245,6 +249,21 @@ def compute_marl_rewards(
     # shape: [num_envs, num_agents]
     if total_rewards.shape != (num_envs, num_agents):
         raise AssertionError("Reward tensor shape mismatch.")
+    
+    if return_terms:
+        terms_dict = {
+            "rew_pos": rew_pos,
+            "rew_formation": rew_formation,
+            "rew_cohesion": rew_cohesion,
+            "rew_separation": rew_separation,
+            "rew_upright": rew_upright,
+            "rew_vel": rew_vel,
+            "rew_ang_vel": rew_ang_vel,
+            "rew_alive": rew_alive,
+            "rew_terminated": rew_terminated,
+        }
+        return total_rewards, terms_dict
+    
     return total_rewards
 
 

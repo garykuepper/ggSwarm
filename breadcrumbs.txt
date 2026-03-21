@@ -283,3 +283,11 @@
 1774070370.417771: Checkpoint file loaded
 1774070370.4247334: MISSING POLICY KEY. Keys: ['drone_0', 'drone_1', 'drone_2']
 1774070370.4247334: No policy-like keys found! Stopping to prevent Critic mismatch.
+1774102038.8428516: Runner created
+1774102038.845353: Loading checkpoint file
+1774102038.9639156: Checkpoint file loaded
+1774102038.966497: Policy state dict loaded from: checkpoint['drone_0']['policy']
+1774102038.9685113: Finalizing policy load
+1774102038.9700255: Evaluation mode set
+1774102038.9721627: Resetting environment
+1774102039.351839: Environment reset complete

@@ -224,7 +224,7 @@ class GGSwarmMarlEnv(DirectMARLEnv):
         )
 
         # shape: [num_envs, num_agents]
-        total_rewards = compute_marl_rewards(
+        total_rewards, terms_dict = compute_marl_rewards(
             pos_w=pos_w,
             desired_pos_w=desired_pos_w,
             lin_vel_b=lin_vel_b,
@@ -232,7 +232,30 @@ class GGSwarmMarlEnv(DirectMARLEnv):
             proj_grav_b=proj_grav_b,
             common_step_counter=int(self.common_step_counter),
             params=params,
+            return_terms=True,
         )
+
+        # Compute curriculum alpha for logging
+        from .contract_logic import compute_curriculum_alpha
+        alpha = compute_curriculum_alpha(
+            int(self.common_step_counter),
+            curriculum_start_step=self.cfg.curriculum_start_step,
+            curriculum_end_step=self.cfg.curriculum_end_step,
+        )
+
+        # Log per-term rewards for TensorBoard visualization
+        self.extras["log"] = {
+            "rew_pos": terms_dict["rew_pos"].mean().item(),
+            "rew_formation": terms_dict["rew_formation"].mean().item(),
+            "rew_cohesion": terms_dict["rew_cohesion"].mean().item(),
+            "rew_separation": terms_dict["rew_separation"].mean().item(),
+            "rew_upright": terms_dict["rew_upright"].mean().item(),
+            "rew_vel": terms_dict["rew_vel"].mean().item(),
+            "rew_ang_vel": terms_dict["rew_ang_vel"].mean().item(),
+            "rew_alive": terms_dict["rew_alive"].mean().item(),
+            "rew_terminated": terms_dict["rew_terminated"].mean().item(),
+            "curriculum_alpha": alpha,
+        }
 
         rewards: dict[str, torch.Tensor] = {}
         for i, agent in enumerate(self.cfg.possible_agents):

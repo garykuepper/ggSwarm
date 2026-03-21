@@ -75,19 +75,20 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
 
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=32, env_spacing=5.0, replicate_physics=True
+        num_envs=128, env_spacing=5.0, replicate_physics=True
     )
 
     # reward scales
     rew_scale_pos = 3.0
-    rew_scale_vel = -0.10
-    rew_scale_ang_vel = -0.02
+    rew_scale_vel = -0.15
+    rew_scale_ang_vel = -0.25
     # Stronger alive bonus to reinforce staying airborne.
-    rew_scale_alive = 0.5
+    rew_scale_alive = 1.0
     # Larger crash penalty to make recovery the top priority.
-    rew_scale_terminated = -10.0
+    rew_scale_terminated = -15.0
     # Uprightness reward: incentivizes drones to stay level (essential for thrust control).
-    rew_scale_upright: float = 1.0
+    # Matched to position reward (3.0) to prioritize "stay level" equally with "reach goal".
+    rew_scale_upright: float = 3.0
     # Phase 2 rewards
     rew_scale_formation = 1.0
     rew_scale_cohesion = 0.2
@@ -103,9 +104,9 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     # Smaller spawn radius so drones start close to goals for cleaner gradients.
     spawn_dist = 0.5  # max distance from origin for spawning drones
 
-    # curriculum: formation rewards fade in earlier to support 300k-step training budgets.
-    # Start at 50k (hover usually mastered), reach full strength by 200k (giving 100k steps of full signal).
+    # curriculum: formation rewards fade in later to give hover more time to stabilize.
+    # Start at 80k (later than before), reach full strength by 250k.
     # curriculum_pos_floor ensures hover signal never fully disappears.
-    curriculum_start_step: int = 50000
-    curriculum_end_step: int = 200000
-    curriculum_pos_floor: float = 0.3
+    curriculum_start_step: int = 80000
+    curriculum_end_step: int = 250000
+    curriculum_pos_floor: float = 0.4

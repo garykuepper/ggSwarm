@@ -81,3 +81,75 @@ This document tracks major technical changes and milestone completions for each 
 - [2026-03-21] Documented playback and training guidance:
   - MLP policy trained without GNN cannot observe neighbors (12-dim obs: self state + goal; no neighbor info). GNN policy via `--gnn` flag uses adjacency matrix for neighbor-aware message passing.
   - For formation behavior, train with `python scripts/run.py phase2 train --headless --gnn` to enable GATv2 policy with graph structure.
+  
+## Phase 2: Evaluation & Training Optimization (Weeks 8-9)
+
+- [2026-03-21] Implemented per-reward-term logging for TensorBoard visualization:
+  - Modified `compute_marl_rewards()` to optionally return individual reward components (`rew_pos`, `rew_formation`, `rew_cohesion`, etc.)
+  - Enhanced `drone_swarm_env.py` to log per-term rewards and curriculum_alpha in `self.extras["log"]` for SKRL to write to TensorBoard
+  - Enables real-time diagnosis of which reward components dominate training and when curriculum transitions occur
+  
+- [2026-03-21] Extended `eval_phase2.py` with orientation and stability metrics:
+  - Added `mean_roll_deg`, `mean_pitch_deg`: directly measure drone orientation (target: < 15° for level flight)
+  - Added `orientation_violation_rate`: fraction of steps exceeding 45° roll/pitch (target: < 0.1)
+  - Added `altitude_std_m`: standard deviation of altitude (detects oscillation)
+  - Added `mean_episode_survival_steps`: tracks how long agents stay alive before termination
+  - Rationale: Previous run showed severe flipping (45° roll/pitch observed); these metrics enable targeted diagnosis
+  
+- [2026-03-21] Created `scripts/analyze_checkpoints.py` for checkpoint progression analysis:
+  - Evaluates multiple checkpoints at regular intervals (e.g., every 50k steps)
+  - Produces CSV table showing metric evolution over training
+  - Identifies degradation points (e.g., when formation curriculum kicks in at curriculum_start_step)
+  - Usage: `python scripts/analyze_checkpoints.py --run_dir logs/skrl/ggswarm_marl/<run> --interval 50000`
+  
+- [2026-03-21] Optimized NVIDIA L4 GPU training for L4 (24GB VRAM, Ada Lovelace compute capability 8.9):
+  - Scaled `num_envs` from 32 to 128 in `drone_swarm_env_cfg.py` (4x more parallel experience, better gradient variance)
+  - Increased `rollouts` from 32 to 64 in `skrl_mappo_cfg.yaml` (larger data buffer per update)
+  - Increased `mini_batches` from 4 to 8 (matches larger rollout buffer, keeps per-batch size reasonable)
+  - Added explicit TF32 enable in `train.py`: `torch.backends.cuda.matmul.allow_tf32 = True` (Ada Lovelace supports ~2x FP32 speedup)
+  - Effective samples per update: 32*3*32=3,072 → 128*3*64=24,576 (8x improvement in gradient diversity)
+  - Rationale: Previous config left GPU severely underutilized; scaling increases both throughput and learning quality
+  
+- [2026-03-21] Applied reward rebalancing to address observed training failures:
+  - `rew_scale_upright`: 1.0 → 2.0 (stronger penalty for flipping; was insufficient given weak ang_vel penalty)
+  - `rew_scale_ang_vel`: -0.02 → -0.15 (7.5x stronger penalty for spinning; critical for preventing tumbles)
+  - `rew_scale_vel`: -0.10 → -0.15 (slightly stronger to reduce wild oscillation)
+  - `rew_scale_alive`: 0.5 → 1.0 (double the carrot for staying airborne)
+  - `rew_scale_terminated`: -10.0 → -15.0 (50% stronger crash penalty to prioritize recovery)
+  - Rationale: Previous 300k run showed mean_roll/pitch=45°, low airborne_ratio; balance was heavily skewed toward position reward at expense of stability
+  
+- [2026-03-21] Delayed curriculum transition to allow hover stabilization:
+  - `curriculum_start_step`: 50,000 → 80,000 (give drones 80k steps to master hover before formation kicks in)
+  - `curriculum_end_step`: 200,000 → 250,000 (slower ramp-in; formation reaches full strength by 250k)
+  - `curriculum_pos_floor`: 0.3 → 0.4 (keep hover signal at 40% baseline instead of 30%; avoid formation overriding stability)
+  - Rationale: Previous run jumped into formation training too early; drones weren't stable enough to learn multi-agent coordination
+  
+- [2026-03-21] Created comprehensive training workflow documentation (`docs/ops/training_workflow.md`):
+  - End-to-end cycle: TRAIN → SYNC → INSPECT → EVAL → DIAGNOSE → ADJUST → LOG → RETRAIN
+  - Detailed metric interpretation guide (what good/bad values mean for formation, stability, and survival)
+  - Decision matrix for common failure modes and recommended adjustments
+  - TensorBoard monitoring tips for per-term reward decomposition
+  - L4 GPU optimization notes and VRAM monitoring guidance
+  - Pre-flight checklist for long training runs (per project rule 7)
+  - Troubleshooting section for common issues and solutions
+  
+- [2026-03-21] Updated project changelog with all changes and rationale for reproducibility (per project rule 5)
+
+## Phase 2: Critical Stability Fixes (Week 9)
+
+- [2026-03-21] Evaluated 300k-step training run baseline (best_agent.pt) with enhanced metrics:
+  - **Catastrophic orientation failure**: mean_roll=78.5°, mean_pitch=80.1° (nearly inverted drones)
+  - **Stability collapse**: 62% of steps violate 45° threshold, 65% ground hit rate, only 59% airborne
+  - **Formation irrelevant**: 1.566m error (meaningless until hover works)
+  - **Root cause confirmed**: Old `rew_scale_ang_vel=-0.02` was ~150x weaker than position reward (3.0), making spin penalty invisible to optimizer
+  - **Policy behavior**: Drones learned to apply aggressive moments that flip them; when upside-down, thrust pushes into ground → crashes
+  - Evaluated at 10 episodes (5000 steps total); metrics converged by step 2500
+  - Full baseline: airborne_ratio=0.587, formation_error=1.566m, mean_speed=1.921m/s, altitude_std=0.571m
+
+- [2026-03-21] Applied aggressive stability tuning based on eval baseline:
+  - `rew_scale_upright`: 2.0 → **3.0** (match position reward importance; "stay level" = "reach goal")
+  - `rew_scale_ang_vel`: -0.15 → **-0.25** (12.5x vs old -0.02; heavily penalize spinning)
+  - Rationale: 78° average tilt indicates even 2.0 uprightness was still dominated by 3.0 position reward. Matching scales ensures level flight and position tracking are equally weighted in the loss.
+  - New reward balance: `rew_scale_pos=3.0, rew_scale_upright=3.0, rew_scale_ang_vel=-0.25, rew_scale_alive=1.0, rew_scale_vel=-0.15, rew_scale_terminated=-15.0`
+  - All other settings unchanged: curriculum (80k-250k, pos_floor=0.4), L4 optimization (num_envs=128, rollouts=64), architecture (GNN + MLP value function)
+  - Next steps: Deploy to GCE L4 and train 300k steps; expect airborne_ratio > 0.9 and mean_roll/pitch < 15° if tuning successful

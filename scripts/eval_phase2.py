@@ -26,6 +26,17 @@ class EvalStats:
     ground_hit_rate_count: int = 0
     airborne_ratio_sum: float = 0.0
     airborne_ratio_count: int = 0
+    # New metrics
+    mean_roll_deg_sum: float = 0.0
+    mean_roll_deg_count: int = 0
+    mean_pitch_deg_sum: float = 0.0
+    mean_pitch_deg_count: int = 0
+    orientation_violation_rate_sum: float = 0.0
+    orientation_violation_rate_count: int = 0
+    altitude_std_sum: float = 0.0
+    altitude_std_count: int = 0
+    episode_survival_steps_sum: float = 0.0
+    episode_survival_steps_count: int = 0
 
     def update(
         self,
@@ -36,6 +47,11 @@ class EvalStats:
         mean_altitude_error: torch.Tensor,
         ground_hit_rate: torch.Tensor,
         airborne_ratio: torch.Tensor,
+        mean_roll_deg: torch.Tensor,
+        mean_pitch_deg: torch.Tensor,
+        orientation_violation_rate: torch.Tensor,
+        altitude_std: torch.Tensor,
+        episode_survival_steps: torch.Tensor,
     ) -> None:
         self.formation_error_sum += float(formation_error.item())
         self.formation_error_count += 1
@@ -49,6 +65,16 @@ class EvalStats:
         self.ground_hit_rate_count += 1
         self.airborne_ratio_sum += float(airborne_ratio.item())
         self.airborne_ratio_count += 1
+        self.mean_roll_deg_sum += float(mean_roll_deg.item())
+        self.mean_roll_deg_count += 1
+        self.mean_pitch_deg_sum += float(mean_pitch_deg.item())
+        self.mean_pitch_deg_count += 1
+        self.orientation_violation_rate_sum += float(orientation_violation_rate.item())
+        self.orientation_violation_rate_count += 1
+        self.altitude_std_sum += float(altitude_std.item())
+        self.altitude_std_count += 1
+        self.episode_survival_steps_sum += float(episode_survival_steps.item())
+        self.episode_survival_steps_count += 1
 
     def summarize(self) -> dict[str, float]:
         return {
@@ -62,6 +88,13 @@ class EvalStats:
             "ground_hit_rate": self.ground_hit_rate_sum
             / max(1, self.ground_hit_rate_count),
             "airborne_ratio": self.airborne_ratio_sum / max(1, self.airborne_ratio_count),
+            "mean_roll_deg": self.mean_roll_deg_sum / max(1, self.mean_roll_deg_count),
+            "mean_pitch_deg": self.mean_pitch_deg_sum / max(1, self.mean_pitch_deg_count),
+            "orientation_violation_rate": self.orientation_violation_rate_sum
+            / max(1, self.orientation_violation_rate_count),
+            "altitude_std_m": self.altitude_std_sum / max(1, self.altitude_std_count),
+            "mean_episode_survival_steps": self.episode_survival_steps_sum
+            / max(1, self.episode_survival_steps_count),
         }
 
 
@@ -88,6 +121,67 @@ def _pairwise_mean_abs_spacing_error(
     )
     per_env = torch.abs(dist[:, mask] - target_dist).mean(dim=1)
     return per_env.mean()
+
+
+def _compute_orientation_metrics(
+    proj_grav_b: torch.Tensor, orientation_threshold_deg: float = 45.0
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Compute roll, pitch, and orientation violation rate from projected gravity.
+
+    Args:
+        proj_grav_b: Projected gravity in body frame [num_envs, num_agents, 3].
+                     When level, z-component is -1.0.
+        orientation_threshold_deg: Threshold in degrees for violation detection.
+
+    Returns:
+        mean_roll_deg: Mean absolute roll across all steps and agents (scalar).
+        mean_pitch_deg: Mean absolute pitch across all steps and agents (scalar).
+        violation_rate: Fraction of steps where roll or pitch exceeds threshold (scalar).
+    """
+    # Extract gravity components in body frame
+    # grav_x and grav_y indicate roll/pitch; grav_z indicates how level the drone is
+    grav_x = proj_grav_b[:, :, 0]  # [num_envs, num_agents]
+    grav_y = proj_grav_b[:, :, 1]
+    grav_z = proj_grav_b[:, :, 2]
+
+    # Compute roll and pitch from gravity vector
+    # atan2(y, -z) gives roll; atan2(x, -z) gives pitch (in radians)
+    roll_rad = torch.atan2(grav_y, -grav_z)
+    pitch_rad = torch.atan2(grav_x, -grav_z)
+
+    # Convert to degrees
+    roll_deg = torch.abs(roll_rad * 180.0 / torch.pi)
+    pitch_deg = torch.abs(pitch_rad * 180.0 / torch.pi)
+
+    # Mean roll and pitch
+    mean_roll = roll_deg.mean()
+    mean_pitch = pitch_deg.mean()
+
+    # Violation rate: fraction where either roll or pitch exceeds threshold
+    threshold_rad = orientation_threshold_deg * torch.pi / 180.0
+    violations = (torch.abs(roll_rad) > threshold_rad) | (torch.abs(pitch_rad) > threshold_rad)
+    violation_rate = violations.float().mean()
+
+    return mean_roll, mean_pitch, violation_rate
+
+
+def _compute_altitude_metrics(
+    pos_w: torch.Tensor, desired_pos_w: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Compute altitude standard deviation and survival steps.
+
+    Args:
+        pos_w: Current positions [num_envs, num_agents, 3].
+        desired_pos_w: Desired positions [num_envs, num_agents, 3].
+
+    Returns:
+        altitude_std: Standard deviation of Z position across all agents (scalar).
+        mean_altitude_over_time: Average altitude (scalar).
+    """
+    altitude = pos_w[:, :, 2]  # [num_envs, num_agents]
+    altitude_std = altitude.std()
+    mean_altitude = altitude.mean()
+    return altitude_std, mean_altitude
 
 
 def main() -> None:
@@ -363,6 +457,8 @@ def main() -> None:
         stats = EvalStats()
         obs, _ = env.reset()
         steps = 0
+        altitude_history = []
+        episode_step_count = 0
 
         while simulation_app.is_running() and steps < total_steps:
             with torch.inference_mode():
@@ -415,6 +511,26 @@ def main() -> None:
                 )
                 airborne_ratio = (current_altitude > airborne_threshold).float().mean()
 
+                # New orientation metrics
+                proj_grav_b = base_env.robot.data.projected_gravity_b.view(
+                    base_env.num_envs, base_env.cfg.num_agents, 3
+                )
+                mean_roll_deg, mean_pitch_deg, orientation_violation_rate = (
+                    _compute_orientation_metrics(proj_grav_b)
+                )
+
+                # Altitude std deviation tracking
+                altitude_std, _ = _compute_altitude_metrics(pos_w, base_env._desired_pos_w)
+                altitude_history.append(current_altitude.cpu())
+
+                # Track episode survival (steps until termination)
+                episode_step_count += 1
+                if episode_step_count >= max_episode_length or ground_hit_rate > 0:
+                    episode_survival = torch.tensor(episode_step_count, dtype=torch.float32)
+                    episode_step_count = 0
+                else:
+                    episode_survival = torch.tensor(episode_step_count, dtype=torch.float32)
+
                 stats.update(
                     formation_error=formation_error,
                     separation_event_rate=separation_event_rate,
@@ -422,6 +538,11 @@ def main() -> None:
                     mean_altitude_error=mean_altitude_error,
                     ground_hit_rate=ground_hit_rate,
                     airborne_ratio=airborne_ratio,
+                    mean_roll_deg=mean_roll_deg,
+                    mean_pitch_deg=mean_pitch_deg,
+                    orientation_violation_rate=orientation_violation_rate,
+                    altitude_std=altitude_std,
+                    episode_survival_steps=episode_survival,
                 )
 
             steps += 1
@@ -435,7 +556,10 @@ def main() -> None:
                     f"mean_speed={s['mean_speed_mps']:.3f}m/s "
                     f"mean_altitude_error={s['mean_altitude_error_m']:.3f}m "
                     f"ground_hit_rate={s['ground_hit_rate']:.3f} "
-                    f"airborne_ratio={s['airborne_ratio']:.3f}"
+                    f"airborne_ratio={s['airborne_ratio']:.3f} "
+                    f"mean_roll={s['mean_roll_deg']:.1f}° "
+                    f"mean_pitch={s['mean_pitch_deg']:.1f}° "
+                    f"orientation_violation={s['orientation_violation_rate']:.3f}"
                 )
 
         summary = stats.summarize()
@@ -448,6 +572,12 @@ def main() -> None:
         print(f"mean_altitude_error_m: {summary['mean_altitude_error_m']:.6f}")
         print(f"ground_hit_rate: {summary['ground_hit_rate']:.6f}")
         print(f"airborne_ratio: {summary['airborne_ratio']:.6f}")
+        print(f"\n=== NEW: Orientation & Stability Metrics ===")
+        print(f"mean_roll_deg: {summary['mean_roll_deg']:.3f}")
+        print(f"mean_pitch_deg: {summary['mean_pitch_deg']:.3f}")
+        print(f"orientation_violation_rate: {summary['orientation_violation_rate']:.6f}")
+        print(f"altitude_std_m: {summary['altitude_std_m']:.6f}")
+        print(f"mean_episode_survival_steps: {summary['mean_episode_survival_steps']:.1f}")
 
         env.close()
 

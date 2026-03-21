@@ -151,6 +151,11 @@ import gymnasium as gym
 import skrl
 from packaging import version
 
+# Enable TF32 precision on Ada Lovelace (L4, RTX 40xx, etc.) for ~2x speedup
+import torch
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
+
 # check for minimum supported skrl version
 SKRL_VERSION = "1.4.3"
 if version.parse(skrl.__version__) < version.parse(SKRL_VERSION):

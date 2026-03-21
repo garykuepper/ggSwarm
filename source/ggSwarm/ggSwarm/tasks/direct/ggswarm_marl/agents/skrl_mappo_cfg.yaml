@@ -45,9 +45,9 @@ memory:
 # https://skrl.readthedocs.io/en/latest/api/multi_agents/mappo.html
 agent:
   class: MAPPO
-  rollouts: 32
+  rollouts: 64
   learning_epochs: 8
-  mini_batches: 4
+  mini_batches: 8
   discount_factor: 0.99
   lambda: 0.95
   learning_rate: 1.0e-04
