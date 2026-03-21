@@ -15,5 +15,5 @@ if [[ ! -d "$LOCAL_LOG_DIR" ]]; then
 fi
 
 echo "[INFO] Pushing $LOCAL_LOG_DIR to $REMOTE_PATH (excluding videos)"
-gsutil -m rsync -r -x "^videos/.*" "$LOCAL_LOG_DIR" "$REMOTE_PATH"
+gcloud storage rsync --recursive --exclude='videos/.*' "$LOCAL_LOG_DIR" "$REMOTE_PATH"
 echo "[INFO] Push complete."

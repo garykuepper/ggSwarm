@@ -47,7 +47,7 @@ push_to_gcs() {
     REMOTE_PATH="$GGSWARM_GCS_URI/logs/skrl/ggswarm_$FAMILY"
 
     echo "[INFO] Pushing $LOCAL_LOG_DIR to $REMOTE_PATH (videos excluded)..."
-    gsutil -m rsync -r -x "videos/.*" "$LOCAL_LOG_DIR" "$REMOTE_PATH"
+    gcloud storage rsync --recursive --exclude='videos/.*' "$LOCAL_LOG_DIR" "$REMOTE_PATH"
     echo "[INFO] Push complete."
 }
 

@@ -12,23 +12,17 @@ if ! command -v gcloud &> /dev/null; then
     exit 1
 fi
 
-# Check if gsutil is available
-if ! command -v gsutil &> /dev/null; then
-    echo "[ERROR] gsutil not found. Install Google Cloud SDK first."
-    exit 1
-fi
-
 # Option 1: Use the service account key if provided
 if [ -n "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
     echo "[INFO] Using existing credentials from \$GOOGLE_APPLICATION_CREDENTIALS"
-    gsutil -m rsync -r -x "videos/.*" ~/ggSwarm/logs/skrl/ggswarm_marl gs://gg-swarm-training-logs/logs/skrl/ggswarm_marl
+    gcloud storage rsync --recursive --exclude='videos/.*' ~/ggSwarm/logs/skrl/ggswarm_marl gs://gg-swarm-training-logs/logs/skrl/ggswarm_marl
     echo "[SUCCESS] Upload complete!"
     exit 0
 fi
 
 # Option 2: Try default compute service account scopes
 echo "[INFO] Attempting to use compute service account..."
-if gsutil -m rsync -r -x "videos/.*" ~/ggSwarm/logs/skrl/ggswarm_marl gs://gg-swarm-training-logs/logs/skrl/ggswarm_marl; then
+if gcloud storage rsync --recursive --exclude='videos/.*' ~/ggSwarm/logs/skrl/ggswarm_marl gs://gg-swarm-training-logs/logs/skrl/ggswarm_marl; then
     echo "[SUCCESS] Upload successful using default compute service account!"
     exit 0
 else

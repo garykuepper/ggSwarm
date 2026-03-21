@@ -52,25 +52,25 @@ fi
 LOCAL_LOG_DIR="logs/skrl/ggswarm_$FAMILY"
 REMOTE_PATH="$GGSWARM_GCS_URI/logs/skrl/ggswarm_$FAMILY"
 
-# Build gsutil rsync arguments.
-RSYNC_ARGS=("-m" "-r")
+# Build gcloud storage rsync arguments.
+RSYNC_ARGS=(--recursive)
 
 if [[ $INCLUDE_VIDEOS -eq 0 ]]; then
-    RSYNC_ARGS+=("-x" "videos/.*")
+    RSYNC_ARGS+=(--exclude='videos/.*')
 fi
 
 if [[ $DRY_RUN -eq 1 ]]; then
-    RSYNC_ARGS+=("-n")
+    RSYNC_ARGS+=(--dry-run)
     echo "[DRY-RUN] No files will be modified."
 fi
 
 # Perform action.
 if [[ "$ACTION" == "push" ]]; then
     echo "Pushing $LOCAL_LOG_DIR to $REMOTE_PATH"
-    gsutil "${RSYNC_ARGS[@]}" rsync "$LOCAL_LOG_DIR" "$REMOTE_PATH"
+    gcloud storage rsync "${RSYNC_ARGS[@]}" "$LOCAL_LOG_DIR" "$REMOTE_PATH"
     echo "Push complete."
 else
     echo "Pulling $REMOTE_PATH to $LOCAL_LOG_DIR"
-    gsutil "${RSYNC_ARGS[@]}" rsync "$REMOTE_PATH" "$LOCAL_LOG_DIR"
+    gcloud storage rsync "${RSYNC_ARGS[@]}" "$REMOTE_PATH" "$LOCAL_LOG_DIR"
     echo "Pull complete."
 fi
