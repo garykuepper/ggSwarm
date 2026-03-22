@@ -19,7 +19,7 @@ todos:
     status: completed
   - id: gce-train-assess
     content: GCE 80k train (or shorter ablation only) → pull → assess → run_history + changelog
-    status: pending
+    status: completed
 isProject: false
 ---
 
@@ -39,7 +39,7 @@ isProject: false
 | `curriculum_start_step` | 999999 (hover-only lock) |
 | `spawn_yaw_range` | 0.3 |
 
-**Still to run:** GCE 80k → pull → `hover-stability assess` → `run_history.md` row + changelog assess entry.
+**Done (2026-03-22):** GCE 80k PD2 run `2026-03-22_07-03-55_mappo_torch` → pulled → `hover-stability assess` → `run_history.md` + changelog (**FAIL**; see changelog).
 
 This file **combines** the former `phase_2a_param_tuning_5a65d416` plan into this canonical next-run plan.
 

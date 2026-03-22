@@ -174,6 +174,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, cfg:
         obs, _ = env.reset()
         total_steps = args_cli.num_episodes * max_episode_length
         steps = 0
+        ep_step = 0
+        first_ground_step: int | None = None
 
         while simulation_app.is_running() and steps < total_steps:
             with torch.inference_mode():
@@ -206,9 +208,15 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, cfg:
                 desired_altitude = base_env._desired_pos_w[:, :, 2]
                 current_altitude = pos_w[:, :, 2]
                 mean_altitude_error = torch.abs(current_altitude - desired_altitude).mean()
-                ground_hit_rate = (current_altitude < float(base_env.cfg.min_height)).any(
-                    dim=1
-                ).float().mean()
+                ground_hit_rate = (
+                    (current_altitude < float(base_env.cfg.min_height))
+                    .any(dim=1)
+                    .float()
+                    .mean()
+                )
+                ep_step += 1
+                if float(ground_hit_rate.item()) > 0.0 and first_ground_step is None:
+                    first_ground_step = ep_step
                 airborne_threshold = float(base_env.cfg.min_height) + 0.2
                 airborne_ratio = (current_altitude > airborne_threshold).float().mean()
 
@@ -221,8 +229,6 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, cfg:
 
                 altitude_std, _ = _compute_altitude_metrics(pos_w, base_env._desired_pos_w)
 
-                episode_survival = torch.tensor(steps + 1, dtype=torch.float32)
-
                 stats.update(
                     formation_error=formation_error,
                     separation_event_rate=separation_event_rate,
@@ -234,10 +240,16 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, cfg:
                     mean_pitch_deg=mean_pitch_deg,
                     orientation_violation_rate=orientation_violation_rate,
                     altitude_std=altitude_std,
-                    episode_survival_steps=episode_survival,
                 )
 
             steps += 1
+            if ep_step >= max_episode_length:
+                survival = float(
+                    first_ground_step if first_ground_step is not None else ep_step
+                )
+                stats.record_episode_survival(survival)
+                ep_step = 0
+                first_ground_step = None
 
         summary = stats.summarize()
         results.append({
@@ -252,6 +264,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, cfg:
             "mean_pitch_deg": summary["mean_pitch_deg"],
             "orientation_violation_rate": summary["orientation_violation_rate"],
             "altitude_std_m": summary["altitude_std_m"],
+            "survival_steps": summary["survival_steps"],
         })
 
         print(f"  ✓ Formation error: {summary['mean_formation_error_m']:.4f}m")

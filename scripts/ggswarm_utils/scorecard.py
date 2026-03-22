@@ -48,9 +48,10 @@ SCORECARD_METRICS: list[str] = [
 # (no upright/alive/terminated terms). Hints must not reference retired knobs.
 DECISION_HINTS: dict[tuple[str, str], str] = {
     ("FAIL", "survival_steps"): (
-        "Short survival — check TensorBoard for early entropy collapse; tune hover "
-        "reward scales (pos / vel / ang_vel) or PD gains (kp_att, max_moment); "
-        "raw-torque-era rew_scale_terminated tweaks do not apply."
+        "Short survival before first batch ground hit — check TensorBoard "
+        "(rew_low_clearance, low_clearance_frac, mean_world_z); tune "
+        "rew_scale_low_clearance / rew_scale_pos / vel penalties or PD (kp_att, max_moment). "
+        "Ignore pre-2026-03-22 survival numbers in run_history (collector bug)."
     ),
     ("FAIL", "airborne_ratio"): (
         "Low time above safe altitude — tune thrust/altitude: thrust_to_weight, "
@@ -225,6 +226,10 @@ def write_report(
         f"| Recommended budget | {rec_budget:,} steps |",
         "",
         "## Scorecard",
+        "",
+        "`survival_steps` = mean over eval episodes of steps until the first batch ground hit "
+        "(`z < min_height`) or the full horizon if none. (PD1/PD2 `run_history` rows used a "
+        "broken collector — see `docs/ops/post_train_analysis.md`.)",
         "",
         "| Metric | Value | Verdict | Threshold |",
         "| :--- | :--- | :--- | :--- |",

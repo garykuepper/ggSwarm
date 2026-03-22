@@ -103,6 +103,11 @@ python scripts/run.py hover-stability assess --run_dir logs/skrl/ggswarm_marl/<r
 
 Optional: `--video_length`, `--rendering_mode`, `--video_codec`, etc. (same semantics as `play --video`).
 
+### Phase 2A diagnostics
+
+TensorBoard checklist, zero-action baseline notes, complexity ladder (single-drone vs swarm),
+checkpoint progression, and train-length guidance: **[`docs/ops/phase2a_diagnostics.md`](phase2a_diagnostics.md)**.
+
 ### Default Progress and ETA Reporting
 
 Training progress reporting is enabled by default for both `hover train` and

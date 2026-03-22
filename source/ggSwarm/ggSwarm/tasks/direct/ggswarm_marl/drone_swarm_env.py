@@ -384,6 +384,8 @@ class GGSwarmMarlEnv(DirectMARLEnv):
             min_separation_dist=self.cfg.min_separation_dist,
             min_height=self.cfg.min_height,
             max_height=self.cfg.max_height,
+            rew_scale_low_clearance=self.cfg.rew_scale_low_clearance,
+            low_clearance_margin_m=self.cfg.low_clearance_margin_m,
         )
 
         # shape: [num_envs, num_agents]
@@ -407,6 +409,9 @@ class GGSwarmMarlEnv(DirectMARLEnv):
         )
 
         # Log per-term rewards for TensorBoard visualization
+        # Telemetry for TB: clearance fraction matches Phase2Collector airborne band.
+        low_clearance_z = self.cfg.min_height + self.cfg.low_clearance_margin_m
+        low_clearance_frac = (pos_w[:, :, 2] < low_clearance_z).float().mean().item()
         self.extras["log"] = {
             "rew_pos": terms_dict["rew_pos"].mean().item(),
             "rew_formation": terms_dict["rew_formation"].mean().item(),
@@ -417,6 +422,9 @@ class GGSwarmMarlEnv(DirectMARLEnv):
             "rew_ang_vel": terms_dict["rew_ang_vel"].mean().item(),
             "rew_alive": terms_dict["rew_alive"].mean().item(),
             "rew_terminated": terms_dict["rew_terminated"].mean().item(),
+            "rew_low_clearance": terms_dict["rew_low_clearance"].mean().item(),
+            "mean_world_z": pos_w[:, :, 2].mean().item(),
+            "low_clearance_frac": low_clearance_frac,
             "curriculum_alpha": alpha,
         }
 

@@ -27,6 +27,19 @@ GGSWARM_GCS_URI=gs://gg-swarm-training-logs nohup bash scripts/cloud/train_and_p
 
 ## Deploy + Launch Training (Remote)
 
+**Windows (PowerShell, repo root):** one command does `git push`, VM `git pull`, and detached `train_and_push.sh` (GCS URI inlined on the remote):
+
+```powershell
+.\scripts\cloud\gce_train_launch.ps1
+```
+
+Defaults: `hover-stability train --headless --max_iterations 80000`. Override training args after the script name; skip push if you already pushed:
+
+```powershell
+.\scripts\cloud\gce_train_launch.ps1 hover-stability train --headless --max_iterations 92000
+.\scripts\cloud\gce_train_launch.ps1 -SkipGitPush phase2 train --headless --max_iterations 120000
+```
+
 ```bash
 # 1. Push local code changes
 git push origin main

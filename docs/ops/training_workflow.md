@@ -8,6 +8,9 @@ This document describes the iterative workflow for training, evaluating, and imp
 >
 > **Cross-run scorecard:** [`docs/status/run_history.md`](../status/run_history.md) —
 > fill in a row there after every run before changing any config (Rule 23).
+>
+> **Phase 2A diagnostics (TensorBoard, baselines, train-length policy):**
+> [`docs/ops/phase2a_diagnostics.md`](phase2a_diagnostics.md).
 
 ---
 
@@ -29,6 +32,24 @@ This document describes the iterative workflow for training, evaluating, and imp
 ## Step 0: Deploy Updated Config to VM
 
 Before launching a new training run, ensure the latest code (with any reward tuning, curriculum changes, or L4 optimizations) is deployed to the VM.
+
+### One-shot deploy + train (Windows)
+
+From the repo root in PowerShell (runs `git push`, VM `git pull`, then `nohup` + `train_and_push.sh`):
+
+```powershell
+.\scripts\cloud\gce_train_launch.ps1
+```
+
+Training arguments are read from `$args` (everything after the named switches) so the first token is never bound to `-Branch` by mistake.
+
+Phase 2 formation example (after you already pushed):
+
+```powershell
+.\scripts\cloud\gce_train_launch.ps1 -SkipGitPush phase2 train --headless --max_iterations 120000
+```
+
+Logs on the VM: `~/train_ggswarm_<timestamp>.log`. Results still sync via `train_and_push.sh` to `gs://gg-swarm-training-logs`.
 
 ### Resolve Git Conflicts on VM
 
@@ -60,7 +81,7 @@ After pulling, confirm critical parameters are present:
 
 ```bash
 # Phase 2A (hover-stability): PD + 3-term hover — upright/alive/terminated are 0 in GGSwarmMarlHoverStabilityCfg
-grep -E "thrust_to_weight|kp_att|max_moment|rew_scale_pos|rew_scale_vel|curriculum_start_step" \
+grep -E "thrust_to_weight|kp_att|max_moment|rew_scale_pos|rew_scale_vel|rew_scale_low_clearance|low_clearance_margin_m|curriculum_start_step" \
   source/ggSwarm/ggSwarm/tasks/direct/ggswarm_marl/drone_swarm_env_cfg.py
 
 # Parallel envs: GGSwarmMarlHoverStabilityCfg uses num_envs=512; base GGSwarmMarlEnvCfg uses 128
@@ -81,7 +102,7 @@ Expected values (align with **Rule 22** smoke checklist for your active task):
 **Phase 2A (`hover-stability train`, `GGSwarmMarlHoverStabilityCfg`):**
 
 - `thrust_to_weight: float = 2.0`, `kp_att` ~0.045, `max_moment` ~0.03, `curriculum_start_step: int = 999999`
-- `rew_scale_pos` ~18.0, `rew_scale_vel` / `rew_scale_ang_vel` per cfg; `rew_scale_upright` **0.0**
+- `rew_scale_pos` ~18.0, `rew_scale_vel` / `rew_scale_ang_vel` per cfg; `rew_scale_low_clearance` non-zero (MDP aligned with airborne gate); `low_clearance_margin_m` ~0.2; `rew_scale_upright` **0.0**
 - `num_envs=512` inside `GGSwarmMarlHoverStabilityCfg.scene`
 
 **Phase 2B (`phase2b train`, `GGSwarmMarlFormationCfg`):**

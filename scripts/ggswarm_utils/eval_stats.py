@@ -18,7 +18,9 @@ import torch
 class EvalStats:
     """Running averages for Phase 2 / hover-stability evaluation metrics.
 
-    Call update() once per simulation step, then summarize() at the end.
+    Call update() once per simulation step for per-step metrics.
+    Call record_episode_survival() once per completed eval episode for
+    ``survival_steps`` (mean time until first batch ground hit or full horizon).
     """
 
     formation_error_sum: float = 0.0
@@ -57,9 +59,14 @@ class EvalStats:
         mean_pitch_deg: torch.Tensor,
         orientation_violation_rate: torch.Tensor,
         altitude_std: torch.Tensor,
-        episode_survival_steps: torch.Tensor,
+        episode_survival_steps: torch.Tensor | None = None,
     ) -> None:
-        """Accumulate one step of metrics."""
+        """Accumulate one step of per-step metrics.
+
+        Args:
+            episode_survival_steps: Deprecated path; prefer record_episode_survival().
+                When omitted, survival aggregates are unchanged (correct behaviour).
+        """
         self.formation_error_sum += float(formation_error.item())
         self.formation_error_count += 1
         self.separation_event_sum += float(separation_event_rate.item())
@@ -80,7 +87,13 @@ class EvalStats:
         self.orientation_violation_rate_count += 1
         self.altitude_std_sum += float(altitude_std.item())
         self.altitude_std_count += 1
-        self.episode_survival_steps_sum += float(episode_survival_steps.item())
+        if episode_survival_steps is not None:
+            self.episode_survival_steps_sum += float(episode_survival_steps.item())
+            self.episode_survival_steps_count += 1
+
+    def record_episode_survival(self, steps: float) -> None:
+        """Record steps-until-first-ground-hit (or full horizon) for one eval episode."""
+        self.episode_survival_steps_sum += float(steps)
         self.episode_survival_steps_count += 1
 
     def summarize(self) -> dict[str, float]:

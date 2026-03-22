@@ -43,6 +43,9 @@ class MarlRewardParams:
     # Termination bounds
     min_height: float
     max_height: float
+    # Penalty depth below (min_height + low_clearance_margin_m); 0 scale disables.
+    rew_scale_low_clearance: float
+    low_clearance_margin_m: float
 
 
 def compute_curriculum_alpha(
@@ -234,6 +237,12 @@ def compute_marl_rewards(
     is_terminated = (pos_w[:, :, 2] < params.min_height) | (pos_w[:, :, 2] > params.max_height)
     rew_terminated = is_terminated.float() * params.rew_scale_terminated
 
+    # Low-clearance shaping: penalize time spent below eval-aligned safe altitude.
+    # shape: [num_envs, num_agents]
+    clearance_z = params.min_height + params.low_clearance_margin_m
+    depth_below_clearance = torch.clamp(clearance_z - pos_w[:, :, 2], min=0.0)
+    rew_low_clearance = params.rew_scale_low_clearance * depth_below_clearance
+
     total_rewards = (
         rew_pos
         + rew_formation
@@ -244,6 +253,7 @@ def compute_marl_rewards(
         + rew_ang_vel
         + rew_alive
         + rew_terminated
+        + rew_low_clearance
     )
 
     # shape: [num_envs, num_agents]
@@ -261,6 +271,7 @@ def compute_marl_rewards(
             "rew_ang_vel": rew_ang_vel,
             "rew_alive": rew_alive,
             "rew_terminated": rew_terminated,
+            "rew_low_clearance": rew_low_clearance,
         }
         return total_rewards, terms_dict
     

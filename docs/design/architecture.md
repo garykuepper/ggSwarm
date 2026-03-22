@@ -1,4 +1,4 @@
-﻿# Architecture: ggSwarm Decentralized Drone Coordination
+# Architecture: ggSwarm Decentralized Drone Coordination
 
 ## 1. Overview
 
@@ -84,7 +84,9 @@ observation/action interfaces but disables formation objectives.
 **Phase 2 sub-phases:** Phase 2 is split into Phase A (hover-stability, formation OFF,
 `Template-GGSwarm-Marl-HoverStability-v0`) and Phase B (formation resume,
 `Template-GGSwarm-Marl-Formation-v0`). Both use the same 12-dim obs space and
-GATv2 policy — only the reward scales and curriculum config differ.
+GATv2 policy — only the reward scales and curriculum config differ. Phase 2A adds optional
+**low-clearance shaping** (`rew_scale_low_clearance`, `low_clearance_margin_m` in cfg) so training
+penalizes time spent below the same altitude band used in eval (`min_height + margin`).
 Phase B resumes the Phase A `best_agent.pt` checkpoint via `--checkpoint`.
 Phase C (perturbation) is a future placeholder — see `GGSwarmMarlFormationCfg`.
 

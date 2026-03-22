@@ -24,7 +24,8 @@ class Phase2Collector:
     """PhaseCollector for Phase 2 formation / hover-stability tasks.
 
     Collects formation error, separation events, speed, altitude error,
-    orientation metrics, and episode survival steps.
+    orientation metrics, and **episode survival** (mean steps until first batch
+    ground hit per eval episode, or full horizon — recorded in on_episode_end only).
 
     Args:
         airborne_height_margin: Extra height (m) above min_height to count
@@ -42,7 +43,8 @@ class Phase2Collector:
         self._airborne_margin = airborne_height_margin
         self._log_interval_frac = log_interval_frac
         self._episode_step_count: int = 0
-        self._total_steps: int = 0  # updated on first on_step call
+        # First simulation step index (1-based within episode) with any env ground hit.
+        self._first_ground_hit_step: int | None = None
 
     def on_step(
         self,
@@ -112,17 +114,12 @@ class Phase2Collector:
         # Altitude std deviation
         altitude_std, _ = compute_altitude_metrics(pos_w, base_env._desired_pos_w)  # type: ignore[attr-defined]
 
-        # Episode survival — number of steps until ground hit or episode end
         self._episode_step_count += 1
-        max_ep_len = getattr(base_env, "max_episode_length", 1)
-        if self._episode_step_count >= max_ep_len or float(ground_hit_rate.item()) > 0:
-            episode_survival = torch.tensor(
-                float(self._episode_step_count), dtype=torch.float32
-            )
-        else:
-            episode_survival = torch.tensor(
-                float(self._episode_step_count), dtype=torch.float32
-            )
+        if (
+            float(ground_hit_rate.item()) > 0.0
+            and self._first_ground_hit_step is None
+        ):
+            self._first_ground_hit_step = self._episode_step_count
 
         self._stats.update(
             formation_error=formation_error,
@@ -135,12 +132,19 @@ class Phase2Collector:
             mean_pitch_deg=mean_pitch_deg,
             orientation_violation_rate=orientation_violation_rate,
             altitude_std=altitude_std,
-            episode_survival_steps=episode_survival,
         )
 
     def on_episode_end(self, episode_num: int) -> None:
-        """Reset episode step counter at each episode boundary."""
+        """Finalize episode survival metric and reset per-episode counters."""
+        if self._episode_step_count > 0:
+            survival = float(
+                self._first_ground_hit_step
+                if self._first_ground_hit_step is not None
+                else self._episode_step_count
+            )
+            self._stats.record_episode_survival(survival)
         self._episode_step_count = 0
+        self._first_ground_hit_step = None
 
     def summarize(self) -> dict[str, float]:
         """Return mean Phase 2 metrics over all accumulated steps."""

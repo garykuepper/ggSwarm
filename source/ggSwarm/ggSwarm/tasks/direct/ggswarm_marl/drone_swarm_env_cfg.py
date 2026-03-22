@@ -114,6 +114,10 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     # reset states/conditions
     min_height = 0.1
     max_height = 3.0
+    # Shapes reward below (min_height + low_clearance_margin_m); 0 = disabled (Phase 2B default).
+    rew_scale_low_clearance: float = 0.0
+    # Metres above crash floor; align with eval airborne margin (Phase2Collector default 0.2).
+    low_clearance_margin_m: float = 0.2
     # Smaller spawn radius so drones start close to goals for cleaner gradients.
     spawn_dist = 0.5  # max distance from origin for spawning drones
     # Z range for random spawn altitude. These values are used directly in _reset_idx;
@@ -203,9 +207,8 @@ class GGSwarmMarlHoverStabilityCfg(GGSwarmMarlEnvCfg):
     curriculum_end_step: int = 1000000
     curriculum_pos_floor: float = 1.0
 
-    # Simplified 3-term reward matching Isaac Lab Isaac-Quadcopter-Direct-v0.
+    # Simplified reward: Gaussian distance (exp(-dist/sigma)), vel/ang_vel penalties, low-clearance shaping.
     # The PD controller handles stability so the reward can be clean and sparse.
-    # rew_scale_pos * step_dt * (1 - tanh(dist/0.8)) per step
     rew_scale_pos: float = 18.0
     # rew_scale_vel * step_dt * sum(square(lin_vel_b)) per step
     rew_scale_vel: float = -0.05
@@ -216,6 +219,8 @@ class GGSwarmMarlHoverStabilityCfg(GGSwarmMarlEnvCfg):
     rew_scale_upright: float = 0.0
     rew_scale_alive: float = 0.0
     rew_scale_terminated: float = 0.0
+    # Penalty per metre below (min_height + low_clearance_margin_m); aligns MDP with scorecard airborne gate.
+    rew_scale_low_clearance: float = -8.0
 
     # Moderate spawn yaw; PD controller recovers from wider perturbations
     spawn_yaw_range: float = 0.3  # ± rad

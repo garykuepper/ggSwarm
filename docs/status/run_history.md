@@ -28,6 +28,11 @@ or relaunching (Rule 23). Full assessment workflow: [`docs/ops/post_train_analys
 | Run | Timestamp | Phase | survival\_steps | airborne\_ratio | ground\_hit\_rate | mean\_roll\_deg | orientation\_viol | Verdict |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | Run PD1 | 2026-03-22_04-32-04 | Phase 2A | 250.5 | 0.542 | 0.815 | 22.2° | 0.219 | FAIL |
+| Run PD2 | 2026-03-22_07-03-55 | Phase 2A | 250.5 | 0.571 | 0.723 | 24.6° | 0.296 | FAIL |
+
+> **`survival_steps` for Run PD1 / Run PD2:** these values are **artifacts of a broken metric**
+> (pre-2026-03-22 `Phase2Collector`). They are **not** comparable to `survival_steps` from assess runs
+> after the fix. See [`post_train_analysis.md`](../ops/post_train_analysis.md) § Metric definitions.
 
 ---
 
@@ -38,7 +43,7 @@ or relaunching (Rule 23). Full assessment workflow: [`docs/ops/post_train_analys
 | `Run` | Sequential run label within the phase | e.g. Run A1, Run B1 |
 | `Timestamp` | Run directory timestamp prefix | `YYYY-MM-DD_HH-MM-SS` |
 | `Phase` | Phase 2 sub-phase this run belongs to | `Phase 2A` / `Phase 2B` / `Phase 2C` |
-| `survival_steps` | Mean episode steps before ground hit or termination | steps (higher = better; gate: > 500) |
+| `survival_steps` | Mean over eval episodes: steps until first batch ground hit (`z < min_height`) or full horizon | steps (higher = better; gate: > 500) |
 | `airborne_ratio` | Fraction of agent-steps where altitude > `min_height + 0.2 m` | 0–1 (higher = better; gate: > 0.9) |
 | `ground_hit_rate` | Fraction of env-steps where any agent is below `min_height` | 0–1 (lower = better; gate: < 0.05) |
 | `mean_roll_deg` | Mean absolute roll across all agents and steps | degrees (lower = better; gate: < 15°) |

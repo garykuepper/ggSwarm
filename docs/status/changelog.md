@@ -256,3 +256,24 @@ This document tracks major technical changes and milestone completions for each 
   - **Base `GGSwarmMarlEnvCfg`:** `thrust_to_weight` **1.9 → 2.0** (neutral collective matches documented hover: `T/W × 0.5 = 1.0`); `kp_att` **0.03 → 0.045**; `max_moment` **0.02 → 0.03** (`kd_att` unchanged at 0.005 — raise if smoke shows oscillation).
   - **`GGSwarmMarlHoverStabilityCfg`:** `rew_scale_pos` **15.0 → 18.0** (stronger 3D goal signal, including spawn altitude).
   - **Rationale:** Prioritize vertical authority and faster attitude tracking under load; no `rew_scale_upright` / formation changes (Phase 2A scope). Docs: `training_workflow.md` Step 0 grep aligned to PD + hover; `post_train_analysis.md` Phase 2A matrix rows aligned to PD + 3-term reward; `phase2_brain_development.md` footnote on `mean_formation_error_m` in 2A.
+
+## Phase 2A: Run PD2 Assessment (2026-03-22)
+
+- **Run dir:** `logs/skrl/ggswarm_marl/2026-03-22_07-03-55_mappo_torch`
+- **Config class:** `GGSwarmMarlHoverStabilityCfg` — commit `5bb33cf` (PD2 bundle: `thrust_to_weight=2.0`, `kp_att=0.045`, `max_moment=0.03`, `rew_scale_pos=18.0`)
+- **Convergence:** entropy collapse not detected | peak reward **14925** @ step **53,000** | final **10721** @ step **80,000** (drawdown vs peak) | recommended budget **92k** steps
+- **Scorecard** (`best_agent.pt`, 5 episodes, hover-stability assess):
+  - `survival_steps=250.5` (**invalid metric** — pre-fix collector artifact; see `post_train_analysis.md` / `run_history.md` footnote) | `airborne_ratio=0.571` | `ground_hit_rate=0.723`
+  - `mean_roll_deg=24.6°` | `orientation_violation_rate=0.296` | `mean_formation_error_m=5.34` (informational; not gated in Phase 2A)
+  - **Verdict: FAIL** (scorecard overall FAIL; interpret gates on `airborne_ratio` / `ground_hit_rate` / `mean_roll_deg` — not legacy `survival_steps`)
+- **Vs Run PD1:** `airborne_ratio` ↑ (0.542 → 0.571), `ground_hit_rate` ↓ (0.815 → 0.723) — altitude proxy improved; `mean_roll_deg` and `orientation_violation_rate` slightly worse (22.2° → 24.6°, 0.219 → 0.296).
+- **Decision: FAIL** — do not advance to Phase 2B. PD2 moved vertical metrics but Phase 2A gates are still far from pass.
+- **Next action:** (1) Inspect TensorBoard for the 53k→80k reward drawdown (noise vs regression). (2) If curves justify it, **90k–100k** hover-stability rerun before further reward surgery. (3) If another config pass is needed, stay in 3-term + PD space: e.g. small `rew_scale_vel` / `rew_scale_ang_vel` nudge or incremental PD (`kd_att` if oscillation, else bounded `max_moment` / `kp_att`); **do not** re-enable `rew_scale_upright` without an explicit design change and changelog entry.
+
+## Phase 2A: PD3 prep — survival metric fix + low-clearance shaping (2026-03-22)
+
+- [2026-03-22] **`survival_steps` assess fix:** `Phase2Collector` now records survival **once per eval episode** in `on_episode_end`: first step (1-based) where batch `ground_hit_rate > 0`, else full horizon. `EvalStats.update()` no longer ingests per-step survival; use `record_episode_survival()`. `scripts/analyze_checkpoints.py` uses the same episode boundary logic. Tests: `tests/unit/test_ggswarm_utils.py` (`TestPhase2CollectorSurvival`), `tests/unit/test_contract_logic.py`.
+- [2026-03-22] **Low-clearance MDP alignment:** `MarlRewardParams` / `compute_marl_rewards` add `rew_low_clearance` from `rew_scale_low_clearance` × depth below `(min_height + low_clearance_margin_m)`. Base `GGSwarmMarlEnvCfg`: `rew_scale_low_clearance=0.0`, `low_clearance_margin_m=0.2`. `GGSwarmMarlHoverStabilityCfg`: `rew_scale_low_clearance=-8.0`. **Rationale:** penalise flight in the dead band between crash floor and eval “airborne” threshold.
+- [2026-03-22] **TensorBoard telemetry:** `extras["log"]` adds `rew_low_clearance`, `mean_world_z`, `low_clearance_frac`.
+- [2026-03-22] **Docs / rules:** `docs/ops/phase2a_diagnostics.md` (TB, baselines, ladder, train-length policy); `post_train_analysis.md` metric definitions; `run_history.md` footnote for PD1/PD2 survival; `training_workflow.md`, `commands.md`, `architecture.md`; `.cursor/rules/project-rules.mdc` (Rule 18 `attitude_controller.py`, Rule 22 hover table, inner-loop SHOULD); `scorecard.py` assess report note + FAIL hint.
+- **Next:** Rule 22 smoke → GCE `hover-stability train` (≥80k) → pull → assess → append **`run_history.md`** with **post-fix** `survival_steps`.

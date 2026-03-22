@@ -8,6 +8,30 @@ the markdown report in a single command.
 Cross-run scorecard history: **[`docs/status/run_history.md`](../status/run_history.md)** — fill in a row
 there before changing any config (Rule 23).
 
+**Diagnostics playbook (TensorBoard, baselines, train-length policy):**
+[`phase2a_diagnostics.md`](phase2a_diagnostics.md).
+
+---
+
+## Metric definitions (Phase 2 eval / assess)
+
+### `survival_steps`
+
+**Current definition (assess / `Phase2Collector`, fixed 2026-03-22):** mean over **eval episodes** of the
+step index (1-based within the episode) at which the **batch** first shows any ground contact
+(`z < cfg.min_height` for any agent in any parallel env), **or** the full episode horizon if none.
+
+**Historical note:** PD-era rows **Run PD1** and **Run PD2** in [`run_history.md`](../status/run_history.md) list
+`survival_steps ≈ 250.5` because the collector incorrectly averaged a monotonic step counter every
+simulation step (always near `(max_episode_length + 1) / 2` for 500-step episodes). **Do not compare**
+those numbers to post-fix assess runs.
+
+### Training telemetry (TensorBoard)
+
+Logged from `GGSwarmMarlEnv` (`extras["log"]`): `mean_world_z`, `low_clearance_frac` (fraction of agents
+with `z < min_height + low_clearance_margin_m`), and `rew_low_clearance` when the low-clearance scale is
+non-zero (Phase 2A hover-stability).
+
 ---
 
 ## Phase 2A (hover-stability) — Post-Training Steps
