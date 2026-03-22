@@ -134,10 +134,28 @@ def _add_train_args(p: argparse.ArgumentParser) -> None:
     """Common arguments for all train subparsers."""
     _add_common_sim_args(p)
     p.add_argument("--max_iterations", type=int, default=None)
+    p.add_argument(
+        "--action_telemetry_steps",
+        type=int,
+        default=None,
+        help=(
+            "Forward to train.py: log act_clamp / moment telemetry in TB for first N env steps "
+            "(local diag only; omit on GCE)."
+        ),
+    )
     p.add_argument("--no_progress", action="store_true", default=False)
     p.add_argument("--progress_interval_s", type=float, default=10.0)
     p.add_argument("--eta_window_s", type=float, default=120.0)
     p.add_argument("--checkpoint", type=str, default=None)
+    p.add_argument(
+        "--gnn",
+        action="store_true",
+        default=False,
+        help=(
+            "Forward --gnn to train.py. Hover-stability / phase2 already default to GNN "
+            "(this flag is a no-op then); use for clarity or with tasks that default to MLP."
+        ),
+    )
     p.add_argument("--no_gnn", action="store_true", default=False)
 
 
@@ -159,6 +177,12 @@ def _add_play_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--video_preset", type=str, default=None)
     p.add_argument("--video_ffmpeg_params", type=str, default=None)
     p.add_argument("--hover_debug", action="store_true", default=False)
+    p.add_argument(
+        "--gnn",
+        action="store_true",
+        default=False,
+        help="Forward --gnn to play.py (default-on families: no-op unless combined with --no_gnn).",
+    )
     p.add_argument("--no_gnn", action="store_true", default=False)
 
 

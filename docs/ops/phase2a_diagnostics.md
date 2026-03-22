@@ -3,6 +3,10 @@
 Operational checklist for hover-stability tuning (PD inner loop + MAPPO/GNN).
 Complements [`post_train_analysis.md`](post_train_analysis.md) and
 [`training_workflow.md`](training_workflow.md).
+See also [`pd_authority_tuning.md`](pd_authority_tuning.md) for `max_moment` / gain sweeps
+and `action_telemetry_max_env_steps` (TensorBoard diagnostics).
+
+PD5 Rule 22 smoke + field table: [`pd5_rule22_checklist.md`](pd5_rule22_checklist.md).
 
 ## 1. TensorBoard autopsy after each pull
 

@@ -51,6 +51,7 @@ def compute_attitude_control(
     params: AttitudeControllerParams,
     thrust_buf: torch.Tensor,
     moment_buf: torch.Tensor,
+    moment_pre_clamp_buf: torch.Tensor | None = None,
 ) -> None:
     """Compute thrust and moments from attitude commands, writing into pre-allocated buffers.
 
@@ -71,6 +72,9 @@ def compute_attitude_control(
         params: Controller gains (``AttitudeControllerParams``).
         thrust_buf: Pre-allocated output buffer, shape ``[N, 1, 3]``. Written in-place.
         moment_buf: Pre-allocated output buffer, shape ``[N, 1, 3]``. Written in-place.
+        moment_pre_clamp_buf: Optional buffer of the same shape as ``moment_buf``.
+            When provided, unclamped roll/pitch/yaw moments are written here before
+            ``max_moment`` saturation (telemetry / PD authority analysis).
     """
     # shape: [N]
     thrust_val = (actions[:, 0] + 1.0) * 0.5  # map [-1,1] -> [0,1]; 0 -> hover
@@ -105,6 +109,12 @@ def compute_attitude_control(
     # Write thrust into pre-allocated buffer (Z axis in body frame)
     thrust_buf.zero_()
     thrust_buf[:, 0, 2] = total_thrust
+
+    # Optional: record commanded moments before saturation (shape: [N, 1, 3])
+    if moment_pre_clamp_buf is not None:
+        moment_pre_clamp_buf[:, 0, 0] = moment_roll
+        moment_pre_clamp_buf[:, 0, 1] = moment_pitch
+        moment_pre_clamp_buf[:, 0, 2] = moment_yaw
 
     # Write moments into pre-allocated buffer; clamp to prevent runaway
     moment_buf[:, 0, 0] = moment_roll.clamp(-params.max_moment, params.max_moment)

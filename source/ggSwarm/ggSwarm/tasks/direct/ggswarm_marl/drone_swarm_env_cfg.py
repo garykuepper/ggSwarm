@@ -79,6 +79,14 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     # Moment output clamp (Nm). Prevents runaway torques at episode start.
     max_moment: float = 0.03
 
+    # When > 0, log raw vs clamped action stats and PD moment saturation to extras["log"]
+    # for the first N env steps (TensorBoard). 0 = disabled (default).
+    action_telemetry_max_env_steps: int = 0
+
+    # Use ``compute_stable_hover_rewards`` (tanh position, squared vel, dt-scaled) instead
+    # of ``compute_marl_rewards``. Phase 2A hover-stability enables this; formation does not.
+    use_stable_hover_rewards: bool = False
+
     graph_connectivity_radius: float = 2.0  # (metres) for L2 adjacency matrix
     # Tighter yaw range (0.1 vs 0.3) keeps drones more level at spawn, reducing early tumble pressure.
     spawn_yaw_range: float = 0.1  # ± range for random yaw (rad)
@@ -92,13 +100,12 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     )
 
     # reward scales (Phase 2B formation training defaults)
-    # The PD attitude controller provides inherent stability so position reward
-    # alone is sufficient to shape hover behaviour. The upright/alive/terminated
-    # terms remain available at 0.0 for optional use; they are re-enabled in
-    # subconfigs only when needed (e.g. formation training).
-    rew_scale_pos: float = 15.0          # tanh-mapped, step_dt scaled (Isaac Lab style)
-    rew_scale_vel: float = -0.05         # squared lin vel penalty, step_dt scaled
-    rew_scale_ang_vel: float = -0.01     # squared ang vel penalty, step_dt scaled
+    # Formation training uses ``compute_marl_rewards`` (Gaussian position, L2 vel norms).
+    # Phase 2A hover-stability sets ``use_stable_hover_rewards=True`` for tanh + squared
+    # vel terms with ``step_dt`` scaling (Isaac-Quadcopter-Direct-v0 style).
+    rew_scale_pos: float = 15.0          # marl: exp(-dist/sigma); stable-hover: tanh, dt-scaled
+    rew_scale_vel: float = -0.05         # marl: L2 norm; stable-hover: squared L2, dt-scaled
+    rew_scale_ang_vel: float = -0.01     # marl: L2 norm; stable-hover: squared L2, dt-scaled
     rew_scale_alive: float = 0.0         # disabled; PD controller makes alive bonus unnecessary
     rew_scale_terminated: float = 0.0    # disabled; dones handled by height bounds
     rew_scale_upright: float = 0.0       # disabled; PD controller maintains upright
@@ -178,17 +185,16 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
 
 @configclass
 class GGSwarmMarlHoverStabilityCfg(GGSwarmMarlEnvCfg):
-    """Hover-stability training mode: PD attitude controller + simplified Isaac Lab rewards.
+    """Hover-stability training mode: PD attitude controller + Isaac-style stable hover rewards.
 
     Use task id ``Template-GGSwarm-Marl-HoverStability-v0``.
     Compatible with Phase 2 GNN policy (same 12-dim obs space).
 
-    The inner-loop PD controller (kp_att/kd_att/kp_yaw) keeps drones stable even
-    with random policy actions, so the reward can be minimal — matching the 3-term
-    structure from Isaac Lab's Isaac-Quadcopter-Direct-v0 which converges reliably:
-      - distance-to-goal (tanh-mapped, step_dt scaled)
-      - linear velocity penalty (squared)
-      - angular velocity penalty (squared)
+    Rewards are computed via ``compute_stable_hover_rewards`` (``use_stable_hover_rewards``)
+    — tanh position, squared velocity penalties, ``step_dt`` scaling — plus optional
+    low-clearance shaping (``rew_scale_low_clearance``) for scorecard alignment.
+
+    The inner-loop PD controller (kp_att/kd_att/kp_yaw) tracks policy attitude setpoints.
 
     Two-phase training strategy:
     - Phase A: train with this config (80k steps); target survival_steps > 500,
@@ -202,13 +208,16 @@ class GGSwarmMarlHoverStabilityCfg(GGSwarmMarlEnvCfg):
     rew_scale_cohesion: float = 0.0
     rew_scale_separation: float = 0.0
 
+    # Isaac-Quadcopter-Direct-v0 style rewards (see ``contract_logic.compute_stable_hover_rewards``).
+    use_stable_hover_rewards: bool = True
+
     # Lock curriculum: hover signal at 100%, formation at 0% for full run
     curriculum_start_step: int = 999999
     curriculum_end_step: int = 1000000
     curriculum_pos_floor: float = 1.0
 
-    # Simplified reward: Gaussian distance (exp(-dist/sigma)), vel/ang_vel penalties, low-clearance shaping.
-    # The PD controller handles stability so the reward can be clean and sparse.
+    # Stable-hover reward: tanh distance (dt-scaled), squared vel/ang_vel penalties (dt-scaled),
+    # plus low-clearance shaping (see ``compute_stable_hover_rewards``).
     rew_scale_pos: float = 18.0
     # rew_scale_vel * step_dt * sum(square(lin_vel_b)) per step (PD4: slightly stronger damping).
     rew_scale_vel: float = -0.055

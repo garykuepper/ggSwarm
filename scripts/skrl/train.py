@@ -119,6 +119,16 @@ parser.add_argument(
     default=False,
     help="Use the custom GATv2 GNN policy instead of the default MLP.",
 )
+parser.add_argument(
+    "--action_telemetry_steps",
+    type=int,
+    default=None,
+    help=(
+        "If set, overrides env_cfg.action_telemetry_max_env_steps for TensorBoard "
+        "diagnostics (first N env steps). Use for short local runs; omit for GCE "
+        "(cfg default 0)."
+    ),
+)
 # Append AppLauncher-specific CLI arguments
 AppLauncher.add_app_launcher_args(parser)
 # Parse the combined arguments
@@ -387,6 +397,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # Configure environment overrides from CLI
     env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
     env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
+    if args_cli.action_telemetry_steps is not None and hasattr(
+        env_cfg, "action_telemetry_max_env_steps"
+    ):
+        env_cfg.action_telemetry_max_env_steps = int(args_cli.action_telemetry_steps)
     if hasattr(env_cfg, "num_agents") and args_cli.num_agents is not None:
         env_cfg.num_agents = args_cli.num_agents
         env_cfg.possible_agents = [f"drone_{i}" for i in range(env_cfg.num_agents)]

@@ -84,6 +84,26 @@ This document tracks major technical changes and milestone completions for each 
   
 ## Phase 2: Evaluation & Training Optimization (Weeks 8-9)
 
+- [2026-03-23] **`run.py` train/play:** accept `--gnn` (forwards to `train.py` / `play.py`); hover-stability
+  already defaulted to GNN via `build_train_cmd`, but the flag was missing from argparse and was rejected.
+
+- [2026-03-23] **Train CLI:** `--action_telemetry_steps` on `run.py … train` and `scripts/skrl/train.py`
+  overrides `env_cfg.action_telemetry_max_env_steps` for short local TensorBoard diagnostics
+  (omit on GCE). Documented in [`docs/ops/pd5_rule22_checklist.md`](ops/pd5_rule22_checklist.md).
+
+- [2026-03-23] **Phase 2A PD5 prep** (first train under stable-hover rewards):
+  - **Rule 22 smoke:** `python scripts/run.py debug smoke --task Template-GGSwarm-Marl-HoverStability-v0 --iterations 1 --gnn --headless` — PASS (env + GNN init, 512 envs).
+  - **Checklist:** [`docs/ops/pd5_rule22_checklist.md`](ops/pd5_rule22_checklist.md) documents the five Rule 22 fields + optional `action_telemetry_max_env_steps` workflow.
+  - **Knob choice:** **zero** additional deltas vs PD4 bundle (`max_moment`, `entropy_loss_scale`, `initial_log_std` unchanged); PD5 = stable-hover reward migration + existing PD4 exploration caps.
+  - **`run_history.md`:** Run PD5 row **`pending`** until GCE train completes and local assess runs.
+  - **Next action (operator):** `git push` → GCE `hover-stability train` **≥80k** iters per [`training_workflow.md`](../ops/training_workflow.md) / project GCE rules → pull → `python scripts/run.py hover-stability assess --run_dir logs/skrl/ggswarm_marl/<run>` (seed 42) → fill PD5 row + `Decision:` line here.
+
+- [2026-03-22] Phase 2A hover-stability uses Isaac-style stable hover rewards and diagnostics:
+  - `GGSwarmMarlHoverStabilityCfg` sets `use_stable_hover_rewards=True` so `_get_rewards` calls `compute_stable_hover_rewards` (tanh position, squared body-frame velocity penalties, `step_dt`-scaled) with optional low-clearance shaping via `StableHoverRewardParams`.
+  - Formation and default MARL configs keep `compute_marl_rewards` (Gaussian position, L2 velocity norms, curriculum).
+  - Added `action_telemetry_max_env_steps` plus optional pre-clamp moment logging (`moment_pre_clamp_buf` on `compute_attitude_control`); documented env-side `[-1, 1]` action clamp in `docs/design/architecture.md`.
+  - Ops guide: `docs/ops/pd_authority_tuning.md`; torch-only regression tests: `tests/unit/test_attitude_open_loop.py`.
+
 - [2026-03-21] Implemented per-reward-term logging for TensorBoard visualization:
   - Modified `compute_marl_rewards()` to optionally return individual reward components (`rew_pos`, `rew_formation`, `rew_cohesion`, etc.)
   - Enhanced `drone_swarm_env.py` to log per-term rewards and curriculum_alpha in `self.extras["log"]` for SKRL to write to TensorBoard

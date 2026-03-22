@@ -304,12 +304,18 @@ class StableHoverRewardParams:
 
     With the PD attitude controller providing inherent stability, no upright,
     alive, or termination terms are needed for the hover phase.
+
+    Optional low-clearance shaping (same semantics as ``compute_marl_rewards``)
+    aligns Phase 2A training with the post-train airborne scorecard band.
     """
 
     rew_scale_pos: float       # distance-to-goal scale (e.g. 15.0)
     rew_scale_vel: float       # linear velocity squared scale (e.g. -0.05)
     rew_scale_ang_vel: float   # angular velocity squared scale (e.g. -0.01)
     step_dt: float             # simulation step time (s) for dt-scaling
+    min_height: float = 0.1
+    low_clearance_margin_m: float = 0.2
+    rew_scale_low_clearance: float = 0.0
 
 
 def compute_stable_hover_rewards(
@@ -319,7 +325,8 @@ def compute_stable_hover_rewards(
     lin_vel_b: torch.Tensor,
     ang_vel_b: torch.Tensor,
     params: StableHoverRewardParams,
-) -> torch.Tensor:
+    return_terms: bool = False,
+) -> torch.Tensor | tuple[torch.Tensor, dict[str, torch.Tensor]]:
     """Compute hover rewards using the Isaac Lab 3-term formulation.
 
     All terms are scaled by ``step_dt`` so reward magnitude is independent of
@@ -333,7 +340,8 @@ def compute_stable_hover_rewards(
         params: Reward scales and step_dt.
 
     Returns:
-        rewards: tensor of shape ``[num_envs, num_agents]``.
+        If ``return_terms`` is False: rewards tensor of shape ``[num_envs, num_agents]``.
+        If True: ``(rewards, terms_dict)`` with per-term tensors for logging.
     """
 
     if pos_w.dim() != 3 or pos_w.shape[-1] != 3:
@@ -357,10 +365,32 @@ def compute_stable_hover_rewards(
     rew_vel = torch.sum(lin_vel_b ** 2, dim=-1) * params.rew_scale_vel * params.step_dt
     rew_ang_vel = torch.sum(ang_vel_b ** 2, dim=-1) * params.rew_scale_ang_vel * params.step_dt
 
-    total_rewards = rew_pos + rew_vel + rew_ang_vel
+    # Penalty depth below (min_height + low_clearance_margin_m); 0 scale skips.
+    # shape: [num_envs, num_agents]
+    clearance_z = params.min_height + params.low_clearance_margin_m
+    depth_below_clearance = torch.clamp(clearance_z - pos_w[:, :, 2], min=0.0)
+    rew_low_clearance = params.rew_scale_low_clearance * depth_below_clearance
+
+    total_rewards = rew_pos + rew_vel + rew_ang_vel + rew_low_clearance
 
     if total_rewards.shape != pos_w.shape[:2]:
         raise AssertionError("Reward tensor shape mismatch.")
+
+    if return_terms:
+        z = torch.zeros_like(rew_pos)
+        terms_dict = {
+            "rew_pos": rew_pos,
+            "rew_vel": rew_vel,
+            "rew_ang_vel": rew_ang_vel,
+            "rew_low_clearance": rew_low_clearance,
+            "rew_formation": z,
+            "rew_cohesion": z,
+            "rew_separation": z,
+            "rew_upright": z,
+            "rew_alive": z,
+            "rew_terminated": z,
+        }
+        return total_rewards, terms_dict
 
     return total_rewards
 

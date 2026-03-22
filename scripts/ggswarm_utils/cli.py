@@ -181,11 +181,19 @@ def build_train_cmd(
     _append_opt(cmd, "--num_envs", getattr(args, "num_envs", None))
     _append_opt(cmd, "--num_agents", getattr(args, "num_agents", None))
     _append_opt(cmd, "--max_iterations", getattr(args, "max_iterations", None))
+    _append_opt(
+        cmd,
+        "--action_telemetry_steps",
+        getattr(args, "action_telemetry_steps", None),
+    )
     _append_if(cmd, getattr(args, "no_progress", False), "--no_progress")
     _append_opt(cmd, "--progress_interval_s", getattr(args, "progress_interval_s", None))
     _append_opt(cmd, "--eta_window_s", getattr(args, "eta_window_s", None))
     _append_opt(cmd, "--checkpoint", getattr(args, "checkpoint", None))
-    if gnn_default and not getattr(args, "no_gnn", False):
+    want_gnn = (
+        gnn_default or getattr(args, "gnn", False)
+    ) and not getattr(args, "no_gnn", False)
+    if want_gnn:
         cmd.append("--gnn")
     return cmd
 
@@ -246,7 +254,10 @@ def build_play_cmd(
             checkpoint_path = None
     _append_opt(cmd, "--checkpoint", checkpoint_path)
 
-    if gnn_default and not getattr(args, "no_gnn", False):
+    want_gnn = (
+        gnn_default or getattr(args, "gnn", False)
+    ) and not getattr(args, "no_gnn", False)
+    if want_gnn:
         cmd.append("--gnn")
     _append_if(cmd, getattr(args, "hover_debug", False), "--hover_debug")
     return cmd

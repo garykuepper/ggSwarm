@@ -108,6 +108,12 @@ Optional: `--video_length`, `--rendering_mode`, `--video_codec`, etc. (same sema
 TensorBoard checklist, zero-action baseline notes, complexity ladder (single-drone vs swarm),
 checkpoint progression, and train-length guidance: **[`docs/ops/phase2a_diagnostics.md`](phase2a_diagnostics.md)**.
 
+PD attitude authority (`max_moment` / gains), early-run action telemetry, and bounded sweep
+workflow: **[`docs/ops/pd_authority_tuning.md`](pd_authority_tuning.md)**.
+
+PD5 Rule 22 smoke command + hover-stability field checklist:
+**[`docs/ops/pd5_rule22_checklist.md`](pd5_rule22_checklist.md)**.
+
 ### Default Progress and ETA Reporting
 
 Training progress reporting is enabled by default for both `hover train` and

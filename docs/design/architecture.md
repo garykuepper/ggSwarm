@@ -66,7 +66,10 @@ It follows the **Graph Neural Swarm Control (GNSC)** 5-Layer model with a
    moments, applied to the main body via a single `permanent_wrench_composer` call.
 
 **Action contract (Phase 2+):** The RL policy outputs 4-dim actions
-`[thrust_cmd, desired_roll, desired_pitch, desired_yaw_rate]` in `[-1, 1]`.
+`[thrust_cmd, desired_roll, desired_pitch, desired_yaw_rate]` intended in `[-1, 1]`.
+`GGSwarmMarlEnv._pre_physics_step` **clamps** the stacked tensor to `[-1, 1]` before
+CBF/MINCO and the PD loop, so Gaussian exploration cannot command out-of-range thrust
+or tilt setpoints even when `clip_actions: False` in SKRL YAML.
 An inner-loop PD attitude controller (`attitude_controller.py`) converts these to
 body-frame thrust force and moments each physics step.
 This matches real Crazyflie flight controller architecture (Bitcraze cascaded PID)
@@ -84,8 +87,11 @@ observation/action interfaces but disables formation objectives.
 **Phase 2 sub-phases:** Phase 2 is split into Phase A (hover-stability, formation OFF,
 `Template-GGSwarm-Marl-HoverStability-v0`) and Phase B (formation resume,
 `Template-GGSwarm-Marl-Formation-v0`). Both use the same 12-dim obs space and
-GATv2 policy — only the reward scales and curriculum config differ. Phase 2A adds optional
-**low-clearance shaping** (`rew_scale_low_clearance`, `low_clearance_margin_m` in cfg) so training
+GATv2 policy — reward path differs: Phase 2A sets `use_stable_hover_rewards=True`
+(`compute_stable_hover_rewards` in `contract_logic.py`: tanh position, squared velocity,
+`step_dt`-scaled, plus optional low-clearance). Phase B uses `compute_marl_rewards`
+(Gaussian position, L2 velocity norms, curriculum/formation terms).
+Phase 2A adds optional **low-clearance shaping** (`rew_scale_low_clearance`, `low_clearance_margin_m` in cfg) so training
 penalizes time spent below the same altitude band used in eval (`min_height + margin`).
 Phase B resumes the Phase A `best_agent.pt` checkpoint via `--checkpoint`.
 Phase C (perturbation) is a future placeholder — see `GGSwarmMarlFormationCfg`.

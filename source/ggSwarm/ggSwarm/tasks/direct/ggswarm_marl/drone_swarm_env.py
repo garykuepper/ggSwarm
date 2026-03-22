@@ -25,8 +25,10 @@ from isaaclab.utils.math import (
 from .drone_swarm_env_cfg import GGSwarmMarlEnvCfg
 from .contract_logic import (
     MarlRewardParams,
+    StableHoverRewardParams,
     compute_adjacency_matrix,
     compute_marl_rewards,
+    compute_stable_hover_rewards,
 )
 from .cbf_safety import CbfParams, apply_cbf_safety, apply_cbf_obstacle_safety
 from .minco_trajectory import MincoParams, MincoSmoother
@@ -74,6 +76,10 @@ class GGSwarmMarlEnv(DirectMARLEnv):
             self.cfg.kd_att,
             self.cfg.kp_yaw,
         )
+        if self.cfg.use_stable_hover_rewards:
+            logger.info(
+                "Reward path: compute_stable_hover_rewards (tanh pos, squared vel, dt-scaled)"
+            )
 
         num_instances = self.num_envs * self.cfg.num_agents
         # Buffers for actions and goal positions
@@ -82,6 +88,13 @@ class GGSwarmMarlEnv(DirectMARLEnv):
         self._thrust = torch.zeros(num_instances, 1, 3, device=self.device)  # pre-allocated; reused every step
         # Roll/pitch/yaw moments applied to main body; pre-allocated, reused every step
         self._moment = torch.zeros(num_instances, 1, 3, device=self.device)  # pre-allocated; reused every step
+        # PD moments before max_moment clamp; only used when action telemetry is enabled
+        self._moment_pre_clamp: torch.Tensor | None = None
+        if self.cfg.action_telemetry_max_env_steps > 0:
+            self._moment_pre_clamp = torch.zeros(
+                num_instances, 1, 3, device=self.device
+            )  # pre-allocated; reused every step
+        self._pending_action_telemetry: dict[str, float] = {}
 
         # --- Phase 3: SwarmRaft Consensus (L3, gated by cfg.raft_enabled) ---
         if self.cfg.raft_enabled:
@@ -219,7 +232,9 @@ class GGSwarmMarlEnv(DirectMARLEnv):
         agent_actions = []
         for agent in self.cfg.possible_agents:
             agent_actions.append(actions[agent].unsqueeze(1))
-        all_actions = torch.cat(agent_actions, dim=1).clamp(-1.0, 1.0)
+        raw_actions = torch.cat(agent_actions, dim=1)
+        # Clamp to gym action space; SKRL Gaussian policies may sample outside [-1, 1].
+        all_actions = raw_actions.clamp(-1.0, 1.0)
 
         # --- L4: CBF Safety Shield (Phase 3, gated by cfg.cbf_enabled) ---
         if self.cfg.cbf_enabled:
@@ -273,7 +288,34 @@ class GGSwarmMarlEnv(DirectMARLEnv):
             params=self._att_ctrl_params,
             thrust_buf=self._thrust,
             moment_buf=self._moment,
+            moment_pre_clamp_buf=self._moment_pre_clamp,
         )
+
+        # Optional TensorBoard telemetry (first N env steps only)
+        self._pending_action_telemetry = {}
+        if (
+            self.cfg.action_telemetry_max_env_steps > 0
+            and int(self.common_step_counter) < self.cfg.action_telemetry_max_env_steps
+        ):
+            mm = float(self.cfg.max_moment)
+            ra = raw_actions[..., 0]
+            ca = all_actions[..., 0]
+            clamp_hit = (raw_actions != all_actions).float().mean().item()
+            self._pending_action_telemetry["act_raw_thrust_mean"] = ra.mean().item()
+            self._pending_action_telemetry["act_raw_thrust_std"] = ra.std(unbiased=False).item()
+            self._pending_action_telemetry["act_raw_thrust_min"] = ra.min().item()
+            self._pending_action_telemetry["act_raw_thrust_max"] = ra.max().item()
+            self._pending_action_telemetry["act_clamped_thrust_mean"] = ca.mean().item()
+            self._pending_action_telemetry["act_clamp_hit_frac"] = clamp_hit
+            thrust_val = (flat_actions[:, 0] + 1.0) * 0.5
+            self._pending_action_telemetry["thrust_val_mean"] = thrust_val.mean().item()
+            if self._moment_pre_clamp is not None:
+                pre = self._moment_pre_clamp[:, 0, :]
+                sat = (pre.abs() >= mm - 1e-6).any(dim=-1).float().mean().item()
+                self._pending_action_telemetry["moment_pre_abs_max_mean"] = (
+                    pre.abs().max(dim=1).values.mean().item()
+                )
+                self._pending_action_telemetry["moment_saturated_frac"] = sat
 
     def _apply_action(self) -> None:
         # Apply thrust (body-frame Z) and attitude moments to the main body in a
@@ -360,45 +402,66 @@ class GGSwarmMarlEnv(DirectMARLEnv):
         # shape: [num_envs, num_agents, 3]
         ang_vel_b = self.robot.data.root_ang_vel_b.view(self.num_envs, self.cfg.num_agents, 3)
         # shape: [num_envs, num_agents, 3]
-        proj_grav_b = self.robot.data.projected_gravity_b.view(self.num_envs, self.cfg.num_agents, 3)
-        # shape: [num_envs, num_agents, 3]
         desired_pos_w = self._desired_pos_w
 
-        params = MarlRewardParams(
-            curriculum_start_step=self.cfg.curriculum_start_step,
-            curriculum_end_step=self.cfg.curriculum_end_step,
-            curriculum_pos_floor=self.cfg.curriculum_pos_floor,
-            rew_scale_pos=self.cfg.rew_scale_pos,
-            rew_scale_formation=self.cfg.rew_scale_formation,
-            rew_scale_cohesion=self.cfg.rew_scale_cohesion,
-            rew_scale_separation=self.cfg.rew_scale_separation,
-            rew_scale_vel=self.cfg.rew_scale_vel,
-            rew_scale_ang_vel=self.cfg.rew_scale_ang_vel,
-            rew_scale_alive=self.cfg.rew_scale_alive,
-            rew_scale_terminated=self.cfg.rew_scale_terminated,
-            rew_scale_upright=self.cfg.rew_scale_upright,
-            rew_pos_sigma=self.cfg.rew_pos_sigma,
-            rew_formation_sigma=self.cfg.rew_formation_sigma,
-            target_formation_dist=self.cfg.target_formation_dist,
-            graph_connectivity_radius=self.cfg.graph_connectivity_radius,
-            min_separation_dist=self.cfg.min_separation_dist,
-            min_height=self.cfg.min_height,
-            max_height=self.cfg.max_height,
-            rew_scale_low_clearance=self.cfg.rew_scale_low_clearance,
-            low_clearance_margin_m=self.cfg.low_clearance_margin_m,
-        )
+        if self.cfg.use_stable_hover_rewards:
+            sh_params = StableHoverRewardParams(
+                rew_scale_pos=self.cfg.rew_scale_pos,
+                rew_scale_vel=self.cfg.rew_scale_vel,
+                rew_scale_ang_vel=self.cfg.rew_scale_ang_vel,
+                step_dt=self.step_dt,
+                min_height=self.cfg.min_height,
+                low_clearance_margin_m=self.cfg.low_clearance_margin_m,
+                rew_scale_low_clearance=self.cfg.rew_scale_low_clearance,
+            )
+            total_rewards, terms_dict = compute_stable_hover_rewards(
+                pos_w=pos_w,
+                desired_pos_w=desired_pos_w,
+                lin_vel_b=lin_vel_b,
+                ang_vel_b=ang_vel_b,
+                params=sh_params,
+                return_terms=True,
+            )
+        else:
+            # shape: [num_envs, num_agents, 3]
+            proj_grav_b = self.robot.data.projected_gravity_b.view(
+                self.num_envs, self.cfg.num_agents, 3
+            )
+            params = MarlRewardParams(
+                curriculum_start_step=self.cfg.curriculum_start_step,
+                curriculum_end_step=self.cfg.curriculum_end_step,
+                curriculum_pos_floor=self.cfg.curriculum_pos_floor,
+                rew_scale_pos=self.cfg.rew_scale_pos,
+                rew_scale_formation=self.cfg.rew_scale_formation,
+                rew_scale_cohesion=self.cfg.rew_scale_cohesion,
+                rew_scale_separation=self.cfg.rew_scale_separation,
+                rew_scale_vel=self.cfg.rew_scale_vel,
+                rew_scale_ang_vel=self.cfg.rew_scale_ang_vel,
+                rew_scale_alive=self.cfg.rew_scale_alive,
+                rew_scale_terminated=self.cfg.rew_scale_terminated,
+                rew_scale_upright=self.cfg.rew_scale_upright,
+                rew_pos_sigma=self.cfg.rew_pos_sigma,
+                rew_formation_sigma=self.cfg.rew_formation_sigma,
+                target_formation_dist=self.cfg.target_formation_dist,
+                graph_connectivity_radius=self.cfg.graph_connectivity_radius,
+                min_separation_dist=self.cfg.min_separation_dist,
+                min_height=self.cfg.min_height,
+                max_height=self.cfg.max_height,
+                rew_scale_low_clearance=self.cfg.rew_scale_low_clearance,
+                low_clearance_margin_m=self.cfg.low_clearance_margin_m,
+            )
 
-        # shape: [num_envs, num_agents]
-        total_rewards, terms_dict = compute_marl_rewards(
-            pos_w=pos_w,
-            desired_pos_w=desired_pos_w,
-            lin_vel_b=lin_vel_b,
-            ang_vel_b=ang_vel_b,
-            proj_grav_b=proj_grav_b,
-            common_step_counter=int(self.common_step_counter),
-            params=params,
-            return_terms=True,
-        )
+            # shape: [num_envs, num_agents]
+            total_rewards, terms_dict = compute_marl_rewards(
+                pos_w=pos_w,
+                desired_pos_w=desired_pos_w,
+                lin_vel_b=lin_vel_b,
+                ang_vel_b=ang_vel_b,
+                proj_grav_b=proj_grav_b,
+                common_step_counter=int(self.common_step_counter),
+                params=params,
+                return_terms=True,
+            )
 
         # Compute curriculum alpha for logging
         from .contract_logic import compute_curriculum_alpha
@@ -427,6 +490,8 @@ class GGSwarmMarlEnv(DirectMARLEnv):
             "low_clearance_frac": low_clearance_frac,
             "curriculum_alpha": alpha,
         }
+        if self._pending_action_telemetry:
+            self.extras["log"].update(self._pending_action_telemetry)
 
         rewards: dict[str, torch.Tensor] = {}
         for i, agent in enumerate(self.cfg.possible_agents):
