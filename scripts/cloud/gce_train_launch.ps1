@@ -18,29 +18,31 @@
     .\scripts\cloud\gce_train_launch.ps1 -SkipGitPush phase2 train --headless --max_iterations 120000
 
 .NOTES
-    Training tokens must not be passed as the first positional argument: PowerShell
-    would bind them to -Branch. Either put switches first or use -Branch explicitly,
-    e.g. .\gce_train_launch.ps1 -Branch main hover-stability train --headless ...
-    This script uses the automatic ``$args`` list for all training tokens instead.
+    Do not add string parameters before the training tokens: PowerShell will bind the
+    first positional string to them (e.g. ``hover-stability`` -> wrong git branch).
+    Git branch and SSH target use defaults or env: GGSWARM_GIT_BRANCH, GGSWARM_GCE_INSTANCE,
+    GGSWARM_GCE_ZONE, GGSWARM_GCP_PROJECT.
 #>
 param(
-    [string]$Branch = "main",
-    [string]$Instance = "isaacsim",
-    [string]$Zone = "us-central1-a",
-    [string]$Project = "gg-swarm",
-    [switch]$SkipGitPush
+    [switch]$SkipGitPush,
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$TrainArgs = @()
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 
-# Use $args so the first token is never mistaken for -Branch (positional binding).
-if (-not $args -or $args.Count -eq 0) {
+$Branch = if ($env:GGSWARM_GIT_BRANCH) { $env:GGSWARM_GIT_BRANCH } else { "main" }
+$Instance = if ($env:GGSWARM_GCE_INSTANCE) { $env:GGSWARM_GCE_INSTANCE } else { "isaacsim" }
+$Zone = if ($env:GGSWARM_GCE_ZONE) { $env:GGSWARM_GCE_ZONE } else { "us-central1-a" }
+$Project = if ($env:GGSWARM_GCP_PROJECT) { $env:GGSWARM_GCP_PROJECT } else { "gg-swarm" }
+
+if (-not $TrainArgs -or $TrainArgs.Count -eq 0) {
     $trainTokens = @(
         "hover-stability", "train", "--headless", "--max_iterations", "80000"
     )
 } else {
-    $trainTokens = @($args)
+    $trainTokens = $TrainArgs
 }
 
 $trainCmd = $trainTokens -join " "

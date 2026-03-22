@@ -33,7 +33,7 @@ GGSWARM_GCS_URI=gs://gg-swarm-training-logs nohup bash scripts/cloud/train_and_p
 .\scripts\cloud\gce_train_launch.ps1
 ```
 
-Defaults: `hover-stability train --headless --max_iterations 80000`. Override training args after the script name; skip push if you already pushed:
+Defaults: `hover-stability train --headless --max_iterations 80000`. Pass training args after the script name (and optional `-SkipGitPush`). Git branch defaults to `main`; override with `$env:GGSWARM_GIT_BRANCH` if needed. Skip push if you already pushed:
 
 ```powershell
 .\scripts\cloud\gce_train_launch.ps1 hover-stability train --headless --max_iterations 92000

@@ -41,7 +41,7 @@ From the repo root in PowerShell (runs `git push`, VM `git pull`, then `nohup` +
 .\scripts\cloud\gce_train_launch.ps1
 ```
 
-Training arguments are read from `$args` (everything after the named switches) so the first token is never bound to `-Branch` by mistake.
+Training tokens are everything after `-SkipGitPush` (via `ValueFromRemainingArguments`), so `hover-stability` is never mistaken for a git branch. Override branch / SSH target with env vars `GGSWARM_GIT_BRANCH`, `GGSWARM_GCE_INSTANCE`, `GGSWARM_GCE_ZONE`, `GGSWARM_GCP_PROJECT` if needed.
 
 Phase 2 formation example (after you already pushed):
 
