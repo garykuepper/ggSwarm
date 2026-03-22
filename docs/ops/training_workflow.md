@@ -59,19 +59,37 @@ git reset --hard origin/phase2
 After pulling, confirm critical parameters are present:
 
 ```bash
-# Check reward tuning
-grep -E "rew_scale_upright|rew_scale_ang_vel|num_envs" \
+# Phase 2A (hover-stability): PD + 3-term hover — upright/alive/terminated are 0 in GGSwarmMarlHoverStabilityCfg
+grep -E "thrust_to_weight|kp_att|max_moment|rew_scale_pos|rew_scale_vel|curriculum_start_step" \
   source/ggSwarm/ggSwarm/tasks/direct/ggswarm_marl/drone_swarm_env_cfg.py
 
-# Check L4 optimization (rollouts, mini_batches)
+# Parallel envs: GGSwarmMarlHoverStabilityCfg uses num_envs=512; base GGSwarmMarlEnvCfg uses 128
+grep "num_envs" \
+  source/ggSwarm/ggSwarm/tasks/direct/ggswarm_marl/drone_swarm_env_cfg.py
+
+# Phase 2B (formation): upright/ang_vel/terminated re-enabled — optional second grep
+grep -E "class GGSwarmMarlFormationCfg|rew_scale_upright|rew_scale_ang_vel" \
+  source/ggSwarm/ggSwarm/tasks/direct/ggswarm_marl/drone_swarm_env_cfg.py
+
+# L4 optimization (rollouts, mini_batches)
 grep -E "rollouts|mini_batches" \
   source/ggSwarm/ggSwarm/tasks/direct/ggswarm_marl/agents/skrl_mappo_cfg.yaml
 ```
 
-Expected values for current run:
-- `rew_scale_upright: float = 3.0` (aggressive uprightness to prevent flipping)
-- `rew_scale_ang_vel = -0.25` (strong angular velocity penalty)
-- `num_envs=128` (L4 GPU scaling, 4x more parallel experience)
+Expected values (align with **Rule 22** smoke checklist for your active task):
+
+**Phase 2A (`hover-stability train`, `GGSwarmMarlHoverStabilityCfg`):**
+
+- `thrust_to_weight: float = 2.0`, `kp_att` ~0.045, `max_moment` ~0.03, `curriculum_start_step: int = 999999`
+- `rew_scale_pos` ~18.0, `rew_scale_vel` / `rew_scale_ang_vel` per cfg; `rew_scale_upright` **0.0**
+- `num_envs=512` inside `GGSwarmMarlHoverStabilityCfg.scene`
+
+**Phase 2B (`phase2b train`, `GGSwarmMarlFormationCfg`):**
+
+- `rew_scale_upright: float = 3.0`, `rew_scale_ang_vel = -0.25`, `rew_scale_terminated` negative, `num_envs=128` on base (confirm formation cfg if overridden)
+
+**MAPPO YAML (typical):**
+
 - `rollouts: 64` (larger rollout buffer for stabler advantage estimates)
 - `mini_batches: 8` (more gradient updates per rollout)
 
@@ -111,9 +129,9 @@ gcloud compute ssh isaacsim --zone=us-central1-a --project=gg-swarm `
 
 Look for `[PROGRESS]` lines showing steps completed, throughput (steps/sec), and ETA. Early training should show:
 - `[PROGRESS] 0/300,000` → training started
-- `28-32 steps/sec` on L4 GPU (typical throughput with 128 envs)
+- Throughput varies with `num_envs` (e.g. hover-stability at **512** envs vs formation at **128**)
 
-If you see errors (e.g. `OutOfMemory`, `CUDA error`), stop training with Ctrl+C and reduce `num_envs` to 64 in the config, then redeploy and retrain.
+If you see errors (e.g. `OutOfMemory`, `CUDA error`), stop training with Ctrl+C and reduce `num_envs` in the active env cfg (e.g. 512 → 384 for hover-stability), then redeploy and retrain.
 
 ---
 

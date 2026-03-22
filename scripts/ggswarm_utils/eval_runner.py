@@ -86,6 +86,87 @@ class PhaseCollector(Protocol):
         ...
 
 
+def _wrap_env_for_eval_recording(
+    env: object,
+    *,
+    resume_path: str,
+    run_name: str,
+    log_dir: str,
+    video_length: int,
+    video_codec: str | None,
+    video_bitrate: str | None,
+    video_preset: str | None,
+    video_ffmpeg_params: str | None,
+) -> object:
+    """Wrap a gym env with ``EncodingRecordVideo`` (same pattern as ``play.py``).
+
+    Writes MP4s under ``<log_dir>/videos/eval/``.
+
+    Args:
+        env:            Gymnasium env from ``gym.make(..., render_mode=\"rgb_array\")``.
+        resume_path:    Resolved checkpoint path (for filename prefix).
+        run_name:       Training run / experiment name segment.
+        log_dir:        Run directory (parent of ``checkpoints/``).
+        video_length:   Number of steps to record from episode start.
+        video_codec:    Preferred ffmpeg codec (default ``hevc_nvenc`` with CPU fallback).
+        video_bitrate:  Optional ffmpeg bitrate (e.g. ``8M``).
+        video_preset:   Optional ffmpeg preset.
+        video_ffmpeg_params: Optional extra ffmpeg args as one string (shell-split).
+
+    Returns:
+        Env wrapped with ``EncodingRecordVideo``.
+    """
+    import shlex
+
+    from ggswarm_utils.encoding_record_video import EncodingRecordVideo
+
+    checkpoint_stem = os.path.splitext(os.path.basename(resume_path))[0]
+    raw_video_prefix = f"{run_name}__{checkpoint_stem}"
+    safe_video_prefix = "".join(
+        ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in raw_video_prefix
+    )
+    preferred_codec = video_codec or "hevc_nvenc"
+    ffmpeg_params = (
+        shlex.split(video_ffmpeg_params) if video_ffmpeg_params else None
+    )
+    if ffmpeg_params is None and preferred_codec == "hevc_nvenc":
+        ffmpeg_params = [
+            "-rc",
+            "vbr",
+            "-cq",
+            "19",
+            "-b:v",
+            "0",
+            "-spatial_aq",
+            "1",
+            "-aq-strength",
+            "8",
+        ]
+    video_folder = os.path.join(log_dir, "videos", "eval")
+    video_kwargs = {
+        "video_folder": video_folder,
+        "step_trigger": lambda step: step == 0,
+        "video_length": video_length,
+        "name_prefix": safe_video_prefix,
+        "disable_logger": True,
+    }
+    print("[EVAL] Recording video (headless rgb_array). First steps may take 30–60s.")
+    print(
+        "[EVAL] Video encoding config: "
+        f"preferred_codec={preferred_codec} "
+        f"bitrate={video_bitrate} preset={video_preset} "
+        f"ffmpeg_params={ffmpeg_params}"
+    )
+    return EncodingRecordVideo(
+        env,
+        **video_kwargs,
+        preferred_codec=preferred_codec,
+        bitrate=video_bitrate,
+        preset=video_preset,
+        ffmpeg_params=ffmpeg_params,
+    )
+
+
 # ---------------------------------------------------------------------------
 # run_eval
 # ---------------------------------------------------------------------------
@@ -104,6 +185,13 @@ def run_eval(
     num_agents: int | None,
     run_dir: str | Path | None = None,
     extra_cfg_fn: Callable[[dict], None] | None = None,
+    *,
+    video: bool = False,
+    video_length: int = 200,
+    video_codec: str | None = None,
+    video_bitrate: str | None = None,
+    video_preset: str | None = None,
+    video_ffmpeg_params: str | None = None,
 ) -> dict[str, float]:
     """Run a complete evaluation loop and return summarized metrics.
 
@@ -124,6 +212,12 @@ def run_eval(
         num_agents:     Override number of agents per env.
         run_dir:        Optional path to the run directory for log naming.
         extra_cfg_fn:   Optional callable(cfg) applied before Runner is built.
+        video:          If True, record rgb_array clip under run_dir/videos/eval.
+        video_length:   Steps to record from global step 0 (default 200).
+        video_codec:    Preferred ffmpeg codec (default hevc_nvenc with fallback).
+        video_bitrate:  Optional ffmpeg bitrate (e.g. ``8M``).
+        video_preset:   Optional ffmpeg preset.
+        video_ffmpeg_params: Extra ffmpeg args as one string (shell-split).
 
     Returns:
         Dict of metric_name -> mean value produced by collector.summarize().
@@ -139,7 +233,7 @@ def run_eval(
     import torch  # noqa: PLC0415
     from packaging import version  # noqa: PLC0415
     import skrl  # noqa: PLC0415
-    from isaaclab.envs import DirectMARLEnv, DirectMARLEnvCfg, DirectRLEnvCfg  # noqa: PLC0415
+    from isaaclab.envs import DirectMARLEnvCfg, DirectRLEnvCfg  # noqa: PLC0415
     from isaaclab.envs import ManagerBasedRLEnvCfg  # noqa: PLC0415
     from isaaclab_rl.skrl import SkrlVecEnvWrapper  # noqa: PLC0415
     from isaaclab_tasks.utils import get_checkpoint_path  # noqa: PLC0415
@@ -151,7 +245,11 @@ def run_eval(
             f"Unsupported skrl version: {skrl.__version__}. Install skrl>=1.4.3"
         )
 
-    from ggswarm_utils.checkpoint import load_policy_from_checkpoint, resolve_agent  # noqa: PLC0415
+    from ggswarm_utils.checkpoint import (  # noqa: PLC0415
+        load_policy_from_checkpoint,
+        resolve_agent,
+        validate_eval_checkpoint_path,
+    )
     from ggswarm_utils.sim_helpers import configure_eval_cfg, configure_gnn_policy  # noqa: PLC0415
     from ggswarm_utils.sim_helpers import extract_actions, override_agent_count  # noqa: PLC0415
 
@@ -204,10 +302,39 @@ def run_eval(
                 other_dirs=["checkpoints"],
             )
 
+        validate_eval_checkpoint_path(resume_path)
+
+        log_dir = os.path.dirname(os.path.dirname(resume_path))
+        env_cfg.log_dir = log_dir
+
+        if video:
+            if num_envs is None and env_cfg.scene.num_envs > 1:
+                env_cfg.scene.num_envs = 1
+                print(
+                    "[EVAL] Video mode: forcing num_envs=1 for stable recording "
+                    "(override with --num_envs)."
+                )
+
         # ----------------------------------------------------------------
         # Build environment
         # ----------------------------------------------------------------
-        env = gym.make(task, cfg=env_cfg)
+        env = gym.make(
+            task,
+            cfg=env_cfg,
+            render_mode="rgb_array" if video else None,
+        )
+        if video:
+            env = _wrap_env_for_eval_recording(
+                env,
+                resume_path=resume_path,
+                run_name=_run_name,
+                log_dir=log_dir,
+                video_length=video_length,
+                video_codec=video_codec,
+                video_bitrate=video_bitrate,
+                video_preset=video_preset,
+                video_ffmpeg_params=video_ffmpeg_params,
+            )
         base_env = env.unwrapped
         env = SkrlVecEnvWrapper(env, ml_framework="torch")
 

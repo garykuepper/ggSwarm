@@ -13,6 +13,27 @@ there before changing any config (Rule 23).
 ## Phase 2A (hover-stability) — Post-Training Steps
 
 ```powershell
+# Via run.py (default: pulls checkpoints/events from GCS if the run folder is missing locally)
+python scripts/run.py hover-stability assess `
+    --run_dir logs/skrl/ggswarm_marl/<timestamp>_mappo_torch `
+    --num_episodes 5
+
+# Offline / already pulled: skip GCS
+python scripts/run.py hover-stability assess `
+    --run_dir logs/skrl/ggswarm_marl/<timestamp>_mappo_torch `
+    --num_episodes 5 `
+    --no_sync
+
+# Optional: record a short eval clip (headless rgb_array → run_dir/videos/eval/)
+python scripts/run.py hover-stability assess `
+    --run_dir logs/skrl/ggswarm_marl/<timestamp>_mappo_torch `
+    --video --video_length 200
+```
+
+Direct script (same pipeline):
+
+```powershell
+# Direct script: same pipeline
 # Full assess: sync from GCS + convergence + eval + scorecard + report
 # (GCS sync is automatic if run_dir doesn't exist locally)
 .\env_isaaclab\Scripts\python.exe scripts/post_train_assess.py `
@@ -27,6 +48,13 @@ there before changing any config (Rule 23).
     --task Template-GGSwarm-Marl-HoverStability-v0 `
     --num_episodes 5 `
     --headless --no_sync
+
+# With eval clip (videos land under run_dir/videos/eval/):
+.\env_isaaclab\Scripts\python.exe scripts/post_train_assess.py `
+    --run_dir logs/skrl/ggswarm_marl/<timestamp>_mappo_torch `
+    --task Template-GGSwarm-Marl-HoverStability-v0 `
+    --num_episodes 5 `
+    --headless --video --video_length 200
 ```
 
 After the script completes:
@@ -95,8 +123,8 @@ Listed here so you can interpret partial scorecard output without opening code.
 | :--- | :--- | :--- | :--- |
 | Phase 2A PASS | yes | n/a | Launch Phase 2B: `phase2b train --checkpoint <2A_run>/checkpoints/best_agent.pt --max_iterations 120000` |
 | Phase 2A WARN | partial | n/a | Extend Phase 2A by 20k iters OR reduce `rew_scale_pos` to 1.5 and retrain |
-| Phase 2A FAIL (survival < 10) | no | n/a | Reward too harsh — check TensorBoard for entropy collapse before step 5k; reduce `rew_scale_terminated` to -8.0 |
-| Phase 2A FAIL (roll ≥ 60°) | no | n/a | Stability signal too weak — increase `rew_scale_upright` to 3.5 or `rew_scale_ang_vel` to -0.3 |
+| Phase 2A FAIL (survival < 10) | no | n/a | Hover-stability: `rew_scale_terminated` is 0 — check TensorBoard for early entropy collapse; tune `rew_scale_pos` / `rew_scale_vel` or PD (`kp_att`, `max_moment`, `thrust_to_weight`). |
+| Phase 2A FAIL (roll ≥ 60°) | no | n/a | Hover-stability (PD era): raise `kp_att` / `max_moment` first; then `rew_scale_ang_vel` in the 3-term reward — **not** `rew_scale_upright` (disabled in `GGSwarmMarlHoverStabilityCfg` unless you explicitly re-enable). |
 | Phase 2B PASS | yes | yes | Advance to Phase 3 |
 | Phase 2B WARN | yes | partial | Reduce `curriculum_end_step` by 20k so full formation pressure applies for longer |
 | Phase 2B FAIL (stability) | no | — | Roll back to Phase 2A checkpoint; retry with `rew_scale_upright=3.5` and `curriculum_pos_floor=0.4` |

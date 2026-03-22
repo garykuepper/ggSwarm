@@ -43,26 +43,38 @@ SCORECARD_METRICS: list[str] = [
     "mean_formation_error_m",
 ]
 
-# Decision guidance keyed on (verdict, metric)
+# Decision guidance keyed on (verdict, metric).
+# Phase 2A hover-stability uses a PD inner loop + 3-term Isaac-style reward
+# (no upright/alive/terminated terms). Hints must not reference retired knobs.
 DECISION_HINTS: dict[tuple[str, str], str] = {
     ("FAIL", "survival_steps"): (
-        "Crash at spawn — reduce rew_scale_terminated (try -8.0) or check "
-        "TensorBoard for entropy collapse before step 5k."
+        "Short survival — check TensorBoard for early entropy collapse; tune hover "
+        "reward scales (pos / vel / ang_vel) or PD gains (kp_att, max_moment); "
+        "raw-torque-era rew_scale_terminated tweaks do not apply."
     ),
     ("FAIL", "airborne_ratio"): (
-        "Agents not staying up — increase rew_scale_upright (try 3.5) or rew_scale_alive."
+        "Low time above safe altitude — tune thrust/altitude: thrust_to_weight, "
+        "PD kp_att/max_moment; strengthen rew_scale_pos or rebalance vel penalties "
+        "in hover-stability cfg (not rew_scale_upright; it is disabled there)."
     ),
     ("FAIL", "mean_roll_deg"): (
-        "Severe tumbling — increase rew_scale_upright or rew_scale_ang_vel penalty (try -0.3)."
+        "Tilt still high — raise PD kp_att or max_moment (Rule 6 cfg); if roll is "
+        "already moderate, prioritize altitude/position (rew_scale_pos) over adding "
+        "upright terms unless you re-enable them explicitly in cfg."
     ),
     ("FAIL", "orientation_violation_rate"): (
-        "Orientation unstable — same as mean_roll_deg; check ang_vel penalty."
+        "Frequent large tilt — same lever as mean_roll_deg: PD gains first, then "
+        "rew_scale_ang_vel in the 3-term hover reward if needed."
     ),
     ("FAIL", "ground_hit_rate"): (
-        "Agents hitting ground — check min_height config and reward_terminated scale."
+        "Ground contact — verify spawn_z / min_height; increase hover thrust authority "
+        "(thrust_to_weight, max_moment) and/or rew_scale_pos; PD should keep attitude "
+        "recoverable once thrust supports altitude."
     ),
     ("FAIL", "mean_formation_error_m"): (
-        "Formation too loose — increase rew_scale_formation and shorten curriculum."
+        "Phase 2A: formation reward is off — treat this as a rough position proxy, "
+        "not a formation gate. For Phase 2B only: tighten rew_scale_formation / "
+        "curriculum when stability metrics already pass."
     ),
 }
 

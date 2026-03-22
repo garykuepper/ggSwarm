@@ -15,7 +15,7 @@ Defaults when optional arguments are omitted:
 | Script | Defaults | Notes |
 | ------ | -------- | ----- |
 | [`push_results_to_gcs.sh`](../../scripts/cloud/push_results_to_gcs.sh) | Family: `marl`, Bucket: `$GGSWARM_GCS_BUCKET` or `gs://gg-swarm-training-logs` | Run on VM. Pass `hover` as first arg for hover baseline. Videos always excluded. |
-| [`pull_results_from_gcs.py`](../../scripts/cloud/pull_results_from_gcs.py) | Family: `marl`, Bucket: `$GGSWARM_GCS_BUCKET` or `gs://gg-swarm-training-logs`, No `--dry-run` (real sync) | Run on PC/Linux/Mac. Pass `--dry-run` to preview only. Videos always excluded. |
+| [`pull_results_from_gcs.py`](../../scripts/cloud/pull_results_from_gcs.py) | Family: `marl`, Bucket: `$GGSWARM_GCS_BUCKET` or `gs://gg-swarm-training-logs` | Use `--latest N` to copy only the N newest runs via `gcloud storage cp` (**recommended on Windows**). Omit `--latest` for a full `rsync` mirror (Linux/Mac; can misbehave on Windows). Pass `--dry-run` to preview. |
 | [`list_checkpoints.py`](../../scripts/cloud/list_checkpoints.py) | Family: `marl`, Latest: `10` | Run on PC/Linux/Mac. Lists newest checkpoints first, capped at N rows. |
 
 ## Workflow
@@ -44,6 +44,18 @@ On your **local** machine (Windows, Linux, or Mac):
 ```bash
 cd /path/to/ggSwarm
 python scripts/cloud/pull_results_from_gcs.py
+```
+
+Only the newest run (typical after a GCE train):
+
+```bash
+python scripts/cloud/pull_results_from_gcs.py --family marl --latest 1
+```
+
+If Python reports `gcloud` not found but `gcloud` works in another terminal, add Cloud SDK `bin` to PATH or set:
+
+```text
+GGSWARM_GCLOUD=C:\Users\<you>\AppData\Local\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd
 ```
 
 For hover baseline:

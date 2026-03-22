@@ -15,6 +15,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from ggswarm_utils.gcloud_exec import gcloud_not_found_message, resolve_gcloud_executable
+
 DEFAULT_GCS_BUCKET: str = "gs://gg-swarm-training-logs"
 _GCS_PREFIX: str = "logs/skrl/ggswarm_marl"
 
@@ -44,7 +46,14 @@ def sync_from_gcs(run_dir: Path, gcs_bucket: str = DEFAULT_GCS_BUCKET) -> None:
     Args:
         run_dir:    Local destination directory.  Created if it doesn't exist.
         gcs_bucket: GCS bucket URI (default: gs://gg-swarm-training-logs).
+
+    Raises:
+        RuntimeError: If ``gcloud`` cannot be found (PATH / ``GGSWARM_GCLOUD``).
     """
+    gcloud = resolve_gcloud_executable()
+    if gcloud is None:
+        raise RuntimeError(gcloud_not_found_message())
+
     run_name = run_dir.name
     remote_base = f"{gcs_bucket}/{_GCS_PREFIX}/{run_name}"
 
@@ -60,7 +69,7 @@ def sync_from_gcs(run_dir: Path, gcs_bucket: str = DEFAULT_GCS_BUCKET) -> None:
         local_sub = str(run_dir / subdir) + "/"
         print(f"[SYNC]   {subdir}/  ...", end=" ", flush=True)
         result = subprocess.run(
-            ["gcloud", "storage", "cp", remote_sub, local_sub],
+            [gcloud, "storage", "cp", remote_sub, local_sub],
             capture_output=True,
             text=True,
         )
@@ -78,7 +87,7 @@ def sync_from_gcs(run_dir: Path, gcs_bucket: str = DEFAULT_GCS_BUCKET) -> None:
     remote_events = f"{remote_base}/events.out.*"
     print("[SYNC]   events.out.*  ...", end=" ", flush=True)
     result = subprocess.run(
-        ["gcloud", "storage", "cp", remote_events, str(run_dir) + "/"],
+        [gcloud, "storage", "cp", remote_events, str(run_dir) + "/"],
         capture_output=True,
         text=True,
     )

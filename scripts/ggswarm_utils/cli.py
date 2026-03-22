@@ -9,6 +9,9 @@ Public API:
     build_play_cmd(task, args, *, gnn_default, log_root)  -> list[str]
     build_eval_cmd(phase, args)                           -> list[str]
     build_assess_cmd(assess_script, task, args)            -> list[str]
+
+When ``args.video`` is true, ``build_eval_cmd`` and ``build_assess_cmd`` append
+``--video`` and related ffmpeg/rendering flags for subprocess entry points.
     find_latest_checkpoint(log_root, prefer_best)          -> str
     acquire_single_instance_lock(lock_path, ttl_s)         -> None
     release_lock(lock_path)                                -> None
@@ -287,6 +290,19 @@ def build_eval_cmd(
     _append_opt(cmd, "--checkpoint", getattr(args, "checkpoint", None))
     if extra_flags:
         cmd.extend(extra_flags)
+
+    if getattr(args, "video", False):
+        cmd.append("--video")
+        _append_opt(cmd, "--video_length", getattr(args, "video_length", None))
+        _append_opt(cmd, "--video_codec", getattr(args, "video_codec", None))
+        _append_opt(cmd, "--video_bitrate", getattr(args, "video_bitrate", None))
+        _append_opt(cmd, "--video_preset", getattr(args, "video_preset", None))
+        _append_opt(cmd, "--video_ffmpeg_params", getattr(args, "video_ffmpeg_params", None))
+        rendering_mode = getattr(args, "rendering_mode", None)
+        if rendering_mode is None:
+            rendering_mode = "quality"
+        _append_opt(cmd, "--rendering_mode", rendering_mode)
+
     return cmd
 
 
@@ -311,8 +327,20 @@ def build_assess_cmd(
         "--run_dir", getattr(args, "run_dir", ""),
         "--task", task,
         "--num_episodes", str(getattr(args, "num_episodes", 5) or 5),
-        "--no_sync",  # run.py callers are expected to sync or have data locally
         "--headless",
     ]
+    if getattr(args, "no_sync", False):
+        cmd.append("--no_sync")
     _append_opt(cmd, "--device", getattr(args, "device", None))
+    if getattr(args, "video", False):
+        cmd.append("--video")
+        _append_opt(cmd, "--video_length", getattr(args, "video_length", None))
+        _append_opt(cmd, "--video_codec", getattr(args, "video_codec", None))
+        _append_opt(cmd, "--video_bitrate", getattr(args, "video_bitrate", None))
+        _append_opt(cmd, "--video_preset", getattr(args, "video_preset", None))
+        _append_opt(cmd, "--video_ffmpeg_params", getattr(args, "video_ffmpeg_params", None))
+        rendering_mode = getattr(args, "rendering_mode", None)
+        if rendering_mode is None:
+            rendering_mode = "quality"
+        _append_opt(cmd, "--rendering_mode", rendering_mode)
     return cmd

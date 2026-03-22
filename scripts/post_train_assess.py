@@ -17,6 +17,9 @@ Usage (run from repo root):
 To skip GCS sync when data is already local:
     ... --no_sync
 
+With optional headless video (MP4 under run_dir/videos/eval/):
+    ... --video [--video_length 200]
+
 Exits 0 if overall verdict is PASS or WARN, 1 if FAIL.
 """
 
@@ -96,6 +99,30 @@ def _build_parser() -> argparse.ArgumentParser:
         default=1,
         help="Eval RNG seed.",
     )
+    parser.add_argument(
+        "--video",
+        action="store_true",
+        default=False,
+        help=(
+            "Record eval clip under run_dir/videos/eval (headless rgb_array; "
+            "enables cameras)."
+        ),
+    )
+    parser.add_argument(
+        "--video_length",
+        type=int,
+        default=200,
+        help="Eval video length in environment steps (default 200).",
+    )
+    parser.add_argument("--video_codec", type=str, default=None)
+    parser.add_argument("--video_bitrate", type=str, default=None)
+    parser.add_argument("--video_preset", type=str, default=None)
+    parser.add_argument(
+        "--video_ffmpeg_params",
+        type=str,
+        default=None,
+        help='Extra ffmpeg params as one string, e.g. "-cq 18 -rc vbr".',
+    )
     return parser
 
 
@@ -136,8 +163,16 @@ def main() -> None:
         try:
             sync_from_gcs(run_dir, args_cli.gcs_bucket)
         except Exception as exc:
-            print(f"[SYNC] WARNING: GCS sync failed: {exc}")
-            print("[SYNC] Continuing with whatever is available locally.")
+            print(f"[SYNC] ERROR: GCS sync failed: {exc}", file=sys.stderr)
+            if not has_local_data(run_dir):
+                print(
+                    "[SYNC] No local checkpoints after failed sync. "
+                    "Fix gcloud auth / PATH (or run pull_results_from_gcs.py --latest 1), "
+                    "then retry.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            print("[SYNC] Partial local data present; continuing.")
 
     if not run_dir.exists():
         print(f"[ERROR] --run_dir not found after sync attempt: {run_dir}", file=sys.stderr)
@@ -240,6 +275,12 @@ def main() -> None:
         num_envs=None,
         num_agents=None,
         run_dir=run_dir,
+        video=args_cli.video,
+        video_length=args_cli.video_length,
+        video_codec=args_cli.video_codec,
+        video_bitrate=args_cli.video_bitrate,
+        video_preset=args_cli.video_preset,
+        video_ffmpeg_params=args_cli.video_ffmpeg_params,
     )
 
     if not metrics:

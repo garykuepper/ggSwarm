@@ -109,6 +109,8 @@ the current assess gate passes (Rule 20).
 | B: Formation | `phase2b train --checkpoint <Phase_A/best_agent.pt>` | `Template-GGSwarm-Marl-Formation-v0` | `GGSwarmMarlFormationCfg` | 120k | formation_error < 0.5m, stability metrics maintained |
 | C: Perturbation | future — `# TODO (Phase C)` | TBD | TBD | TBD | TBD |
 
+**Phase A note:** `mean_formation_error_m` on the assess scorecard is **not** a Phase 2A pass/fail gate — formation rewards are off; the metric is a rough position/spread proxy only.
+
 **Phase A → B handoff:** pass `best_agent.pt` from the Phase A run via `--checkpoint`.
 Per Rule 21, `curriculum_start_step` is set to `0` in `GGSwarmMarlFormationCfg`
 because `common_step_counter` resets to 0 on env re-init regardless of checkpoint.

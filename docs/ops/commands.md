@@ -89,6 +89,20 @@ python scripts/run.py phase2 play --video --video_length 1500 --rendering_mode q
 python scripts/run.py phase2 play --video --video_codec libx265 --video_preset slow --video_bitrate 8M
 ```
 
+### Eval and assess video (headless)
+
+Phase eval (`scripts/eval.py` via `run.py … eval`) and post-training assess can record the same style of clip under the **training run directory** (`videos/eval/`), not under `videos/play/`.
+
+Replace ``<run>`` below with your real timestamp folder (e.g. ``2026-03-22_04-32-04_mappo_torch``). Literal ``<run>`` in the path is invalid on Windows and is rejected before Isaac Sim starts.
+
+```powershell
+python scripts/run.py hover-stability eval --headless --video --checkpoint logs/skrl/ggswarm_marl/<run>/checkpoints/best_agent.pt
+
+python scripts/run.py hover-stability assess --run_dir logs/skrl/ggswarm_marl/<run> --video --no_sync
+```
+
+Optional: `--video_length`, `--rendering_mode`, `--video_codec`, etc. (same semantics as `play --video`).
+
 ### Default Progress and ETA Reporting
 
 Training progress reporting is enabled by default for both `hover train` and

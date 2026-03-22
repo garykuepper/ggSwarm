@@ -6,6 +6,7 @@ Usage:
     python scripts/eval.py --phase 2a --checkpoint logs/.../best_agent.pt
     python scripts/eval.py --phase hover --num_episodes 10 --headless
     python scripts/eval.py --phase 3 --kill_agent_step 50 --headless
+    python scripts/eval.py --phase 2a --headless --video --checkpoint logs/.../best_agent.pt
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from isaaclab.app import AppLauncher
 
 # Ensure ggswarm_utils is importable when run from the repo root
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ggswarm_utils.checkpoint import validate_eval_checkpoint_path  # noqa: E402
 from ggswarm_utils.sim_helpers import PHASE_REGISTRY, resolve_phase  # noqa: E402
 
 
@@ -95,6 +97,45 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Path to the training run directory (used for log naming).",
     )
+    parser.add_argument(
+        "--video",
+        action="store_true",
+        default=False,
+        help=(
+            "Record an rgb_array clip under <run>/videos/eval (works headless; "
+            "enables cameras)."
+        ),
+    )
+    parser.add_argument(
+        "--video_length",
+        type=int,
+        default=200,
+        help="Eval video length in environment steps (default 200).",
+    )
+    parser.add_argument(
+        "--video_codec",
+        type=str,
+        default=None,
+        help="FFmpeg codec (default with --video: hevc_nvenc, with CPU fallback).",
+    )
+    parser.add_argument(
+        "--video_bitrate",
+        type=str,
+        default=None,
+        help="Video bitrate like 8M.",
+    )
+    parser.add_argument(
+        "--video_preset",
+        type=str,
+        default=None,
+        help="FFmpeg preset (NVENC: p1..p7).",
+    )
+    parser.add_argument(
+        "--video_ffmpeg_params",
+        type=str,
+        default=None,
+        help='Extra ffmpeg params as one string, e.g. "-cq 18 -rc vbr".',
+    )
     AppLauncher.add_app_launcher_args(parser)
     return parser
 
@@ -103,6 +144,11 @@ def main() -> None:
     """Parse arguments, boot Isaac Lab, dispatch to phase collector, print results."""
     parser = _build_parser()
     args_cli, hydra_args = parser.parse_known_args()
+    if args_cli.video:
+        args_cli.enable_cameras = True
+    rendering_mode = getattr(args_cli, "rendering_mode", None)
+    if args_cli.video and rendering_mode is None:
+        args_cli.rendering_mode = "quality"
     sys.argv = [sys.argv[0]] + hydra_args
 
     phase_cfg = resolve_phase(args_cli.phase)
@@ -114,6 +160,9 @@ def main() -> None:
         if args_cli.num_episodes is None
         else args_cli.num_episodes
     )
+
+    if args_cli.checkpoint is not None:
+        validate_eval_checkpoint_path(args_cli.checkpoint)
 
     # Boot AppLauncher *before* any Isaac Lab imports
     app_launcher = AppLauncher(args_cli)
@@ -153,6 +202,12 @@ def main() -> None:
         num_envs=args_cli.num_envs,
         num_agents=args_cli.num_agents,
         run_dir=args_cli.run_dir,
+        video=args_cli.video,
+        video_length=args_cli.video_length,
+        video_codec=args_cli.video_codec,
+        video_bitrate=args_cli.video_bitrate,
+        video_preset=args_cli.video_preset,
+        video_ffmpeg_params=args_cli.video_ffmpeg_params,
     )
 
     # Write JSON output if requested

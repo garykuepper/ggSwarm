@@ -45,6 +45,36 @@ def find_best_checkpoint(run_dir: Path) -> Path:
     return ckpts[-1].resolve()
 
 
+def validate_eval_checkpoint_path(path: str | Path) -> None:
+    """Ensure eval checkpoint exists and is not a literal doc placeholder.
+
+    Docs often use ``<run>`` as a stand-in for a timestamped folder name. If that
+    string is pasted literally, Windows treats ``<`` / ``>`` as invalid path
+    characters and ``RecordVideo`` can fail inside ``os.makedirs`` (WinError 123).
+
+    Args:
+        path: User-supplied path to a ``.pt`` file (relative to cwd or absolute).
+
+    Raises:
+        ValueError: If the resolved path still contains ``<`` or ``>``.
+        FileNotFoundError: If the file does not exist.
+    """
+    p = Path(path).expanduser()
+    if not p.is_absolute():
+        p = (Path.cwd() / p).resolve()
+    else:
+        p = p.resolve()
+    text = str(p)
+    if "<" in text or ">" in text:
+        raise ValueError(
+            "Checkpoint path contains '<' or '>'. Replace the <run> placeholder from the "
+            "docs with your real folder under logs/skrl/ggswarm_marl/ "
+            "(e.g. 2026-03-22_04-32-04_mappo_torch)."
+        )
+    if not p.is_file():
+        raise FileNotFoundError(f"Checkpoint not found: {p}")
+
+
 # ---------------------------------------------------------------------------
 # Policy loading
 # ---------------------------------------------------------------------------

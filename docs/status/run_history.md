@@ -27,7 +27,7 @@ or relaunching (Rule 23). Full assessment workflow: [`docs/ops/post_train_analys
 
 | Run | Timestamp | Phase | survival\_steps | airborne\_ratio | ground\_hit\_rate | mean\_roll\_deg | orientation\_viol | Verdict |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| — | — | — | — | — | — | — | — | pending |
+| Run PD1 | 2026-03-22_04-32-04 | Phase 2A | 250.5 | 0.542 | 0.815 | 22.2° | 0.219 | FAIL |
 
 ---
 

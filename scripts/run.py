@@ -162,6 +162,28 @@ def _add_play_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--no_gnn", action="store_true", default=False)
 
 
+def _add_eval_video_args(p: argparse.ArgumentParser) -> None:
+    """Optional rgb_array recording for eval/assess (headless-safe)."""
+    p.add_argument(
+        "--video",
+        action="store_true",
+        default=False,
+        help="Record eval clip under run_dir/videos/eval (eval) or run_dir (assess).",
+    )
+    p.add_argument("--video_length", type=int, default=200)
+    p.add_argument(
+        "--rendering_mode",
+        type=str,
+        choices=["performance", "balanced", "quality"],
+        default=None,
+        help="Isaac rendering quality (default with --video: quality).",
+    )
+    p.add_argument("--video_codec", type=str, default=None)
+    p.add_argument("--video_bitrate", type=str, default=None)
+    p.add_argument("--video_preset", type=str, default=None)
+    p.add_argument("--video_ffmpeg_params", type=str, default=None)
+
+
 def _add_eval_args(p: argparse.ArgumentParser, default_episodes: int = 5) -> None:
     """Common arguments for all eval subparsers."""
     _add_common_sim_args(p)
@@ -173,6 +195,7 @@ def _add_eval_args(p: argparse.ArgumentParser, default_episodes: int = 5) -> Non
         default=False,
         help="Disable GNN policy (use MLP). Required when checkpoint was trained without --gnn.",
     )
+    _add_eval_video_args(p)
 
 
 def _add_assess_args(p: argparse.ArgumentParser) -> None:
@@ -185,12 +208,23 @@ def _add_assess_args(p: argparse.ArgumentParser) -> None:
     )
     p.add_argument("--num_episodes", type=int, default=5)
     p.add_argument(
+        "--no_sync",
+        action="store_true",
+        default=False,
+        help=(
+            "Skip GCS pull when local checkpoints are missing. Default: pull that run "
+            "from gs://gg-swarm-training-logs via gcloud (requires auth + gcloud on PATH "
+            "or GGSWARM_GCLOUD)."
+        ),
+    )
+    p.add_argument(
         "--progression",
         action="store_true",
         default=False,
         help="Also run checkpoint progression sweep (adds ~3 min).",
     )
     p.add_argument("--device", type=str, default=None)
+    _add_eval_video_args(p)
 
 
 # ---------------------------------------------------------------------------
@@ -333,6 +367,7 @@ def _build_parser() -> argparse.ArgumentParser:  # noqa: C901  # grandfathered â
         help="Episode step to kill agent 0 for SwarmRaft gap-fill test (0 = disabled).",
     )
     p3_eval.add_argument("--no_gnn", action="store_true", default=False)
+    _add_eval_video_args(p3_eval)
     p3_eval.set_defaults(handler=lambda a: _cmd_eval(a, phase="3"))
 
     p3_monitor = phase3_cmds.add_parser("monitor", help="Monitor phase3 TensorBoard logs")
@@ -356,6 +391,7 @@ def _build_parser() -> argparse.ArgumentParser:  # noqa: C901  # grandfathered â
     p4_eval.add_argument("--num_episodes", type=int, default=10)
     p4_eval.add_argument("--kill_agent_step", type=int, default=50)
     p4_eval.add_argument("--no_gnn", action="store_true", default=False)
+    _add_eval_video_args(p4_eval)
     p4_eval.set_defaults(handler=lambda a: _cmd_eval(a, phase="4"))
 
     p4_bench = phase4_cmds.add_parser("bench", help="Run scale benchmark (3â†’20 agents)")

@@ -58,15 +58,16 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
 
     # swarm specific
     # action[0] = 0.0 -> thrust_val = 0.5 -> total_thrust = weight (hover).
+    # thrust_to_weight * 0.5 == 1.0 => nominal hover at neutral collective (Isaac-style).
     # Aligned with Isaac Lab's Isaac-Quadcopter-Direct-v0 reference baseline.
-    thrust_to_weight: float = 1.9
+    thrust_to_weight: float = 2.0
 
     # --- PD Attitude Controller (inner loop) ---
     # The RL policy outputs [thrust, desired_roll, desired_pitch, desired_yaw_rate].
     # The PD controller converts these into body-frame thrust + moments each step.
     # Reference: OmniDrones AttitudeController (deployed to real Crazyflie 2.1 hardware).
     # Proportional gain for roll/pitch attitude error (Nm/rad).
-    kp_att: float = 0.03
+    kp_att: float = 0.045
     # Derivative/damping gain for roll/pitch (Nm/(rad/s)).
     kd_att: float = 0.005
     # Proportional gain for yaw rate error (Nm/(rad/s)).
@@ -76,7 +77,7 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     # Maximum yaw rate the policy can command (rad/s). π rad/s = 180 deg/s.
     max_yaw_rate: float = 3.14159
     # Moment output clamp (Nm). Prevents runaway torques at episode start.
-    max_moment: float = 0.02
+    max_moment: float = 0.03
 
     graph_connectivity_radius: float = 2.0  # (metres) for L2 adjacency matrix
     # Tighter yaw range (0.1 vs 0.3) keeps drones more level at spawn, reducing early tumble pressure.
@@ -205,7 +206,7 @@ class GGSwarmMarlHoverStabilityCfg(GGSwarmMarlEnvCfg):
     # Simplified 3-term reward matching Isaac Lab Isaac-Quadcopter-Direct-v0.
     # The PD controller handles stability so the reward can be clean and sparse.
     # rew_scale_pos * step_dt * (1 - tanh(dist/0.8)) per step
-    rew_scale_pos: float = 15.0
+    rew_scale_pos: float = 18.0
     # rew_scale_vel * step_dt * sum(square(lin_vel_b)) per step
     rew_scale_vel: float = -0.05
     # rew_scale_ang_vel * step_dt * sum(square(ang_vel_b)) per step

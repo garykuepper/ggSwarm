@@ -231,3 +231,28 @@ This document tracks major technical changes and milestone completions for each 
   - **Root cause**: `survival_steps=1.1` is an artifact of the eval metric — the episode survival counter resets on ground hit, so a single crash shows as ~1 step. `airborne_ratio=0.700` (gate > 0.9) and `orientation_violation_rate=0.524` (gate < 0.1) indicate agents are staying up but tumbling severely.
   - **Decision**: Reward rebalance needed. Upright reward is insufficient vs. position reward — agents reach target altitude but don't stabilize orientation. Increase `rew_scale_upright` and `rew_scale_ang_vel` penalty. Consider reducing `rew_scale_pos` slightly to shift priority toward stability.
   - **Fixed assess pipeline bugs**: 3 bugs in `_cmd_assess` / `eval_phase2.py` prevented end-to-end execution: (1) `--log_dir` → `--run_dir` arg name; (2) missing `--output_json` in `eval_phase2.py`; (3) `mean_episode_survival_steps` key renamed to `survival_steps`. Also fixed Windows cp1252 `←` char in scorecard print.
+
+## Phase 2A: Run PD1 Assessment (2026-03-22)
+
+- [2026-03-22] **Run PD1 eval** (run: `2026-03-22_04-32-04_mappo_torch`, 80k iters, PD inner loop, hover-stability, `best_agent.pt`, 5 episodes):
+  - `survival_steps=250.5` | `airborne_ratio=0.542` | `ground_hit_rate=0.815`
+  - `mean_roll_deg=22.2°` | `orientation_violation_rate=0.219` | `mean_formation_error_m=12.0` (informational; formation reward is 0 in Phase 2A — do not gate on this)
+  - **Verdict: FAIL** (3 FAIL, 3 WARN, 0 PASS)
+  - **Progress vs raw-torque runs (Runs 1–A1)**: Mean roll dropped from ~60–75° to ~22° — the PD attitude loop materially stabilizes attitude; the policy is no longer systematically inverted.
+  - **Remaining gap**: High `ground_hit_rate` and low `airborne_ratio` — the outer RL loop is not yet holding altitude / goal position; agents still dip to the ground often despite better roll.
+  - **Decision: FAIL** — do not advance to Phase 2B until Phase 2A gates pass (`airborne_ratio` > 0.9, `ground_hit_rate` < 0.05, `mean_roll_deg` < 15°, etc.).
+  - **Next action** (PD + 3-term hover reward — **do not** use `rew_scale_upright` / `rew_scale_alive`; they are 0 in hover-stability cfg):
+    1. Tune low-level loop in `GGSwarmMarlEnvCfg`: try slightly higher `kp_att` and/or `max_moment`; confirm `thrust_to_weight` vs Isaac Lab Crazyflie baseline.
+    2. Tune hover reward: `rew_scale_pos`, `rew_scale_vel`, `rew_scale_ang_vel` (Isaac Lab–style terms only); inspect TensorBoard for reward and policy std.
+    3. Optional: longer train or curriculum tweak — not reward surgery until PD + reward sweep above is logged.
+  - **Scorecard follow-up**: Updated `scripts/ggswarm_utils/scorecard.py` FAIL hints to match PD architecture (removed stale upright/alive/formation-only advice for Phase 2A).
+
+- [2026-03-22] **Headless eval video**: Unified eval (`scripts/eval.py`) and `run_eval()` can record an offscreen `rgb_array` clip via `--video` (same `EncodingRecordVideo` path as `play.py`), writing to `<run_dir>/videos/eval/`. Refactored `EncodingRecordVideo` into `scripts/ggswarm_utils/encoding_record_video.py` for reuse. `run.py` eval/assess and `post_train_assess.py` forward `--video` / codec options; default `rendering_mode=quality` when `--video` is set without an override.
+- [2026-03-22] **Eval checkpoint validation**: `validate_eval_checkpoint_path()` rejects missing `.pt` files and paths containing literal `<`/`>` (e.g. pasted `<run>` placeholders) before AppLauncher / `RecordVideo`, avoiding opaque Windows `WinError 123` from `os.makedirs`.
+
+## Phase 2A: PD2 config (post–Run PD1 assess)
+
+- [2026-03-22] **Hover-stability next run (PD2 bundle)** after PD1 FAIL on `airborne_ratio` / `ground_hit_rate` with improved roll (~22°):
+  - **Base `GGSwarmMarlEnvCfg`:** `thrust_to_weight` **1.9 → 2.0** (neutral collective matches documented hover: `T/W × 0.5 = 1.0`); `kp_att` **0.03 → 0.045**; `max_moment` **0.02 → 0.03** (`kd_att` unchanged at 0.005 — raise if smoke shows oscillation).
+  - **`GGSwarmMarlHoverStabilityCfg`:** `rew_scale_pos` **15.0 → 18.0** (stronger 3D goal signal, including spawn altitude).
+  - **Rationale:** Prioritize vertical authority and faster attitude tracking under load; no `rew_scale_upright` / formation changes (Phase 2A scope). Docs: `training_workflow.md` Step 0 grep aligned to PD + hover; `post_train_analysis.md` Phase 2A matrix rows aligned to PD + 3-term reward; `phase2_brain_development.md` footnote on `mean_formation_error_m` in 2A.
