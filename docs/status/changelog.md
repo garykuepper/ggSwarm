@@ -308,3 +308,16 @@ This document tracks major technical changes and milestone completions for each 
 - **`GGSwarmMarlHoverStabilityCfg`:** `spawn_z_min` **0.5 → 0.65**, `spawn_z_max` **1.5 → 1.65** (goal Z still follows spawn Z); `rew_scale_vel` **-0.05 → -0.055**, `rew_scale_ang_vel` **-0.01 → -0.012**.
 - **Ops:** `docs/status/run_history.md` **Run PD4** row `pending` until first post-train assess; Rule 22 smoke: `python scripts/run.py debug smoke --task Template-GGSwarm-Marl-HoverStability-v0 --iterations 1 --gnn`.
 - **GCE (user-triggered):** After smoke, launch hover-stability train on VM per `docs/ops/training_workflow.md` / `.cursor/rules/gce-training-ops.mdc`; pull → assess → replace PD4 `TBD` row with scorecard metrics.
+
+## Phase 2A: Run PD4 Assessment (2026-03-22)
+
+- **Run dir:** `logs/skrl/ggswarm_marl/2026-03-22_18-38-39_mappo_torch`
+- **Train budget:** 92,000 iterations (GCE); **config:** PD4 bundle (see Phase 2A PD4 prep entry).
+- **Convergence:** peak reward **20338** @ step **87,000** | final **20163** @ step **92,000** | entropy collapse @ step **56,000** | recommended budget **~64k** steps (heuristic)
+- **Scorecard** (`best_agent.pt`, 5 episodes, hover-stability assess, **seed 42**):
+  - `survival_steps=5.0` | `airborne_ratio=0.687` | `ground_hit_rate=0.361` (**WARN** vs 0.5 threshold)
+  - `mean_roll_deg=28.9°` | `orientation_violation_rate=0.373` | `mean_formation_error_m=0.85` (informational; not gated in Phase 2A)
+  - **Verdict: FAIL** (same as PD3; `airborne_ratio` / `survival_steps` still far from pass)
+- **Vs Run PD3:** Clear win on **`ground_hit_rate`** and **`airborne_ratio`**; small regression on roll/orientation violation.
+- **Decision: FAIL** — do not advance to Phase 2B.
+- **Next action:** TensorBoard review (`summarize_tb_scalars.py`); consider bounded **`rew_scale_pos`** or **`rew_scale_ang_vel`** nudge, or PD **`kp_att` / `max_moment`** only if TB shows attitude-dominated failure; log any cfg change before next GCE run.

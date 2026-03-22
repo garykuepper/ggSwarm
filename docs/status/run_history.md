@@ -30,9 +30,9 @@ or relaunching (Rule 23). Full assessment workflow: [`docs/ops/post_train_analys
 | Run PD1 | 2026-03-22_04-32-04 | Phase 2A | 250.5 | 0.542 | 0.815 | 22.2° | 0.219 | FAIL |
 | Run PD2 | 2026-03-22_07-03-55 | Phase 2A | 250.5 | 0.571 | 0.723 | 24.6° | 0.296 | FAIL |
 | Run PD3 | 2026-03-22_16-00-12 | Phase 2A | 4.4 | 0.617 | 0.494 | 24.6° | 0.349 | FAIL |
-| Run PD4 | TBD | Phase 2A | — | — | — | — | — | pending |
+| Run PD4 | 2026-03-22_18-38-39 | Phase 2A | 5.0 | 0.687 | 0.361 | 28.9° | 0.373 | FAIL |
 
-> **Run PD4:** Config bundle merged 2026-03-22 (exploration cap, hover spawn/reward nudges). Replace `TBD` with the run-directory timestamp after GCE train + GCS pull; fill metrics from `hover-stability assess` before declaring PASS/FAIL.
+> **Run PD4 scorecard:** GCE train **92k** iters; config = PD4 bundle (`max_log_std=1.0`, spawn/reward nudges). **`post_train_assess.py`** (seed **42**, `best_agent.pt`, 5 episodes). vs **Run PD3:** `airborne_ratio` **0.617→0.687**, `ground_hit_rate` **0.494→0.361** (WARN); `mean_roll_deg` **24.6°→28.9°**, `orientation_violation_rate` **0.349→0.373** — altitude proxy improved, attitude slightly worse; overall **FAIL** (gates unchanged).
 
 > **Run PD3 scorecard:** row uses **eval seed 42** (matches `skrl_mappo_cfg.yaml` / training). An earlier assess pass used **seed 1** (`survival_steps` 4.6, `ground_hit_rate` 0.717, `airborne_ratio` 0.596) — superseded for cross-run comparison.
 >
