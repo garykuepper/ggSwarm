@@ -6,12 +6,12 @@ Phase 2 trains the GATv2 coordination policy using MAPPO so agents learn basic f
 
 ## Objectives
 
-|| ID | Objective | Success Criteria |
-|| :--- | :--- | :--- |
-|| P2.1 | Train a shared MAPPO policy that keeps agents in a stable formation | **Mean formation error < 0.5m** (defined below) after **≤ 50k environment steps** |
-|| P2.2 | Integrate GATv2 as the policy backbone | Policy handles batched graphs from `extras["adj_matrix"]` |
-|| P2.3 | Implement Curriculum Reward Shaping | Smooth transition from hover-in-place to formation-aware |
-|| P2.4 | Validate training pipeline end-to-end | TensorBoard logs show converging reward curve without collapsing |
+| ID | Objective | Success Criteria |
+| :--- | :--- | :--- |
+| P2.1 | Train a shared MAPPO policy that keeps agents in a stable formation | **Mean formation error < 0.5m** (defined below) after **≤ 50k environment steps** |
+| P2.2 | Integrate GATv2 as the policy backbone | Policy handles batched graphs from `extras["adj_matrix"]` |
+| P2.3 | Implement Curriculum Reward Shaping | Smooth transition from hover-in-place to formation-aware |
+| P2.4 | Validate training pipeline end-to-end | TensorBoard logs show converging reward curve without collapsing |
 
 Aligns with proposal **Milestone M1 (Week 8):** "GNN policy training."
 
@@ -70,14 +70,14 @@ MLP Head → Actions (4-dim)
 **Curriculum-Based Rewards**
 Rewards dynamically scale based on training progress to prevent early-stage training collapse.
 
-|| Component | Scale | Formula |
-|| :--- | :--- | :--- |
-|| **Separation Penalty** | `-5.0` | Applied if `dist < 2 * drone_radius` (prevents physical clipping/collapse) |
-|| **Formation error** | `+2.0 * α` | `exp(-mean_spacing_error / 0.3)` where spacing error = `\|actual_dist - target_dist\|` |
-|| **Cohesion** | `+0.5 * α` | `exp(-max_neighbor_dist / connectivity_threshold)` |
-|| Position (Hover) | `+1.0 * (1-α)` | `exp(-dist_to_goal / 0.5)` |
-|| Velocity penalty | `-0.05` | `‖lin_vel_b‖` |
-|| Alive bonus | `+0.1` | Constant |
+| Component | Scale | Formula |
+| :--- | :--- | :--- |
+| **Separation Penalty** | `-5.0` | Applied if `dist < 2 * drone_radius` (prevents physical clipping/collapse) |
+| **Formation error** | `+2.0 * α` | `exp(-mean_spacing_error / 0.3)` where spacing error = `\|actual_dist - target_dist\|` |
+| **Cohesion** | `+0.5 * α` | `exp(-max_neighbor_dist / connectivity_threshold)` |
+| Position (Hover) | `+1.0 * (1-α)` | `exp(-dist_to_goal / 0.5)` |
+| Velocity penalty | `-0.05` | `‖lin_vel_b‖` |
+| Alive bonus | `+0.1` | Constant |
 
 *(Where `α` scales from 0.0 to 1.0 between `curriculum_start_step` and `curriculum_end_step` in `GGSwarmMarlEnvCfg`, currently 10k → 50k environment steps).*
 
@@ -85,44 +85,35 @@ Rewards dynamically scale based on training progress to prevent early-stage trai
 
 ## SKRL Configuration Tuning (`skrl_mappo_cfg.yaml`)
 
-|| Parameter | Current | Target | Rationale |
-|| :--- | :--- | :--- | :--- |
-|| `network.layers` | `[32, 32]` | `[128, 64]` | Larger capacity for multi-agent coordination |
-|| `trainer.timesteps` | `4800` | `100000+` | Sufficient training for convergence |
-|| `experiment.directory` | `cart_double_pendulum_direct` | `ggswarm_marl` | Fix template leftover |
-|| `agent.rollouts` | `16` | `32` | More experience per update |
-|| `agent.mini_batches` | `(default)` | `4` or `8` | Prevents memory spikes with larger rollouts |
-|| `agent.learning_rate` | `3.0e-04` | `1.0e-04` | Slower, more stable learning for MARL |
-|| `agent.entropy_loss_scale` | `0.0` | `0.01` | Encourage exploration in early training |
+| Parameter | Current | Target | Rationale |
+| :--- | :--- | :--- | :--- |
+| `network.layers` | `[32, 32]` | `[128, 64]` | Larger capacity for multi-agent coordination |
+| `trainer.timesteps` | `4800` | `100000+` | Sufficient training for convergence |
+| `experiment.directory` | `cart_double_pendulum_direct` | `ggswarm_marl` | Fix template leftover |
+| `agent.rollouts` | `16` | `32` | More experience per update |
+| `agent.mini_batches` | `(default)` | `4` or `8` | Prevents memory spikes with larger rollouts |
+| `agent.learning_rate` | `3.0e-04` | `1.0e-04` | Slower, more stable learning for MARL |
+| `agent.entropy_loss_scale` | `0.0` | `0.01` | Encourage exploration in early training |
 
 ---
 
-## Implementation Plan
+## Phase 2 Sub-phases
 
-### Step 1: Fix Training Pipeline Basics
+Phase 2 is split into three sequential sub-phases. Each sub-phase has its own
+CLI family, cfg class, and gym task. Advance to the next sub-phase only after
+the current assess gate passes (Rule 20).
 
-1. Update `skrl_mappo_cfg.yaml` with corrected parameters.
-2. Run a baseline MLP training to confirm the pipeline works end-to-end.
-3. Verify TensorBoard logging.
+| Sub-phase | CLI command | Task ID | Config class | Iterations | Gate |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| A: Hover-Stability | `hover-stability train` | `Template-GGSwarm-Marl-HoverStability-v0` | `GGSwarmMarlHoverStabilityCfg` | 80k | survival_steps > 500, airborne_ratio > 0.9, mean_roll < 15° |
+| B: Formation | `phase2b train --checkpoint <Phase_A/best_agent.pt>` | `Template-GGSwarm-Marl-Formation-v0` | `GGSwarmMarlFormationCfg` | 120k | formation_error < 0.5m, stability metrics maintained |
+| C: Perturbation | future — `# TODO (Phase C)` | TBD | TBD | TBD | TBD |
 
-### Step 2: Curriculum & Formation Rewards
+**Phase A → B handoff:** pass `best_agent.pt` from the Phase A run via `--checkpoint`.
+Per Rule 21, `curriculum_start_step` is set to `0` in `GGSwarmMarlFormationCfg`
+because `common_step_counter` resets to 0 on env re-init regardless of checkpoint.
 
-1. Add `Separation Penalty` to heavily penalize collisions.
-2. Add `_compute_formation_reward()` to `drone_swarm_env.py`.
-3. Link the formation scale (`α`) to `self.common_step_counter`.
-4. Validate reward signals make physical sense.
-
-### Step 3: PyG to SKRL Integration (Timebox: 5-7 Days)
-
-1. Create a custom SKRL model class wrapping `torch_geometric.nn.GATv2Conv`.
-2. Implement batched 3D adjacency matrix to 2D sparse `edge_index` flattening.
-3. Register the custom model in the SKRL config.
-4. Train and compare against the MLP baseline. *Fallback to MLP if tensor reshaping blocks progress.*
-
-### Step 4: Evaluation
-
-1. Run trained policy with `play.py` for visual inspection.
-2. Log formation error metrics over episodes.
+**Phase B → C:** placeholder only. Do not implement until Phase B assess gate passes (Rule 2).
 
 ---
 
@@ -254,15 +245,22 @@ This goes into your environment's reward computation block to ensure the agents 
 ## Training Workflow
 
 ```powershell
-# Recommended: unified helper (Phase 2 formation)
-python scripts/run.py phase2 train --headless
-python scripts/run.py phase2 play
-python scripts/run.py phase2 eval --num_episodes 10
-python scripts/run.py phase2 monitor
+# Phase A: hover-stability (run on GCE via train_and_push.sh)
+python scripts/run.py hover-stability train --headless --max_iterations 80000
 
-# Recommended: unified helper (hover baseline prerequisite)
-python scripts/run.py hover train --headless
-python scripts/run.py hover eval --num_episodes 10
+# After GCS pull — assess locally (Rule 20):
+python scripts/run.py hover-stability assess --run_dir logs/skrl/ggswarm_marl/<run>
+
+# Phase B: formation resume (run on GCE, pass Phase A checkpoint)
+python scripts/run.py phase2b train --headless --max_iterations 120000 --checkpoint logs/skrl/ggswarm_marl/<phase_a_run>/checkpoints/best_agent.pt
+
+# After GCS pull — assess locally (Rule 20):
+python scripts/run.py phase2b assess --run_dir logs/skrl/ggswarm_marl/<run>
+
+# Eval and play are always local (GCE is training-only — see gce-training-ops rule):
+python scripts/run.py phase2b eval --checkpoint logs/skrl/ggswarm_marl/<run>/checkpoints/best_agent.pt
+python scripts/run.py phase2b play --checkpoint logs/skrl/ggswarm_marl/<run>/checkpoints/best_agent.pt
+tensorboard --logdir logs/skrl/ggswarm_marl
 ```
 
 ---
@@ -277,9 +275,9 @@ python scripts/run.py hover eval --num_episodes 10
 
 ## Risks
 
-|| Risk | Mitigation |
-|| :--- | :--- |
-|| GATv2 over-smoothing with deep layers | Limit to 2–3 attention heads, max 3-hop neighborhood |
-|| VRAM saturation with 20+ agents | Use headless training; reduce `num_envs` if needed |
-|| Reward hacking (agents collapse to same point) | Add minimum separation penalty to reward |
-|| Training instability with formation rewards | Curriculum: start with hover rewards, gradually increase formation weight |
+| Risk | Mitigation |
+| :--- | :--- |
+| GATv2 over-smoothing with deep layers | Limit to 2–3 attention heads, max 3-hop neighborhood |
+| VRAM saturation with 20+ agents | Use headless training; reduce `num_envs` if needed |
+| Reward hacking (agents collapse to same point) | Add minimum separation penalty to reward |
+| Training instability with formation rewards | Curriculum: start with hover rewards, gradually increase formation weight |

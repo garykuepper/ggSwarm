@@ -152,12 +152,12 @@ gcloud compute instances list
 
 Maintainer's current setup:
 
-|| Field | Value |
-|| ----- | ----- |
-|| Name | `isaacsim` |
-|| Zone | `us-central1-a` |
-|| Repo path | `~/ggSwarm` |
-|| Logs | `logs/skrl/ggswarm_marl/<timestamp>_mappo_torch/` |
+| Field | Value |
+| ----- | ----- |
+| Name | `isaacsim` |
+| Zone | `us-central1-a` |
+| Repo path | `~/ggSwarm` |
+| Logs | `logs/skrl/ggswarm_marl/<timestamp>_mappo_torch/` |
 
 Verify IPs with `gcloud compute instances list` — external IPs can change if the VM is recreated.
 

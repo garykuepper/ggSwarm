@@ -28,6 +28,9 @@ from .contract_logic import (
     compute_adjacency_matrix,
     compute_marl_rewards,
 )
+from .cbf_safety import CbfParams, apply_cbf_safety, apply_cbf_obstacle_safety
+from .minco_trajectory import MincoParams, MincoSmoother
+from .swarm_raft import SwarmRaft, SwarmRaftParams
 
 # import logger
 logger = logging.getLogger("isaaclab")
@@ -65,6 +68,68 @@ class GGSwarmMarlEnv(DirectMARLEnv):
         # Roll/pitch/yaw moments applied to the main body; shape: [num_instances, 1, 3]
         self._body_torques = torch.zeros(self.num_envs * self.cfg.num_agents, 1, 3, device=self.device)
 
+        # --- Phase 3: SwarmRaft Consensus (L3, gated by cfg.raft_enabled) ---
+        if self.cfg.raft_enabled:
+            raft_params = SwarmRaftParams(
+                heartbeat_timeout=self.cfg.raft_heartbeat_timeout,
+                replan_cooldown=self.cfg.raft_replan_cooldown,
+                target_formation_dist=self.cfg.target_formation_dist,
+                formation_height=self.cfg.raft_formation_height,  # Rule 6: cfg param, not hardcoded
+            )
+            self._swarm_raft = SwarmRaft(
+                num_envs=self.num_envs,
+                num_agents=self.cfg.num_agents,
+                params=raft_params,
+                env_origins=self.scene.env_origins,
+                device=self.device,
+            )
+            # Cache latest consensus obs features for use in _get_observations
+            # shape: [num_envs, num_agents]
+            self._raft_is_leader = torch.zeros(
+                self.num_envs, self.cfg.num_agents, device=self.device
+            )
+            self._raft_alive_frac = torch.ones(
+                self.num_envs, self.cfg.num_agents, device=self.device
+            )
+
+        # --- Phase 4: Obstacle positions buffer (gated by cfg.obstacle_enabled) ---
+        # Populated in _setup_scene; used by CBF obstacle safety in _pre_physics_step.
+        # shape: [num_obstacles, 3]  (world-frame, env_0 reference -- replicated across envs)
+        self._obstacle_positions: torch.Tensor = torch.zeros(0, 3, device=self.device)
+
+        # --- Phase 4: Agent loss simulation state (gated by cfg.agent_loss_enabled) ---
+        if self.cfg.agent_loss_enabled:
+            # Per-environment step at which to kill a random agent this episode.
+            # -1 means no kill scheduled yet for this episode.
+            # shape: [num_envs]
+            self._kill_step = torch.full(
+                (self.num_envs,), -1, dtype=torch.long, device=self.device
+            )
+            # Which agent to kill per env (-1 = none).
+            # shape: [num_envs]
+            self._kill_agent_idx = torch.full(
+                (self.num_envs,), -1, dtype=torch.long, device=self.device
+            )
+            # Track which agents have been forcibly terminated this episode.
+            # shape: [num_envs, num_agents]
+            self._force_terminated = torch.zeros(
+                self.num_envs, self.cfg.num_agents, dtype=torch.bool, device=self.device
+            )
+
+        # --- Phase 3: MINCO Trajectory Smoother (L5, gated by cfg.minco_enabled) ---
+        if self.cfg.minco_enabled:
+            minco_params = MincoParams(
+                smoothing_alpha=self.cfg.minco_smoothing_alpha,
+                buffer_size=self.cfg.minco_buffer_size,
+            )
+            self._minco = MincoSmoother(
+                num_envs=self.num_envs,
+                num_agents=self.cfg.num_agents,
+                action_dim=4,
+                params=minco_params,
+                device=self.device,
+            )
+
     def _setup_scene(self):
         # Create a bright yellow material for high visibility
         yellow_material_cfg = sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 1.0, 0.0), metallic=0.5, roughness=0.5)
@@ -98,6 +163,33 @@ class GGSwarmMarlEnv(DirectMARLEnv):
         # Add articulation to scene
         self.scene.articulations["robot"] = self.robot
 
+        # --- Phase 4: Spawn obstacles (gated by cfg.obstacle_enabled) ---
+        if self.cfg.obstacle_enabled:
+            import random as _random
+            _random.seed(42)
+            obstacle_positions = []
+            half = self.cfg.obstacle_field_size
+            for k in range(self.cfg.obstacle_count):
+                x = _random.uniform(-half, half)
+                y = _random.uniform(-half, half)
+                pos = (x, y, self.cfg.obstacle_height / 2.0)
+                obstacle_positions.append(pos)
+                prim_path = f"/World/envs/env_0/obstacle_{k}"
+                obstacle_cfg = sim_utils.CapsuleCfg(
+                    radius=self.cfg.obstacle_radius,
+                    height=self.cfg.obstacle_height,
+                    axis="Z",
+                    visual_material=sim_utils.PreviewSurfaceCfg(
+                        diffuse_color=(0.8, 0.2, 0.2), metallic=0.1
+                    ),
+                    collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
+                )
+                obstacle_cfg.func(prim_path, obstacle_cfg, translation=pos)
+            # Store obstacle centres for CBF (world frame, env_0 offset = env_origins[0])
+            obs_tensor = torch.tensor(obstacle_positions, dtype=torch.float32)
+            self._obstacle_positions = obs_tensor.to(self.device)
+            logger.info(f"Spawned {self.cfg.obstacle_count} obstacles.")
+
         logger.info("GGSwarmMarlEnv._setup_scene done")
 
         # Filter collisions for CPU
@@ -113,6 +205,39 @@ class GGSwarmMarlEnv(DirectMARLEnv):
         for agent in self.cfg.possible_agents:
             agent_actions.append(actions[agent].unsqueeze(1))
         all_actions = torch.cat(agent_actions, dim=1).clamp(-1.0, 1.0)
+
+        # --- L4: CBF Safety Shield (Phase 3, gated by cfg.cbf_enabled) ---
+        if self.cfg.cbf_enabled:
+            # shape: [num_envs, num_agents, 3]
+            pos_w = self.robot.data.root_pos_w.view(self.num_envs, self.cfg.num_agents, 3)
+            lin_vel_w = self.robot.data.root_lin_vel_w.view(
+                self.num_envs, self.cfg.num_agents, 3
+            )
+            cbf_params = CbfParams(
+                d_safe=self.cfg.cbf_d_safe,
+                gamma=self.cfg.cbf_gamma,
+                activation_margin=self.cfg.cbf_activation_margin,
+            )
+            all_actions, cbf_rate = apply_cbf_safety(all_actions, pos_w, lin_vel_w, cbf_params)
+            if "log" not in self.extras:
+                self.extras["log"] = {}
+            self.extras["log"]["cbf_intervention_rate"] = cbf_rate
+
+            # --- Phase 4: CBF obstacle avoidance extension ---
+            if self.cfg.obstacle_enabled and self._obstacle_positions.shape[0] > 0:
+                all_actions, obs_cbf_rate = apply_cbf_obstacle_safety(
+                    all_actions,
+                    pos_w,
+                    lin_vel_w,
+                    obstacle_positions=self._obstacle_positions,
+                    obstacle_d_safe=self.cfg.cbf_obstacle_d_safe,
+                    gamma=self.cfg.cbf_gamma,
+                )
+                self.extras["log"]["cbf_obstacle_intervention_rate"] = obs_cbf_rate
+
+        # --- L5: MINCO Trajectory Smoother (Phase 3, gated by cfg.minco_enabled) ---
+        if self.cfg.minco_enabled and hasattr(self, "_minco"):
+            all_actions = self._minco.smooth(all_actions)
 
         # Reshape to (num_instances, 4) (num_instances = num_envs * num_agents)
         flat_actions = all_actions.view(-1, 4)
@@ -161,22 +286,34 @@ class GGSwarmMarlEnv(DirectMARLEnv):
         # shape: [num_envs, num_agents, 3]
         proj_grav_b = self.robot.data.projected_gravity_b.view(self.num_envs, self.cfg.num_agents, 3)
 
-        # Calculate relative position to individual goals in body frame
-        # shape: [num_envs * num_agents, 3]
-        target_pos = self._desired_pos_w.view(-1, 3)
-        rel_pos_b, _ = subtract_frame_transforms(pos_w.view(-1, 3), quat_w.view(-1, 4), target_pos)
-        # shape: [num_envs, num_agents, 3]
-        rel_pos_b = rel_pos_b.view(self.num_envs, self.cfg.num_agents, 3)
-
         # Calculate Adjacency Matrix (Distance-based)
         # shape: [num_envs, num_agents, num_agents]
         adj_matrix = compute_adjacency_matrix(
             pos_w, graph_connectivity_radius=self.cfg.graph_connectivity_radius
         )
 
+        # --- L3: SwarmRaft Consensus tick (Phase 3, gated by cfg.raft_enabled) ---
+        if self.cfg.raft_enabled and hasattr(self, "_swarm_raft"):
+            if int(self.common_step_counter) % self.cfg.raft_tick_interval == 0:
+                # Derive alive mask from height bounds (same condition as _get_dones)
+                # shape: [num_envs, num_agents]
+                agent_alive_step = (
+                    (pos_w[:, :, 2] >= self.cfg.min_height)
+                    & (pos_w[:, :, 2] <= self.cfg.max_height)
+                )
+                self._desired_pos_w, self._raft_is_leader, self._raft_alive_frac = (
+                    self._swarm_raft.tick(agent_alive_step, self._desired_pos_w)
+                )
+
+        # Recalculate rel_pos_b after potential SwarmRaft goal update
+        target_pos = self._desired_pos_w.view(-1, 3)
+        rel_pos_b, _ = subtract_frame_transforms(pos_w.view(-1, 3), quat_w.view(-1, 4), target_pos)
+        # shape: [num_envs, num_agents, 3]
+        rel_pos_b = rel_pos_b.view(self.num_envs, self.cfg.num_agents, 3)
+
         observations = {}
         for i, agent in enumerate(self.cfg.possible_agents):
-            observations[agent] = torch.cat(
+            base_obs = torch.cat(
                 [
                     lin_vel_b[:, i],
                     ang_vel_b[:, i],
@@ -185,6 +322,20 @@ class GGSwarmMarlEnv(DirectMARLEnv):
                 ],
                 dim=-1,
             )
+            if self.cfg.raft_enabled and hasattr(self, "_raft_is_leader"):
+                # Extend obs to 14 dims: [12-dim base, is_leader, num_alive_frac]
+                # shape: [num_envs, 14]
+                observations[agent] = torch.cat(
+                    [
+                        base_obs,
+                        self._raft_is_leader[:, i].unsqueeze(-1),
+                        self._raft_alive_frac[:, i].unsqueeze(-1),
+                    ],
+                    dim=-1,
+                )
+            else:
+                observations[agent] = base_obs
+
         # We store the adjacency matrix in extras for now, used by GATv2 later
         self.extras["adj_matrix"] = adj_matrix
         return observations
@@ -262,7 +413,7 @@ class GGSwarmMarlEnv(DirectMARLEnv):
             rewards[agent] = total_rewards[:, i]
         return rewards
 
-    def _get_dones(
+    def _get_dones(  # noqa: C901  # grandfathered — do not add branches
         self,
     ) -> tuple[dict[str, torch.Tensor], dict[str, torch.Tensor]]:
         pos_w = self.robot.data.root_pos_w.view(self.num_envs, self.cfg.num_agents, 3)
@@ -270,6 +421,40 @@ class GGSwarmMarlEnv(DirectMARLEnv):
 
         # Check for crashes or out of bounds
         out_of_bounds = (pos_w[:, :, 2] < self.cfg.min_height) | (pos_w[:, :, 2] > self.cfg.max_height)
+
+        # --- Phase 4: Simulated agent loss (gated by cfg.agent_loss_enabled) ---
+        if self.cfg.agent_loss_enabled and hasattr(self, "_kill_step"):
+            ep_step = self.episode_length_buf  # shape: [num_envs]
+
+            # Schedule kills for envs where no kill is scheduled yet
+            unscheduled = self._kill_step < 0
+            if unscheduled.any():
+                lo = self.cfg.agent_loss_interval_min
+                hi = max(self.cfg.agent_loss_interval_max, lo + 1)
+                rand_steps = torch.randint(
+                    lo, hi, (self.num_envs,), device=self.device
+                )
+                rand_agents = torch.randint(
+                    0, self.cfg.num_agents, (self.num_envs,), device=self.device
+                )
+                self._kill_step = torch.where(unscheduled, rand_steps, self._kill_step)
+                self._kill_agent_idx = torch.where(
+                    unscheduled, rand_agents, self._kill_agent_idx
+                )
+
+            # Fire kills where scheduled step has been reached
+            fire = (ep_step >= self._kill_step) & (self._kill_step >= 0)
+            if fire.any():
+                env_ids = fire.nonzero(as_tuple=False).squeeze(-1)
+                for env_id in env_ids:
+                    agent_idx = int(self._kill_agent_idx[env_id].item())
+                    if not self._force_terminated[env_id, agent_idx]:
+                        self._force_terminated[env_id, agent_idx] = True
+                        # Teleport the drone below the floor so it triggers OOB termination
+                        self._desired_pos_w[env_id, agent_idx, 2] = -10.0
+
+            # Merge forced terminations into out_of_bounds
+            out_of_bounds = out_of_bounds | self._force_terminated
 
         terminated = {}
         time_outs = {}
@@ -304,8 +489,10 @@ class GGSwarmMarlEnv(DirectMARLEnv):
             (num_resets, self.cfg.num_agents, 3),
             self.device,
         )
-        # Set Z height comfortably
-        random_pos[:, :, 2] = sample_uniform(0.5, 1.5, (num_resets, self.cfg.num_agents), self.device)
+        # Set Z height from cfg params; changing min_height/max_height alone does NOT affect spawn (Rule 6).
+        random_pos[:, :, 2] = sample_uniform(
+            self.cfg.spawn_z_min, self.cfg.spawn_z_max, (num_resets, self.cfg.num_agents), self.device
+        )
 
         # Apply environment origins
         env_origins = self.scene.env_origins[env_ids_tensor].unsqueeze(1)
@@ -360,6 +547,22 @@ class GGSwarmMarlEnv(DirectMARLEnv):
         # Keep Z goal equal to each agent's spawn height to avoid fighting altitude early.
         desired_pos_w[:, :, 2] = root_pos_w[:, :, 2]
         self._desired_pos_w[env_ids_tensor] = desired_pos_w
+
+        # --- L3: Reset SwarmRaft state for these environments (Phase 3) ---
+        if self.cfg.raft_enabled and hasattr(self, "_swarm_raft"):
+            self._swarm_raft.reset_envs(env_ids_tensor, self._desired_pos_w)
+            self._raft_is_leader[env_ids_tensor] = 0.0
+            self._raft_alive_frac[env_ids_tensor] = 1.0
+
+        # --- L5: Reset MINCO smoother state for these environments (Phase 3) ---
+        if self.cfg.minco_enabled and hasattr(self, "_minco"):
+            self._minco.reset_envs(env_ids_tensor)
+
+        # --- Phase 4: Reset agent-loss state for these environments ---
+        if self.cfg.agent_loss_enabled and hasattr(self, "_kill_step"):
+            self._kill_step[env_ids_tensor] = -1
+            self._kill_agent_idx[env_ids_tensor] = -1
+            self._force_terminated[env_ids_tensor] = False
 
         # Write to sim using robot_indices
         self.robot.write_root_pose_to_sim(root_state[:, :, :7].view(-1, 7), robot_indices)

@@ -165,3 +165,31 @@ This document tracks major technical changes and milestone completions for each 
   - Rationale: Even 3.0 uprightness was insufficient; position reward (3.0) still dominated over spin penalty (-0.25). New scaling makes uprightness the top priority: 5.0 > 3.0 + 1.0 (alive) + 0.2 (cohesion).
   - **Faster eval**: Changed default `--num_episodes` from 10 to 5 and added `--headless` to eval by default (metrics converge by step 2500; halves eval time from ~15min to ~8min)
   - Next steps: Deploy tuned config to GCE and train for 120k steps (not 300k); expect full stability recovery.
+
+## Phase 2: Run 4 Evaluation and Hover-Stability Pivot (2026-03-22)
+
+- [2026-03-22] **Run 4 eval** (run: `2026-03-21_21-21-55_mappo_torch`, 120k iters, `best_agent.pt`, 5 episodes):
+  - `survival_steps=1.1` | `airborne_ratio=0.582` | `ground_hit_rate=0.648`
+  - `mean_roll=75.8°` | `mean_pitch=76.2°` | `orientation_violation_rate=0.582`
+  - `mean_formation_error=1.551m`
+  - **Decision: FAIL** — regression vs. Run 1; aggressive reward stacking (`upright=5.0`, `ang_vel=-0.5`, `terminated=-20.0`) destabilized policy. `survival_steps=1.1` indicates agents crash within one simulation step — policy is broken at spawn.
+  - **Root cause**: `rew_scale_terminated=-20.0` combined with `rew_scale_upright=5.0` creates an enormous penalty gradient at episode start. Policy collapsed to a degenerate local minimum where any action results in immediate termination.
+  - **Bug fix applied**: `train.py` `max_iterations * rollouts` multiplication removed — `--max_iterations 120000` now correctly runs 120k rollout collections (~2 hrs) instead of 7.68M timesteps (~60 hrs).
+  - **Next action**: Pivot to hover-stability training mode (formation rewards disabled) with rebalanced rewards at Run 1 levels. Run 80k steps before re-introducing formation curriculum.
+
+- [2026-03-22] Introduced hover-stability training mode (`Template-GGSwarm-Marl-HoverStability-v0`):
+  - `GGSwarmMarlHoverStabilityCfg` subclass: `rew_scale_formation=0.0`, `rew_scale_cohesion=0.0`, `rew_scale_separation=0.0`
+  - Curriculum locked off: `curriculum_start_step=999999`, `curriculum_pos_floor=1.0`
+  - Reward rebalance back to Run 1 levels: `rew_scale_upright=3.0`, `rew_scale_ang_vel=-0.25`, `rew_scale_terminated=-10.0`
+  - Wider spawn: `spawn_yaw_range=0.3` (up from 0.1)
+  - Rationale: Isolate stability objective before reintroducing formation pressure; avoid Run 4's destabilization pattern.
+
+- [2026-03-22] Added post-training assessment infrastructure:
+  - `phase2 assess` / `hover-stability assess` subcommands in `scripts/run.py` — runs convergence check, checkpoint progression, best_agent eval, and prints PASS/WARN/FAIL scorecard
+  - Rule 20 added: assessment gate mandatory before any reward change or retraining
+  - `phase2 hover-stability train/eval` subcommands added for hover-stability workflow
+  - Progress output cleaned up: tqdm suppressed in headless mode, heartbeat stopped after 100%
+
+- [2026-03-22] Added cursor rules for operational consistency:
+  - `gce-training-ops.mdc`: Added "GCE for Training Only" section — all eval/play/assess must run locally
+  - `.cursor/rules/shell-syntax.mdc`: New rule documenting PowerShell syntax pitfalls (no `&&`, no `head`, `rsync` Windows bug, SSH `$` escaping)

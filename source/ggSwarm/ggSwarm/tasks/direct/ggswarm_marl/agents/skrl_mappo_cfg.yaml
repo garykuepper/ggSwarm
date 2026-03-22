@@ -11,13 +11,13 @@ seed: 42
 models:
   separate: True
   policy:  # see gaussian_model parameters
-    class: GaussianMixin
+    class: GaussianMixin  # NOTE: overridden to GGSwarmGNNPolicy when --gnn is active (train.py line ~404)
     clip_actions: False
     clip_log_std: True
     min_log_std: -20.0
     max_log_std: 2.0
-    initial_log_std: -1.0
-    network:
+    initial_log_std: -1.0  # NOTE: ignored in GNN mode; GGSwarmGNNPolicy sets its own initial_log_std
+    network:  # NOTE: this entire block is deleted at runtime when --gnn is active; GNN builds its own arch
       - name: net
         input: OBSERVATIONS
         layers: [128, 64]

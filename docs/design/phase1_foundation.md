@@ -10,12 +10,12 @@ observations, and computing the graph connectivity layer (L2) for the swarm.
 
 ## Core Files
 
-|| File | Purpose |
-|| :--- | :--- |
-|| `drone_swarm_env.py` | Main env class (`GGSwarmMarlEnv`). Scene setup, obs/rewards, resets. |
-|| `drone_swarm_env_cfg.py` | Env config (`GGSwarmMarlEnvCfg`). Agents, spaces, reward scales, physics params. |
-|| `__init__.py` | Gym registration under `Template-GGSwarm-Marl-Direct-v0`. |
-|| `agents/skrl_mappo_cfg.yaml` | SKRL MAPPO hyperparameters for training. |
+| File | Purpose |
+| :--- | :--- |
+| `drone_swarm_env.py` | Main env class (`GGSwarmMarlEnv`). Scene setup, obs/rewards, resets. |
+| `drone_swarm_env_cfg.py` | Env config (`GGSwarmMarlEnvCfg`). Agents, spaces, reward scales, physics params. |
+| `__init__.py` | Gym registration under `Template-GGSwarm-Marl-Direct-v0`. |
+| `agents/skrl_mappo_cfg.yaml` | SKRL MAPPO hyperparameters for training. |
 
 ---
 
@@ -35,16 +35,16 @@ observations, and computing the graph connectivity layer (L2) for the swarm.
 
 ### Configuration (`GGSwarmMarlEnvCfg`)
 
-|| Parameter | Value | Description |
-|| :--- | :--- | :--- |
-|| `num_agents` | 4 (configurable) | Number of Crazyflie drones per environment |
-|| `decimation` | 2 | Physics steps per policy step |
-|| `episode_length_s` | 10.0 | Episode duration in seconds |
-|| `sim.dt` | 1/100 | Physics timestep |
-|| `scene.num_envs` | 32 | Parallel environment instances |
-|| `scene.env_spacing` | 5.0 | Meters between environment origins |
-|| `thrust_to_weight` | 1.9 | Thrust-to-weight ratio for action scaling |
-|| `moment_scale` | 0.01 | Torque scaling factor |
+| Parameter | Value | Description |
+| :--- | :--- | :--- |
+| `num_agents` | 4 (configurable) | Number of Crazyflie drones per environment |
+| `decimation` | 2 | Physics steps per policy step |
+| `episode_length_s` | 10.0 | Episode duration in seconds |
+| `sim.dt` | 1/100 | Physics timestep |
+| `scene.num_envs` | 32 | Parallel environment instances |
+| `scene.env_spacing` | 5.0 | Meters between environment origins |
+| `thrust_to_weight` | 1.9 | Thrust-to-weight ratio for action scaling |
+| `moment_scale` | 0.01 | Torque scaling factor |
 
 Dynamic agent registration happens in `__post_init__()`:
 
@@ -58,19 +58,19 @@ Dynamic agent registration happens in `__post_init__()`:
 
 Each agent receives a 12-dimensional observation vector, all in body frame:
 
-|| Dims | Content | Source |
-|| :--- | :--- | :--- |
-|| 0–2 | Linear velocity | `root_lin_vel_b` |
-|| 3–5 | Angular velocity | `root_ang_vel_b` |
-|| 6–8 | Projected gravity | `projected_gravity_b` |
-|| 9–11 | Relative position to goal | `subtract_frame_transforms(pos, quat, target)` |
+| Dims | Content | Source |
+| :--- | :--- | :--- |
+| 0–2 | Linear velocity | `root_lin_vel_b` |
+| 3–5 | Angular velocity | `root_ang_vel_b` |
+| 6–8 | Projected gravity | `projected_gravity_b` |
+| 9–11 | Relative position to goal | `subtract_frame_transforms(pos, quat, target)` |
 
 ## Action Space (4-dim per agent)
 
-|| Dim | Mapping |
-|| :--- | :--- |
-|| 0 | Collective thrust (mapped `[-1,1]` → `[0, thrust_to_weight * weight]`, split equally across 4 props) |
-|| 1–3 | Roll / Pitch / Yaw moments (scaled by `moment_scale`, split across 4 props) |
+| Dim | Mapping |
+| :--- | :--- |
+| 0 | Collective thrust (mapped `[-1,1]` → `[0, thrust_to_weight * weight]`, split equally across 4 props) |
+| 1–3 | Roll / Pitch / Yaw moments (scaled by `moment_scale`, split across 4 props) |
 
 ---
 
@@ -88,12 +88,12 @@ Shape: `[num_envs, num_agents, num_agents]`
 
 ## Reward Function
 
-|| Component | Scale | Formula |
-|| :--- | :--- | :--- |
-|| Position (Gaussian) | `+1.0` | `exp(-dist_to_goal / 0.5)` |
-|| Linear velocity penalty | `-0.05` | `‖lin_vel_b‖` |
-|| Angular velocity penalty | `-0.01` | `‖ang_vel_b‖` |
-|| Alive bonus | `+0.1` | Constant per step |
+| Component | Scale | Formula |
+| :--- | :--- | :--- |
+| Position (Gaussian) | `+1.0` | `exp(-dist_to_goal / 0.5)` |
+| Linear velocity penalty | `-0.05` | `‖lin_vel_b‖` |
+| Angular velocity penalty | `-0.01` | `‖ang_vel_b‖` |
+| Alive bonus | `+0.1` | Constant per step |
 
 ## Termination Conditions
 
@@ -127,10 +127,10 @@ driven from the same entrypoint.
 
 ## Phase 1 Completion Summary
 
-|| GNSC Layer | Status | Implementation |
-|| :--- | :--- | :--- |
-|| **L1: Local Sensing** | ✅ Complete | Body-frame velocity, gravity, and relative position observations |
-|| **L2: GNN Messaging** | ✅ Foundation | Distance-based adjacency matrix computed; GATv2 integration in Phase 2 |
-|| **L3: Consensus** | ⬜ Phase 3 | — |
-|| **L4: Safety Shield** | ⬜ Phase 3 | — |
-|| **L5: Execution** | ✅ Basic | Thrust/moment force application to propellers |
+| GNSC Layer | Status | Implementation |
+| :--- | :--- | :--- |
+| **L1: Local Sensing** | ✅ Complete | Body-frame velocity, gravity, and relative position observations |
+| **L2: GNN Messaging** | ✅ Foundation | Distance-based adjacency matrix computed; GATv2 integration in Phase 2 |
+| **L3: Consensus** | ⬜ Phase 3 | — |
+| **L4: Safety Shield** | ⬜ Phase 3 | — |
+| **L5: Execution** | ✅ Basic | Thrust/moment force application to propellers |

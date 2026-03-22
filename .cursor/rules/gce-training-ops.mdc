@@ -87,6 +87,26 @@ python scripts/run.py phase2 play --checkpoint "logs/skrl/ggswarm_marl/<run>/che
 tensorboard --logdir logs/skrl/ggswarm_marl
 ```
 
+## MANDATORY: GCE is for Training Only
+
+**ALL** of the following must run on the **LOCAL Windows machine**, NOT on GCE:
+
+- `phase2 eval` / `phase3 eval` / `hover-stability eval` (eval scripts require Isaac Lab locally)
+- `phase2 play` / `phase3 play` (playback)
+- `phase2 assess` / `hover-stability assess` (post-training scorecard)
+- `tensorboard` monitoring
+- `list_checkpoints.py`, `pull_results_from_gcs.py`
+- `analyze_checkpoints.py`, `check_convergence.py`
+- Any `git` operations
+
+The GCE `isaacsim` instance is ONLY used for:
+
+- `phase2 train` / `phase3 train` / `hover-stability train` via `train_and_push.sh`
+- Nothing else
+
+Do **NOT** suggest running eval, play, assess, or analysis scripts via `gcloud compute ssh --command`.
+After training completes: SIGTERM → confirm GCS push → pull locally → eval locally.
+
 ## Full workflow docs
 
 See `docs/ops/training_workflow.md`, `docs/ops/gce_results_sync.md`, `docs/ops/commands.md` for comprehensive guides.

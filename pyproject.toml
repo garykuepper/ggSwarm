@@ -49,7 +49,7 @@ ignore = [
 "__init__.py" = ["F401"]  # Allow unused imports in __init__.py files
 
 [tool.ruff.lint.mccabe]
-max-complexity = 30
+max-complexity = 15
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

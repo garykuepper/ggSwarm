@@ -301,16 +301,25 @@ def _progress_monitor(
         if not is_new_progress and not is_heartbeat_due:
             continue
 
+        # Once training has reached or exceeded the target, emit one final line then stop.
+        # Heartbeat spam after 100% clutters the log with no useful information.
+        if current_step >= progress_target and not is_new_progress:
+            continue
+
         status_suffix = ""
         if not is_new_progress:
             status_suffix = " | status=waiting_for_next_metrics"
 
+        # Flush stderr first so that any tqdm bar output that slipped through is
+        # separated from our structured [PROGRESS] line.
+        sys.stderr.flush()
         print(
             "[PROGRESS] "
             f"{current_step:,}/{progress_target:,} ({percent:5.1f}%) | "
             f"elapsed={_format_duration(elapsed)} | "
             f"{unit_label}_per_sec={sps_txt} | eta={eta}"
-            f"{status_suffix}"
+            f"{status_suffix}",
+            flush=True,
         )
         last_emitted_step = current_step
         last_heartbeat_time = now
@@ -371,6 +380,10 @@ else:
 @hydra_task_config(args_cli.task, agent_cfg_entry_point)
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: dict):
     """Train with skrl agent."""
+    # Suppress tqdm progress bars in headless training — they interleave with [PROGRESS] lines.
+    if args_cli.headless:
+        os.environ.setdefault("TQDM_DISABLE", "1")
+
     # Configure environment overrides from CLI
     env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
     env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
@@ -391,9 +404,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     if args_cli.distributed:
         env_cfg.sim.device = f"cuda:{app_launcher.local_rank}"
 
-    # Set training duration and ML framework backend
+    # Set training duration and ML framework backend.
+    # max_iterations is a count of rollout collections (skrl "timesteps" = rollout collections,
+    # NOT environment steps). Pass it directly — do NOT multiply by rollouts.
     if args_cli.max_iterations:
-        agent_cfg["trainer"]["timesteps"] = args_cli.max_iterations * agent_cfg["agent"]["rollouts"]
+        agent_cfg["trainer"]["timesteps"] = args_cli.max_iterations
     agent_cfg["trainer"]["close_environment_at_exit"] = False
 
     # Override model with GNN if requested
