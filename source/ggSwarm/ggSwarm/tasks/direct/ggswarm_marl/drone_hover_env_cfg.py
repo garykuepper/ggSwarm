@@ -20,24 +20,15 @@ class GGSwarmHoverEnvCfg(GGSwarmMarlEnvCfg):
     # Keep a clean log namespace for hover-only runs.
     experiment_name: str = "ggswarm_hover"
 
-    # Hover reward scales.
-    rew_scale_pos = 2.0
-    rew_scale_vel = -0.1
-    rew_scale_ang_vel = -0.02
-    rew_scale_alive = 0.1
-    rew_scale_terminated = -2.0
-    rew_scale_ground_hit = -25.0
+    # Simplified 3-term reward (Isaac Lab style, dt-scaled).
+    rew_scale_pos: float = 15.0
+    rew_scale_vel: float = -0.05
+    rew_scale_ang_vel: float = -0.01
 
     # Disable formation-related terms in hover baseline.
-    rew_scale_formation = 0.0
-    rew_scale_cohesion = 0.0
-    rew_scale_separation = 0.0
-
-    # Height thresholds for reward gating and crash detection.
-    # Keep the position-reward gate aligned with the termination "ground hit" floor.
-    # This reduces reward discontinuity right when the drone starts to dip.
-    hover_reward_min_height: float = 0.10
-    ground_hit_height: float = 0.10
+    rew_scale_formation: float = 0.0
+    rew_scale_cohesion: float = 0.0
+    rew_scale_separation: float = 0.0
 
     # No curriculum needed for pure hover learning.
     curriculum_start_step: int = 0

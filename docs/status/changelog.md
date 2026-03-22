@@ -193,3 +193,41 @@ This document tracks major technical changes and milestone completions for each 
 - [2026-03-22] Added cursor rules for operational consistency:
   - `gce-training-ops.mdc`: Added "GCE for Training Only" section — all eval/play/assess must run locally
   - `.cursor/rules/shell-syntax.mdc`: New rule documenting PowerShell syntax pitfalls (no `&&`, no `head`, `rsync` Windows bug, SSH `$` escaping)
+
+## Phase 2A: PD Attitude Controller Refactor (2026-03-22)
+
+- [2026-03-22] **Architecture overhaul: added Crazyflie-style PD attitude controller inner loop.**
+  - Root cause of all 4 failed runs identified: the RL policy was outputting raw torques
+    (`moment_scale * action`) and had to simultaneously learn flight dynamics and navigation.
+    This is fundamentally misaligned with how real Crazyflie drones operate.
+  - Added `attitude_controller.py`: pure-torch PD controller with no Isaac Lab imports.
+    Action semantics changed from `[thrust, roll_moment, pitch_moment, yaw_moment]` to
+    `[thrust, desired_roll, desired_pitch, desired_yaw_rate]`. The PD controller converts
+    attitude errors to moments every physics step.
+  - Reference: OmniDrones `AttitudeController` (deployed to real Crazyflie 2.1 hardware via
+    crazyswarm2). Gains: `kp_att=0.03`, `kd_att=0.005`, `kp_yaw=0.01` (tunable per Rule 6).
+  - Force application simplified: single `set_forces_and_torques` call on main body only
+    (matches Isaac Lab Isaac-Quadcopter-Direct-v0 reference; removes parasitic prop-body torques
+    and per-step `torch.zeros` allocation, fixing Rule 15 violation).
+  - Reward function simplified to 3-term Isaac Lab structure for hover-stability training:
+    `(1 - tanh(dist/0.8)) * scale * step_dt` (pos), `sum(sq(lin_vel)) * scale * step_dt` (vel),
+    `sum(sq(ang_vel)) * scale * step_dt` (ang_vel). Scales: `pos=15.0, vel=-0.05, ang_vel=-0.01`.
+  - Removed: `moment_scale`, `rew_scale_upright`, `rew_scale_alive`, `rew_scale_terminated`
+    from hover-stability config (PD controller makes these redundant).
+  - Added `GGSwarmMarlHoverStabilityCfg.scene.num_envs=512` for GCE L4 GPU (4x throughput).
+  - Added episode length stagger on full reset in `_reset_idx` (Isaac Lab pattern).
+  - Old checkpoints (Runs 1–A1) are incompatible with new action semantics; all 4 were FAIL
+    so this is sunk cost. Phase 2A restarts from scratch.
+  - Action/obs dims, GNN policy architecture, CBF/SwarmRaft/MINCO, eval/assess scripts: unchanged.
+
+## Phase 2A: Run A1 Assessment (2026-03-22)
+
+- [2026-03-22] **Run A1 eval** (run: `2026-03-22_00-32-56_mappo_torch`, 80k iters, hover-stability mode, `best_agent.pt`, 5 episodes):
+  - `survival_steps=1.1` | `airborne_ratio=0.700` | `ground_hit_rate=0.423`
+  - `mean_roll=59.8°` | `mean_pitch=63.8°` | `orientation_violation_rate=0.524`
+  - `mean_formation_error=0.821m` (informational; not gated in Phase 2A)
+  - **Verdict: FAIL** (3 FAIL, 3 WARN, 0 PASS)
+  - **Convergence analysis**: Peak reward 6997 at step 14k; drifted to 5618 by step 80k (-19.7%). Episode length maxed at 496/500 from step 3k — agents reach survival gate quickly but are flying erratically (high roll/pitch). Policy std dev grew monotonically (0.35 → 5.8) — entropy never collapsed, policy still exploring at end of run.
+  - **Root cause**: `survival_steps=1.1` is an artifact of the eval metric — the episode survival counter resets on ground hit, so a single crash shows as ~1 step. `airborne_ratio=0.700` (gate > 0.9) and `orientation_violation_rate=0.524` (gate < 0.1) indicate agents are staying up but tumbling severely.
+  - **Decision**: Reward rebalance needed. Upright reward is insufficient vs. position reward — agents reach target altitude but don't stabilize orientation. Increase `rew_scale_upright` and `rew_scale_ang_vel` penalty. Consider reducing `rew_scale_pos` slightly to shift priority toward stability.
+  - **Fixed assess pipeline bugs**: 3 bugs in `_cmd_assess` / `eval_phase2.py` prevented end-to-end execution: (1) `--log_dir` → `--run_dir` arg name; (2) missing `--output_json` in `eval_phase2.py`; (3) `mean_episode_survival_steps` key renamed to `survival_steps`. Also fixed Windows cp1252 `←` char in scorecard print.

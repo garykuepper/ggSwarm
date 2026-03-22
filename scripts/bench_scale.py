@@ -15,9 +15,15 @@ import io
 import sys
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import torch
 from isaaclab.app import AppLauncher
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ggswarm_utils.checkpoint import load_policy_from_checkpoint, resolve_agent  # noqa: E402
+from ggswarm_utils.eval_stats import pairwise_mean_abs_spacing_error  # noqa: E402
+from ggswarm_utils.sim_helpers import configure_gnn_policy, extract_actions, override_agent_count  # noqa: E402
 
 
 @dataclass
@@ -32,19 +38,6 @@ class ScaleResult:
     vram_mb: float = float("nan")
     episode_success_rate: float = float("nan")
 
-
-def _pairwise_formation_error(pos_w: torch.Tensor, target_dist: float) -> torch.Tensor:
-    """Mean |d_ij - target| over i<j, per environment. Shape [num_envs]."""
-    diff = pos_w.unsqueeze(2) - pos_w.unsqueeze(1)
-    dist = torch.norm(diff, dim=-1)
-    num_agents = dist.shape[-1]
-    mask = torch.triu(
-        torch.ones(num_agents, num_agents, device=pos_w.device, dtype=torch.bool),
-        diagonal=1,
-    )
-    # shape: [num_envs, num_pairs]
-    per_env = torch.abs(dist[:, mask] - target_dist).mean(dim=-1)
-    return per_env
 
 
 def _run_benchmark(
@@ -68,14 +61,7 @@ def _run_benchmark(
 
     for step in range(num_steps):
         with torch.inference_mode():
-            outputs = agent.act(obs, timestep=0, timesteps=0)
-            if hasattr(base_env, "possible_agents"):
-                actions = {
-                    a: outputs[-1][a].get("mean_actions", outputs[0][a])
-                    for a in base_env.possible_agents
-                }
-            else:
-                actions = outputs[-1].get("mean_actions", outputs[0])
+            actions = extract_actions(agent, obs, base_env)
             obs, _, terminated, truncated, _ = env.step(actions)
 
             pos_w = base_env.robot.data.root_pos_w.view(
@@ -85,7 +71,12 @@ def _run_benchmark(
                 base_env.num_envs, base_env.cfg.num_agents, 3
             )
 
-            err = _pairwise_formation_error(pos_w, float(base_env.cfg.target_formation_dist))
+            # pairwise_mean_abs_spacing_error returns a scalar; wrap in tensor for consistency
+            err_scalar = pairwise_mean_abs_spacing_error(
+                pos_w, float(base_env.cfg.target_formation_dist)
+            )
+            # Use a 1-element tensor to keep downstream code uniform
+            err = err_scalar.unsqueeze(0) if err_scalar.dim() == 0 else err_scalar
             formation_errors.append(float(err.mean().item()))
             vel_norms.append(float(torch.norm(lin_vel_b, dim=-1).mean().item()))
 
@@ -200,27 +191,11 @@ def main() -> None:
         def _run(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, cfg: dict):
             env_cfg.scene.num_envs = args_cli.num_envs
             env_cfg.sim.device = args_cli.device or env_cfg.sim.device
-            env_cfg.num_agents = n_agents
-            env_cfg.possible_agents = [f"drone_{i}" for i in range(n_agents)]
-            env_cfg.action_spaces = {a: 4 for a in env_cfg.possible_agents}
             obs_dim = 14 if getattr(env_cfg, "raft_enabled", False) else 12
-            env_cfg.observation_spaces = {a: obs_dim for a in env_cfg.possible_agents}
+            override_agent_count(env_cfg, n_agents, obs_dim=obs_dim)
 
             if args_cli.gnn:
-                cfg["models"]["policy"]["class"] = "GGSwarmGNNPolicy"
-                if "network" in cfg["models"]["policy"]:
-                    del cfg["models"]["policy"]["network"]
-                original_component = Runner._component
-
-                def custom_component(self, name: str):
-                    if name.lower() == "ggswarmgnnpolicy":
-                        from ggSwarm.tasks.direct.ggswarm_marl.agents.skrl_gnn_policy import (
-                            GGSwarmGNNPolicy,
-                        )
-                        return GGSwarmGNNPolicy
-                    return original_component(self, name)
-
-                Runner._component = custom_component
+                configure_gnn_policy(cfg, Runner)
 
             cfg["agent"]["experiment"]["directory"] = "logs/skrl/ggswarm_bench"
             cfg["agent"]["experiment"]["experiment_name"] = f"bench_n{n_agents}"
@@ -233,23 +208,8 @@ def main() -> None:
             env = SkrlVecEnvWrapper(env, ml_framework=args_cli.ml_framework)
 
             runner = Runner(env, cfg)
-            agent = getattr(runner, "agent", None)
-            agents_attr = getattr(runner, "agents", None)
-            if agent is None and isinstance(agents_attr, (list, tuple)) and agents_attr:
-                agent = agents_attr[0]
-            if agent is None:
-                raise RuntimeError("Could not resolve skrl agent")
-
-            ckpt = torch.load(args_cli.checkpoint, map_location=agent.device)
-            key = "policy" if "policy" in ckpt else ("policy_0" if "policy_0" in ckpt else None)
-            if key is None:
-                raise KeyError(f"Checkpoint keys: {list(ckpt.keys())}")
-            for m in _collect_modules(agent):
-                try:
-                    m.load_state_dict(ckpt[key])
-                    break
-                except Exception:
-                    continue
+            agent = resolve_agent(runner)
+            load_policy_from_checkpoint(agent, args_cli.checkpoint)
 
             agent.set_running_mode("eval")
             sim_dt = float(base_env.cfg.sim.dt) * float(base_env.cfg.decimation)
@@ -302,18 +262,6 @@ def main() -> None:
 
     simulation_app.close()
 
-
-def _collect_modules(agent) -> list[torch.nn.Module]:
-    candidates: list[torch.nn.Module] = []
-    for attr in ["policy", "models"]:
-        obj = getattr(agent, attr, None)
-        if isinstance(obj, torch.nn.Module) and obj not in candidates:
-            candidates.append(obj)
-        elif isinstance(obj, dict):
-            for v in obj.values():
-                if isinstance(v, torch.nn.Module) and v not in candidates:
-                    candidates.append(v)
-    return candidates
 
 
 if __name__ == "__main__":

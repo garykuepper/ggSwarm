@@ -2,6 +2,13 @@
 
 This document describes the iterative workflow for training, evaluating, and improving the ggSwarm drone formation control policy. This cycle is critical for efficiently using cloud compute resources and converging to a performant solution.
 
+> **Post-training analysis:** For the full assessment procedure (sync, convergence check,
+> TensorBoard checklist, assess command, decision matrix, changelog template) see
+> **[`docs/ops/post_train_analysis.md`](post_train_analysis.md)**.
+>
+> **Cross-run scorecard:** [`docs/status/run_history.md`](../status/run_history.md) —
+> fill in a row there after every run before changing any config (Rule 23).
+
 ---
 
 ## Workflow Overview
@@ -128,16 +135,15 @@ gcloud storage rsync --recursive --exclude='videos/.*' logs/skrl/ggswarm_marl "$
 
 ### Pull from GCS
 
-```bash
-# List available runs first
-python scripts/cloud/list_checkpoints.py --family marl
+> **Windows note (shell-syntax rule):** `gcloud storage rsync` is broken on Windows.
+> Use `gcloud storage cp` instead.
 
-# Pull latest run
-python scripts/cloud/pull_results_from_gcs.py --family marl --latest 1
+```powershell
+# Copy a specific run directory from GCS to local (replace <timestamp> with actual value)
+gcloud storage cp -r gs://gg-swarm-training-logs/logs/skrl/ggswarm_marl/<timestamp>_mappo_torch logs/skrl/ggswarm_marl/
 
-# Or specific run
-python scripts/cloud/pull_results_from_gcs.py --family marl --dry-run  # preview
-python scripts/cloud/pull_results_from_gcs.py --family marl
+# List available runs in GCS to find the timestamp
+gcloud storage ls gs://gg-swarm-training-logs/logs/skrl/ggswarm_marl/
 ```
 
 Results land in: `logs/skrl/ggswarm_marl/<timestamp>_mappo_torch/`
@@ -181,37 +187,24 @@ python scripts/run.py phase2 play --checkpoint "logs/skrl/ggswarm_marl/<run>/che
 
 ---
 
-## Step 4: EVAL - Run Enhanced Evaluation
+## Step 4: EVAL - Run Automated Assessment
 
-### Quick Evaluation (Latest Checkpoint)
+Use the unified `assess` subcommand — it runs convergence check, best-checkpoint eval,
+and prints a PASS / WARN / FAIL scorecard automatically.
 
-```bash
-# Evaluate latest checkpoint with enhanced metrics
-python scripts/run.py phase2 eval --num_episodes 10 \
-    --checkpoint "logs/skrl/ggswarm_marl/<run>/checkpoints/best_agent.pt"
+```powershell
+# Phase 2A (hover-stability)
+python scripts/run.py hover-stability assess --run_dir "logs/skrl/ggswarm_marl/<run>" --num_episodes 5
+
+# Phase 2B (formation)
+python scripts/run.py phase2b assess --run_dir "logs/skrl/ggswarm_marl/<run>" --num_episodes 5
+
+# Add --progression to also sweep all intermediate checkpoints (~3 min extra)
+python scripts/run.py hover-stability assess --run_dir "logs/skrl/ggswarm_marl/<run>" --num_episodes 5 --progression
 ```
 
-Output includes:
-- **Formation metrics:** mean_formation_error_m, separation_event_rate
-- **Stability metrics:** mean_roll_deg, mean_pitch_deg, orientation_violation_rate
-- **Survival metrics:** mean_episode_survival_steps, altitude_std_m
-- **Motion quality:** mean_speed_mps, ground_hit_rate, airborne_ratio
-
-### Checkpoint Progression Analysis
-
-```bash
-# Analyze how metrics change over the training run
-python scripts/analyze_checkpoints.py \
-    --run_dir "logs/skrl/ggswarm_marl/<run>" \
-    --interval 50000 \
-    --num_episodes 3 \
-    --output_csv "checkpoint_progression.csv"
-```
-
-This produces a CSV table showing each metric at 50k, 100k, 150k, etc. steps. Use this to identify:
-- When orientation degradation starts (increasing roll/pitch)
-- When formation learning kicks in (formation_error drops after curriculum_start_step)
-- If policy improves monotonically or degrades at certain points
+For the full assessment procedure, TensorBoard checklist, decision matrix, and
+changelog template, see **[`docs/ops/post_train_analysis.md`](post_train_analysis.md)**.
 
 ---
 
@@ -449,17 +442,25 @@ Before committing to a long run, verify:
 
 ## Success Criteria by Phase
 
-### Phase 2 (Current)
+### Phase 2A — Hover-Stability Gate (must pass before Phase 2B)
 
-| Metric | Target | Rationale |
-|:---|:---|:---|
-| mean_formation_error_m | < 0.5 m | Agents within target spacing |
-| separation_event_rate | < 0.1 | Few collision risks |
-| airborne_ratio | > 0.9 | Drones stay airborne |
-| mean_roll_deg | < 15° | Level flight |
-| mean_pitch_deg | < 15° | Level flight |
-| mean_episode_survival_steps | > 9 s (out of 10) | Rarely crash before timeout |
-| ground_hit_rate | < 0.05 | Minimal ground contact |
+| Metric | Gate | Rationale |
+| :--- | :--- | :--- |
+| `survival_steps` | > 500 | Agents stay airborne long enough to learn |
+| `airborne_ratio` | > 0.9 | Drones reliably hold altitude |
+| `ground_hit_rate` | < 0.05 | Minimal ground contact |
+| `mean_roll_deg` | < 15° | Level flight before adding formation pressure |
+| `orientation_violation_rate` | < 0.1 | Few severe tilt events |
+
+### Phase 2B — Formation Gate (must pass before Phase 3)
+
+| Metric | Gate | Rationale |
+| :--- | :--- | :--- |
+| `mean_formation_error_m` | < 0.5 m | Agents within target spacing |
+| `airborne_ratio` | > 0.9 | Stability maintained under formation pressure |
+| `mean_roll_deg` | < 15° | Level flight maintained |
+| `ground_hit_rate` | < 0.05 | No regression in stability |
+| `survival_steps` | > 500 | Episodes long enough to measure formation |
 
 ---
 

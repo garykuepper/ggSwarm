@@ -15,10 +15,19 @@ import argparse
 import os
 import sys
 from pathlib import Path
-from typing import Optional
 
 import torch
 from isaaclab.app import AppLauncher
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ggswarm_utils.checkpoint import load_policy_from_checkpoint, resolve_agent  # noqa: E402
+from ggswarm_utils.eval_stats import (  # noqa: E402
+    EvalStats,
+    compute_altitude_metrics as _compute_altitude_metrics,
+    compute_orientation_metrics as _compute_orientation_metrics,
+    pairwise_mean_abs_spacing_error as _pairwise_mean_abs_spacing_error,
+)
+from ggswarm_utils.sim_helpers import extract_actions  # noqa: E402
 
 
 parser = argparse.ArgumentParser(
@@ -47,6 +56,12 @@ parser.add_argument(
     type=str,
     default=None,
     help="Output CSV file for results. Defaults to run_dir/checkpoint_progression.csv.",
+)
+parser.add_argument(
+    "--task",
+    type=str,
+    default="Template-GGSwarm-Marl-Direct-v0",
+    help="Gym task ID to evaluate checkpoints against.",
 )
 
 AppLauncher.add_app_launcher_args(parser)
@@ -104,7 +119,7 @@ def _collect_checkpoints(run_dir: Path, interval: int) -> list[tuple[int, Path]]
     return checkpoints
 
 
-@hydra_task_config("Template-GGSwarm-Marl-Direct-v0", "skrl_mappo_cfg_entry_point")
+@hydra_task_config(args_cli.task, "skrl_mappo_cfg_entry_point")
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, cfg: dict):
     """Analyze checkpoint progression."""
     run_dir = Path(args_cli.run_dir).resolve()
@@ -122,15 +137,6 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, cfg:
     for step, ckpt_path in checkpoints:
         print(f"  {step:,} steps: {ckpt_path.name}")
 
-    # Load eval function from eval_phase2
-    # Import here to avoid circular dependencies
-    from scripts.eval_phase2 import (
-        EvalStats,
-        _pairwise_mean_abs_spacing_error,
-        _compute_orientation_metrics,
-        _compute_altitude_metrics,
-    )
-
     # Override environment config for evaluation
     env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
     env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
@@ -141,20 +147,14 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, cfg:
     cfg["trainer"]["checkpoint_interval"] = 0
 
     # Create environment once
-    env = gym.make("Template-GGSwarm-Marl-Direct-v0", cfg=env_cfg)
+    env = gym.make(args_cli.task, cfg=env_cfg)
     if isinstance(env.unwrapped, DirectMARLEnv):
         pass  # MARL is ok
     base_env = env.unwrapped
     env = SkrlVecEnvWrapper(env, ml_framework="torch")
 
-    # Set up runner (use it as a checkpoint loader)
     runner = Runner(env, cfg)
-    agent = getattr(runner, "agent", None)
-    agents_attr = getattr(runner, "agents", None)
-    if agent is None and isinstance(agents_attr, (list, tuple)) and agents_attr:
-        agent = agents_attr[0]
-    if agent is None:
-        raise RuntimeError("Could not resolve skrl agent for evaluation")
+    agent = resolve_agent(runner)
 
     agent.set_running_mode("eval")
     max_episode_length = getattr(base_env, "max_episode_length", None)
@@ -167,60 +167,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, cfg:
     for step, ckpt_path in checkpoints:
         print(f"\n--- Evaluating checkpoint at {step:,} steps ---")
 
-        # Load checkpoint
-        checkpoint = torch.load(str(ckpt_path), map_location=agent.device)
-
-        def _load_policy(state_dict):
-            """Try to load policy state dict."""
-            candidates = []
-
-            if hasattr(agent, "policy"):
-                candidates.append(getattr(agent, "policy"))
-
-            if hasattr(agent, "models"):
-                models = getattr(agent, "models")
-                if isinstance(models, dict):
-                    policy_like = [m for k, m in models.items() if "policy" in str(k).lower()]
-                    for m in policy_like or list(models.values()):
-                        candidates.append(m)
-                else:
-                    if hasattr(models, "policy"):
-                        candidates.append(getattr(models, "policy"))
-
-            for name in dir(agent):
-                try:
-                    v = getattr(agent, name)
-                except Exception:
-                    continue
-                if isinstance(v, torch.nn.Module):
-                    candidates.append(v)
-                elif isinstance(v, dict):
-                    for vv in v.values():
-                        if isinstance(vv, torch.nn.Module):
-                            candidates.append(vv)
-
-            for m in candidates:
-                try:
-                    m.load_state_dict(state_dict)
-                    return True
-                except Exception:
-                    continue
-            return False
-
-        if "policy" in checkpoint:
-            _load_policy(checkpoint["policy"])
-        elif "policy_0" in checkpoint:
-            _load_policy(checkpoint["policy_0"])
-        else:
-            loaded = False
-            if isinstance(checkpoint, dict):
-                for k, v in checkpoint.items():
-                    if isinstance(v, dict) and "policy" in v:
-                        loaded = _load_policy(v["policy"])
-                        if loaded:
-                            break
-            if not loaded:
-                print(f"  WARNING: Could not load policy from checkpoint")
+        load_policy_from_checkpoint(agent, ckpt_path)
 
         # Run evaluation
         stats = EvalStats()
@@ -230,15 +177,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, cfg:
 
         while simulation_app.is_running() and steps < total_steps:
             with torch.inference_mode():
-                outputs = agent.act(obs, timestep=0, timesteps=0)
-                if hasattr(env, "possible_agents"):
-                    actions = {
-                        a: outputs[-1][a].get("mean_actions", outputs[0][a])
-                        for a in base_env.possible_agents
-                    }
-                else:
-                    actions = outputs[-1].get("mean_actions", outputs[0])
-
+                actions = extract_actions(agent, obs, base_env)
                 obs, _, _, _, _ = env.step(actions)
 
                 pos_w = base_env.robot.data.root_pos_w.view(

@@ -282,6 +282,78 @@ class HoverRewardParams:
     ground_hit_height: float
 
 
+@dataclass(frozen=True)
+class StableHoverRewardParams:
+    """Reward parameters for PD-controller-based hover-stability training.
+
+    Matches the 3-term structure of Isaac Lab's Isaac-Quadcopter-Direct-v0:
+    - distance-to-goal (tanh-mapped, step_dt scaled)
+    - linear velocity squared penalty (step_dt scaled)
+    - angular velocity squared penalty (step_dt scaled)
+
+    With the PD attitude controller providing inherent stability, no upright,
+    alive, or termination terms are needed for the hover phase.
+    """
+
+    rew_scale_pos: float       # distance-to-goal scale (e.g. 15.0)
+    rew_scale_vel: float       # linear velocity squared scale (e.g. -0.05)
+    rew_scale_ang_vel: float   # angular velocity squared scale (e.g. -0.01)
+    step_dt: float             # simulation step time (s) for dt-scaling
+
+
+def compute_stable_hover_rewards(
+    *,
+    pos_w: torch.Tensor,
+    desired_pos_w: torch.Tensor,
+    lin_vel_b: torch.Tensor,
+    ang_vel_b: torch.Tensor,
+    params: StableHoverRewardParams,
+) -> torch.Tensor:
+    """Compute hover rewards using the Isaac Lab 3-term formulation.
+
+    All terms are scaled by ``step_dt`` so reward magnitude is independent of
+    simulation frequency (matches Isaac-Quadcopter-Direct-v0 convention).
+
+    Args:
+        pos_w: Current drone positions, shape ``[num_envs, num_agents, 3]``.
+        desired_pos_w: Goal positions, same shape.
+        lin_vel_b: Linear velocity in body frame, same shape.
+        ang_vel_b: Angular velocity in body frame, same shape.
+        params: Reward scales and step_dt.
+
+    Returns:
+        rewards: tensor of shape ``[num_envs, num_agents]``.
+    """
+
+    if pos_w.dim() != 3 or pos_w.shape[-1] != 3:
+        raise ValueError(f"pos_w must be [num_envs, num_agents, 3]; got {tuple(pos_w.shape)}")
+    if desired_pos_w.shape != pos_w.shape:
+        raise ValueError(
+            f"desired_pos_w shape {tuple(desired_pos_w.shape)} != pos_w shape {tuple(pos_w.shape)}"
+        )
+    if lin_vel_b.shape != pos_w.shape or ang_vel_b.shape != pos_w.shape:
+        raise ValueError("lin_vel_b and ang_vel_b must match pos_w shape.")
+
+    # shape: [num_envs, num_agents]
+    dist_to_goal = torch.norm(desired_pos_w - pos_w, dim=-1)
+
+    # Tanh-mapped position reward: smooth, bounded in [0, 1], maximised at goal.
+    # 0.8 m scale gives strong gradient near the target.
+    rew_pos = (1.0 - torch.tanh(dist_to_goal / 0.8)) * params.rew_scale_pos * params.step_dt
+
+    # Squared velocity penalties: dt-scaled so total episode penalty is frequency-independent.
+    # shape: [num_envs, num_agents]
+    rew_vel = torch.sum(lin_vel_b ** 2, dim=-1) * params.rew_scale_vel * params.step_dt
+    rew_ang_vel = torch.sum(ang_vel_b ** 2, dim=-1) * params.rew_scale_ang_vel * params.step_dt
+
+    total_rewards = rew_pos + rew_vel + rew_ang_vel
+
+    if total_rewards.shape != pos_w.shape[:2]:
+        raise AssertionError("Reward tensor shape mismatch.")
+
+    return total_rewards
+
+
 def compute_hover_rewards(
     *,
     pos_w: torch.Tensor,

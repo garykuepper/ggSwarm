@@ -31,6 +31,7 @@ from .contract_logic import (
 from .cbf_safety import CbfParams, apply_cbf_safety, apply_cbf_obstacle_safety
 from .minco_trajectory import MincoParams, MincoSmoother
 from .swarm_raft import SwarmRaft, SwarmRaftParams
+from .attitude_controller import AttitudeControllerParams, compute_attitude_control
 
 # import logger
 logger = logging.getLogger("isaaclab")
@@ -49,24 +50,38 @@ class GGSwarmMarlEnv(DirectMARLEnv):
     ):
         super().__init__(cfg, render_mode, **kwargs)
 
-        # Get specific body indices (using "body" from Crazyflie asset)
+        # Get main body index for force/torque application (matches Isaac Lab reference)
         self._body_indices = self.robot.find_bodies("body")[0]
-        # Get propeller body indices for force application
-        self._prop_body_indices = self.robot.find_bodies("m.*_prop")[0]
 
         self._robot_mass = self.robot.root_physx_view.get_masses()[0].sum()
         gravity = torch.tensor(self.sim.cfg.gravity, device=self.device)
         self._gravity_magnitude = gravity.norm()
         self._robot_weight = (self._robot_mass * self._gravity_magnitude).item()
 
+        # Build attitude controller params from cfg (Rule 6 — no magic numbers here)
+        self._att_ctrl_params = AttitudeControllerParams(
+            kp_att=self.cfg.kp_att,
+            kd_att=self.cfg.kd_att,
+            kp_yaw=self.cfg.kp_yaw,
+            max_tilt_angle=self.cfg.max_tilt_angle,
+            max_yaw_rate=self.cfg.max_yaw_rate,
+            max_moment=self.cfg.max_moment,
+            thrust_to_weight=self.cfg.thrust_to_weight,
+        )
+        logger.info(
+            "AttitudeController active | kp_att=%.4f kd_att=%.4f kp_yaw=%.4f",
+            self.cfg.kp_att,
+            self.cfg.kd_att,
+            self.cfg.kp_yaw,
+        )
+
+        num_instances = self.num_envs * self.cfg.num_agents
         # Buffers for actions and goal positions
         self._desired_pos_w = torch.zeros(self.num_envs, self.cfg.num_agents, 3, device=self.device)
-        # Thrust forces applied to propeller bodies; shape: [num_instances, 4, 3]
-        self._prop_forces = torch.zeros(self.num_envs * self.cfg.num_agents, 4, 3, device=self.device)
-        # Zero-torque buffer for propeller bodies (torques must not be applied to props).
-        self._prop_torques = torch.zeros(self.num_envs * self.cfg.num_agents, 4, 3, device=self.device)
-        # Roll/pitch/yaw moments applied to the main body; shape: [num_instances, 1, 3]
-        self._body_torques = torch.zeros(self.num_envs * self.cfg.num_agents, 1, 3, device=self.device)
+        # Thrust applied to main body (body-frame Z); pre-allocated, reused every step
+        self._thrust = torch.zeros(num_instances, 1, 3, device=self.device)  # pre-allocated; reused every step
+        # Roll/pitch/yaw moments applied to main body; pre-allocated, reused every step
+        self._moment = torch.zeros(num_instances, 1, 3, device=self.device)  # pre-allocated; reused every step
 
         # --- Phase 3: SwarmRaft Consensus (L3, gated by cfg.raft_enabled) ---
         if self.cfg.raft_enabled:
@@ -242,34 +257,31 @@ class GGSwarmMarlEnv(DirectMARLEnv):
         # Reshape to (num_instances, 4) (num_instances = num_envs * num_agents)
         flat_actions = all_actions.view(-1, 4)
 
-        # Map action[0] -> collective thrust on prop bodies (body-frame Z).
-        # Neutral action 0.0 -> thrust_val 0.5 -> total_thrust == weight (hover).
-        thrust_val = (flat_actions[:, 0] + 1.0) / 2.0
-        weight = self._robot_weight
-        total_thrust = self.cfg.thrust_to_weight * weight * thrust_val
-        # shape: [num_instances, 4] -- equal thrust per prop
-        self._prop_forces[:, :, 2] = total_thrust.unsqueeze(-1) / 4.0
-
-        # Map actions[1:4] -> roll/pitch/yaw moments on main body only.
-        # Applying torques to prop bodies would physically spin the prop joints,
-        # corrupting the body-frame orientation of the thrust force.
+        # Read current attitude state for the PD controller
         # shape: [num_instances, 3]
-        moments = self.cfg.moment_scale * flat_actions[:, 1:]
-        self._body_torques[:, 0, :] = moments
+        proj_grav_b = self.robot.data.projected_gravity_b
+        ang_vel_b = self.robot.data.root_ang_vel_b
+
+        # PD attitude controller: converts [thrust_cmd, desired_roll, desired_pitch,
+        # desired_yaw_rate] into body-frame thrust force and moments.
+        # Writes in-place into pre-allocated self._thrust and self._moment (Rule 15).
+        compute_attitude_control(
+            actions=flat_actions,
+            proj_grav_b=proj_grav_b,
+            ang_vel_b=ang_vel_b,
+            robot_weight=self._robot_weight,
+            params=self._att_ctrl_params,
+            thrust_buf=self._thrust,
+            moment_buf=self._moment,
+        )
 
     def _apply_action(self) -> None:
-        # Collective thrust onto prop bodies (zero torques -- applying torques to
-        # prop bodies would spin their revolute joints and corrupt thrust direction).
-        self.robot.permanent_wrench_composer.set_forces_and_torques(
-            body_ids=self._prop_body_indices,
-            forces=self._prop_forces,
-            torques=self._prop_torques,  # all-zero
-        )
-        # Roll/pitch/yaw moments onto the main body (zero forces).
+        # Apply thrust (body-frame Z) and attitude moments to the main body in a
+        # single call, matching the Isaac Lab Isaac-Quadcopter-Direct-v0 reference.
         self.robot.permanent_wrench_composer.set_forces_and_torques(
             body_ids=self._body_indices,
-            forces=torch.zeros(self.num_envs * self.cfg.num_agents, 1, 3, device=self.device),
-            torques=self._body_torques,
+            forces=self._thrust,
+            torques=self._moment,
         )
         self.robot.write_data_to_sim()
 
@@ -474,6 +486,13 @@ class GGSwarmMarlEnv(DirectMARLEnv):
             env_ids_tensor = torch.tensor(env_ids, dtype=torch.long, device=self.device)
         else:
             env_ids_tensor = env_ids
+
+        # Stagger episode lengths on full reset to prevent correlated data spikes
+        # (Isaac Lab pattern: spread out resets so many envs don't terminate simultaneously).
+        if len(env_ids_tensor) == self.num_envs:
+            self.episode_length_buf = torch.randint_like(
+                self.episode_length_buf, high=int(self.max_episode_length)
+            )
 
         # Get robot indices corresponding to the environment IDs
         robot_indices = (

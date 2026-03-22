@@ -57,15 +57,27 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     )
 
     # swarm specific
-    # With the current thrust mapping in `drone_swarm_env.py`,
-    # `action_z = 0.0 -> thrust_val = 0.5`, so `thrust_to_weight = 1.9`
-    # makes the neutral action hover (total thrust ~= 1.0 * weight).
+    # action[0] = 0.0 -> thrust_val = 0.5 -> total_thrust = weight (hover).
     # Aligned with Isaac Lab's Isaac-Quadcopter-Direct-v0 reference baseline.
     thrust_to_weight: float = 1.9
-    # Restored to 0.01 (Isaac Lab reference for Crazyflie).
-    # Previous reduction to 0.001 was 10x overcorrection; tumbling was caused by
-    # wide spawn yaw and lack of upright reward, both now addressed.
-    moment_scale: float = 0.01
+
+    # --- PD Attitude Controller (inner loop) ---
+    # The RL policy outputs [thrust, desired_roll, desired_pitch, desired_yaw_rate].
+    # The PD controller converts these into body-frame thrust + moments each step.
+    # Reference: OmniDrones AttitudeController (deployed to real Crazyflie 2.1 hardware).
+    # Proportional gain for roll/pitch attitude error (Nm/rad).
+    kp_att: float = 0.03
+    # Derivative/damping gain for roll/pitch (Nm/(rad/s)).
+    kd_att: float = 0.005
+    # Proportional gain for yaw rate error (Nm/(rad/s)).
+    kp_yaw: float = 0.01
+    # Maximum tilt angle the policy can command (rad). 0.52 rad ≈ 30 degrees.
+    max_tilt_angle: float = 0.52
+    # Maximum yaw rate the policy can command (rad/s). π rad/s = 180 deg/s.
+    max_yaw_rate: float = 3.14159
+    # Moment output clamp (Nm). Prevents runaway torques at episode start.
+    max_moment: float = 0.02
+
     graph_connectivity_radius: float = 2.0  # (metres) for L2 adjacency matrix
     # Tighter yaw range (0.1 vs 0.3) keeps drones more level at spawn, reducing early tumble pressure.
     spawn_yaw_range: float = 0.1  # ± range for random yaw (rad)
@@ -73,26 +85,26 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     drone_radius: float = 0.05  # (metres) approximate collision radius
     min_separation_dist: float = 0.10  # (metres) minimum allowed inter-agent distance
 
-    # scene
+    # scene (base default; HoverStability overrides to 512 for L4 GPU throughput)
     scene: InteractiveSceneCfg = InteractiveSceneCfg(
         num_envs=128, env_spacing=5.0, replicate_physics=True
     )
 
-    # reward scales
-    rew_scale_pos = 3.0
-    rew_scale_vel = -0.15
-    rew_scale_ang_vel = -0.5
-    # Stronger alive bonus to reinforce staying airborne.
-    rew_scale_alive = 1.0
-    # Aggressive crash penalty to prioritize recovery over all else.
-    rew_scale_terminated = -20.0
-    # Uprightness reward: now exceeds position reward (5.0 vs 3.0) to make "stay level" the top priority.
-    # This ensures drones prioritize orientation control over reaching the goal while tumbling.
-    rew_scale_upright: float = 5.0
-    # Phase 2 rewards
-    rew_scale_formation = 1.0
-    rew_scale_cohesion = 0.2
-    rew_scale_separation = -5.0
+    # reward scales (Phase 2B formation training defaults)
+    # The PD attitude controller provides inherent stability so position reward
+    # alone is sufficient to shape hover behaviour. The upright/alive/terminated
+    # terms remain available at 0.0 for optional use; they are re-enabled in
+    # subconfigs only when needed (e.g. formation training).
+    rew_scale_pos: float = 15.0          # tanh-mapped, step_dt scaled (Isaac Lab style)
+    rew_scale_vel: float = -0.05         # squared lin vel penalty, step_dt scaled
+    rew_scale_ang_vel: float = -0.01     # squared ang vel penalty, step_dt scaled
+    rew_scale_alive: float = 0.0         # disabled; PD controller makes alive bonus unnecessary
+    rew_scale_terminated: float = 0.0    # disabled; dones handled by height bounds
+    rew_scale_upright: float = 0.0       # disabled; PD controller maintains upright
+    # Phase 2B formation rewards
+    rew_scale_formation: float = 1.0
+    rew_scale_cohesion: float = 0.2
+    rew_scale_separation: float = -5.0
 
     # reward sigmas
     rew_pos_sigma = 0.5
@@ -161,17 +173,22 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
 
 @configclass
 class GGSwarmMarlHoverStabilityCfg(GGSwarmMarlEnvCfg):
-    """Hover-stability training mode: formation rewards disabled, pure stability objective.
+    """Hover-stability training mode: PD attitude controller + simplified Isaac Lab rewards.
 
     Use task id ``Template-GGSwarm-Marl-HoverStability-v0``.
     Compatible with Phase 2 GNN policy (same 12-dim obs space).
-    After passing the stability assessment, use best_agent.pt as --checkpoint
-    for subsequent formation training with the standard Phase 2 task.
+
+    The inner-loop PD controller (kp_att/kd_att/kp_yaw) keeps drones stable even
+    with random policy actions, so the reward can be minimal — matching the 3-term
+    structure from Isaac Lab's Isaac-Quadcopter-Direct-v0 which converges reliably:
+      - distance-to-goal (tanh-mapped, step_dt scaled)
+      - linear velocity penalty (squared)
+      - angular velocity penalty (squared)
 
     Two-phase training strategy:
-    - Phase A: train with this config (80k iters); target survival_steps > 500,
+    - Phase A: train with this config (80k steps); target survival_steps > 500,
       airborne_ratio > 0.9, mean_roll < 15 degrees.
-    - Phase B: resume checkpoint with Template-GGSwarm-Marl-Direct-v0 and
+    - Phase B: resume checkpoint with Template-GGSwarm-Marl-Formation-v0 and
       curriculum_start_step=0 for immediate formation signal.
     """
 
@@ -180,21 +197,33 @@ class GGSwarmMarlHoverStabilityCfg(GGSwarmMarlEnvCfg):
     rew_scale_cohesion: float = 0.0
     rew_scale_separation: float = 0.0
 
-    # Lock curriculum alpha=0 for entire run: pos reward at 100%, formation at 0%
+    # Lock curriculum: hover signal at 100%, formation at 0% for full run
     curriculum_start_step: int = 999999
     curriculum_end_step: int = 1000000
-    curriculum_pos_floor: float = 1.0  # pos reward never fades; always full signal
+    curriculum_pos_floor: float = 1.0
 
-    # Rebalanced stability rewards — Run 1 levels that showed improvement (63.5° roll)
-    # vs. Run 4 (75.8° roll) which used 5.0/-0.5/-20.0 and destabilized the policy
-    rew_scale_upright: float = 3.0      # Run 1 level; not 5.0 which destabilized Run 4
-    rew_scale_ang_vel: float = -0.25    # Run 1 level; not -0.5
-    rew_scale_pos: float = 2.0          # slightly lower than 3.0; stability > position
-    rew_scale_alive: float = 1.5        # stronger survival incentive
-    rew_scale_terminated: float = -10.0  # reduced from -20.0 (Run 4 crash was too harsh)
+    # Simplified 3-term reward matching Isaac Lab Isaac-Quadcopter-Direct-v0.
+    # The PD controller handles stability so the reward can be clean and sparse.
+    # rew_scale_pos * step_dt * (1 - tanh(dist/0.8)) per step
+    rew_scale_pos: float = 15.0
+    # rew_scale_vel * step_dt * sum(square(lin_vel_b)) per step
+    rew_scale_vel: float = -0.05
+    # rew_scale_ang_vel * step_dt * sum(square(ang_vel_b)) per step
+    rew_scale_ang_vel: float = -0.01
 
-    # Wider spawn yaw so policy learns diverse attitude recovery scenarios
-    spawn_yaw_range: float = 0.3  # ± rad (up from default 0.1)
+    # Disable unused reward terms (PD controller makes these redundant)
+    rew_scale_upright: float = 0.0
+    rew_scale_alive: float = 0.0
+    rew_scale_terminated: float = 0.0
+
+    # Moderate spawn yaw; PD controller recovers from wider perturbations
+    spawn_yaw_range: float = 0.3  # ± rad
+
+    # Scale up parallel envs for GCE L4 GPU (24 GB VRAM).
+    # 512 envs * 3 agents = 1536 parallel rollouts (4x vs base 128).
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(
+        num_envs=512, env_spacing=5.0, replicate_physics=True
+    )
 
 
 @configclass

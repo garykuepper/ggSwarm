@@ -1,0 +1,66 @@
+# Run History: Phase 2 Training Scorecard
+
+Cross-run scorecard for all Phase 2 training runs. One row per run.
+
+**After every run:** append a row from the `assess` scorecard output before changing any config
+or relaunching (Rule 23). Full assessment workflow: [`docs/ops/post_train_analysis.md`](../ops/post_train_analysis.md).
+
+---
+
+## Scorecard Table
+
+> **Architecture reset (2026-03-22):** Runs 1–A1 used raw-torque action semantics and are
+> incompatible with the new PD attitude controller. All were FAIL. Logs deleted; history
+> preserved below for reference only. New runs use `[thrust, desired_roll, desired_pitch,
+> desired_yaw_rate]` action semantics with PD inner loop.
+
+### Pre-Reset Runs (raw-torque action semantics — retired)
+
+| Run | Timestamp | Phase | survival\_steps | airborne\_ratio | ground\_hit\_rate | mean\_roll\_deg | orientation\_viol | Verdict |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| Run 1 | 2026-03-21_14-44-56 | Phase 2A | 487 | 0.835 | 0.165 | 63.5° | 0.535 | FAIL |
+| Run 2 | 2026-03-21_20-46-16 | Phase 2A | — | — | — | — | — | aborted |
+| Run 3 | 2026-03-21_21-21-55 | Phase 2A | 1.1 | 0.582 | 0.648 | 75.8° | 0.582 | FAIL |
+| Run A1 | 2026-03-22_00-32-56 | Phase 2A | 1.1 | 0.700 | 0.423 | 59.8° | 0.524 | FAIL |
+
+### Post-Reset Runs (PD attitude controller — current)
+
+| Run | Timestamp | Phase | survival\_steps | airborne\_ratio | ground\_hit\_rate | mean\_roll\_deg | orientation\_viol | Verdict |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| — | — | — | — | — | — | — | — | pending |
+
+---
+
+## Column Definitions
+
+| Column | Description | Units / Values |
+| :--- | :--- | :--- |
+| `Run` | Sequential run label within the phase | e.g. Run A1, Run B1 |
+| `Timestamp` | Run directory timestamp prefix | `YYYY-MM-DD_HH-MM-SS` |
+| `Phase` | Phase 2 sub-phase this run belongs to | `Phase 2A` / `Phase 2B` / `Phase 2C` |
+| `survival_steps` | Mean episode steps before ground hit or termination | steps (higher = better; gate: > 500) |
+| `airborne_ratio` | Fraction of agent-steps where altitude > `min_height + 0.2 m` | 0–1 (higher = better; gate: > 0.9) |
+| `ground_hit_rate` | Fraction of env-steps where any agent is below `min_height` | 0–1 (lower = better; gate: < 0.05) |
+| `mean_roll_deg` | Mean absolute roll across all agents and steps | degrees (lower = better; gate: < 15°) |
+| `orientation_viol` | Fraction of agent-steps where roll or pitch exceeds 45° | 0–1 (lower = better; gate: < 0.1) |
+| `Verdict` | Overall assess result | `PASS` / `WARN` / `FAIL` / `aborted` |
+
+> `mean_formation_error_m` is not in this table because it is not gated in Phase 2A.
+> Add it as an extra column when Phase 2B runs appear.
+
+---
+
+## How to Fill In a Row
+
+1. After training finishes and results are synced locally, run:
+
+```powershell
+python scripts/run.py hover-stability assess --run_dir logs/skrl/ggswarm_marl/<timestamp>_mappo_torch --num_episodes 5
+```
+
+1. The scorecard block at the end of the output prints each metric value and the overall verdict.
+
+1. Copy the values into a new row in the table above, using the run timestamp as the `Timestamp` column.
+
+1. Log the same results in [`docs/status/changelog.md`](changelog.md) using the changelog template
+   in `docs/ops/post_train_analysis.md`.

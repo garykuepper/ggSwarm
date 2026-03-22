@@ -308,10 +308,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
         print("[INFO] Video mode: forcing num_envs=1 for stable recording (override with --num_envs).")
     env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
     if hasattr(env_cfg, "num_agents") and args_cli.num_agents is not None:
-        env_cfg.num_agents = args_cli.num_agents
-        env_cfg.possible_agents = [f"drone_{i}" for i in range(env_cfg.num_agents)]
-        env_cfg.action_spaces = {agent: 4 for agent in env_cfg.possible_agents}
-        env_cfg.observation_spaces = {agent: 12 for agent in env_cfg.possible_agents}
+        import sys as _sys  # noqa: PLC0415
+        from pathlib import Path as _Path  # noqa: PLC0415
+        _sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
+        from ggswarm_utils.sim_helpers import override_agent_count  # noqa: PLC0415
+        override_agent_count(env_cfg, args_cli.num_agents)
 
     # configure the ML framework into the global skrl variable
     if args_cli.ml_framework.startswith("jax"):
@@ -427,22 +428,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
     # Override model with GNN if requested
     if args_cli.gnn:
         print("[INFO] Using GGSwarmGNNPolicy (GATv2) for playback.")
-        experiment_cfg["models"]["policy"]["class"] = "GGSwarmGNNPolicy"
-        # Disable the default 'network' key as GGSwarmGNNPolicy defines its own architecture
-        if "network" in experiment_cfg["models"]["policy"]:
-            del experiment_cfg["models"]["policy"]["network"]
-
-        # Monkey-patch SKRL Runner to recognize the custom class string
-        original_component = Runner._component
-
-        def custom_component(self, name: str):
-            if name.lower() == "ggswarmgnnpolicy":
-                from ggSwarm.tasks.direct.ggswarm_marl.agents.skrl_gnn_policy import GGSwarmGNNPolicy
-
-                return GGSwarmGNNPolicy
-            return original_component(self, name)
-
-        Runner._component = custom_component
+        import sys as _sys  # noqa: PLC0415
+        from pathlib import Path as _Path  # noqa: PLC0415
+        _sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
+        from ggswarm_utils.sim_helpers import configure_gnn_policy  # noqa: PLC0415
+        configure_gnn_policy(experiment_cfg, Runner)
 
     runner = Runner(env, experiment_cfg)
 
@@ -455,104 +445,15 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
     bcb("Runner created")
 
     print(f"[INFO] Loading model checkpoint from: {resume_path}")
-    # Get the agent(s) from the runner
-    # skrl runners can have 'agent' (single-agent) or 'agents' (multi-agent)
-    agent = getattr(runner, "agent", None)
-    if agent is None and hasattr(runner, "agents"):
-        agent = runner.agents[0] # assuming shared policy for all agents in MAPPO
+    import sys as _sys  # noqa: PLC0415 (already imported above, but just in case)
+    from pathlib import Path as _Path  # noqa: PLC0415
+    _sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
+    from ggswarm_utils.checkpoint import load_policy_from_checkpoint, resolve_agent  # noqa: PLC0415, E402
 
-    if agent is None:
-        print("[ERROR] Could not find agent in runner. Dumping attributes to play_error.log")
-        with open(LOG_PATH, "a") as f:
-            f.write(f"\nRunner Attributes: {dir(runner)}\n")
-            if hasattr(runner, "agents"):
-                f.write(f"Runner.agents: {runner.agents}\n")
-        # Let it fail with the original attribute error so we get a traceback too
-        agent = runner.agent 
-
+    agent = resolve_agent(runner)
     bcb("Loading checkpoint file")
-    # Load checkpoint
-    checkpoint = torch.load(resume_path, map_location=agent.device)
-    bcb("Checkpoint file loaded")
-    def _load_policy_state_dict(state_dict: dict, source: str) -> bool:
-        """Load a policy `state_dict` into the right network module.
-
-        skrl's `Runner`/agent objects don't always expose the policy as `agent.policy`.
-        We try common locations and load into the first candidate that accepts
-        the provided keys.
-        """
-        candidates: list[object] = []
-
-        def _maybe_add(x: object):
-            if isinstance(x, torch.nn.Module):
-                candidates.append(x)
-
-        # Most direct: agent.policy
-        if hasattr(agent, "policy"):
-            _maybe_add(getattr(agent, "policy"))
-
-        # Common: agent.models["policy"]
-        if hasattr(agent, "models"):
-            models = getattr(agent, "models")
-            if isinstance(models, dict):
-                # Prefer keys that look like policy, but fall back to all modules in the dict.
-                policy_like = [m for k, m in models.items() if "policy" in str(k).lower()]
-                for m in (policy_like if policy_like else list(models.values())):
-                    _maybe_add(m)
-            else:
-                if hasattr(models, "policy"):
-                    _maybe_add(getattr(models, "policy"))
-
-        # Last resort: scan any torch.nn.Modules stored on the agent object.
-        for name in dir(agent):
-            try:
-                v = getattr(agent, name)
-            except Exception:
-                continue
-            if isinstance(v, torch.nn.Module):
-                _maybe_add(v)
-            elif isinstance(v, dict):
-                for vv in v.values():
-                    _maybe_add(vv)
-
-        for m in candidates:
-            try:
-                m.load_state_dict(state_dict)
-                bcb(f"Policy state dict loaded from: {source}")
-                return True
-            except Exception:
-                continue
-        return False
-
-    if "policy" in checkpoint:
-        if not _load_policy_state_dict(checkpoint["policy"], "checkpoint['policy']"):
-            raise KeyError("Could not load policy from checkpoint['policy']")
-    elif "policy_0" in checkpoint:  # some multi-agent formats
-        if not _load_policy_state_dict(checkpoint["policy_0"], "checkpoint['policy_0']"):
-            raise KeyError("Could not load policy from checkpoint['policy_0']")
-    else:
-        # skrl multi-agent checkpoints may be stored per-agent, e.g.
-        # {"drone_0": {"policy": <state_dict>, ...}, "drone_1": {...}, ...}
-        loaded = False
-        if isinstance(checkpoint, dict):
-            for k, v in checkpoint.items():
-                if isinstance(v, dict) and "policy" in v:
-                    loaded = _load_policy_state_dict(v["policy"], f"checkpoint['{k}']['policy']")
-                    if loaded:
-                        break
-
-        if not loaded:
-            # Diagnostic: Print all keys if no known policy key is found
-            bcb(f"MISSING POLICY KEY. Keys: {list(checkpoint.keys())}")
-            # Attempt to find ANY key containing 'policy'
-            policy_key = next((k for k in checkpoint.keys() if "policy" in k.lower()), None)
-            if policy_key and isinstance(checkpoint[policy_key], dict):
-                loaded = _load_policy_state_dict(checkpoint[policy_key], f"checkpoint['{policy_key}']")
-            if not loaded:
-                bcb("No policy-like keys found! Stopping to prevent Critic mismatch.")
-                raise KeyError(f"Could not find policy in checkpoint. Available keys: {list(checkpoint.keys())}")
-
-    bcb("Finalizing policy load")
+    load_policy_from_checkpoint(agent, resume_path)
+    bcb("Checkpoint file loaded; policy loaded successfully.")
     print("[INFO] Policy loaded successfully (Value function skipped for scalability).")
 
     # MAPPO with separate=True creates one agent per drone; we only loaded into agents[0].
@@ -627,13 +528,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
                         else:
                             actions[aid] = last if isinstance(last, torch.Tensor) else out[0]
             else:
-                outputs = agent.act(obs, timestep=0, timesteps=0)
-                # - multi-agent (single agent produces all actions)
-                if hasattr(env, "possible_agents"):
-                    actions = {a: outputs[-1][a].get("mean_actions", outputs[0][a]) for a in env.possible_agents}
-                # - single-agent (deterministic) actions
-                else:
-                    actions = outputs[-1].get("mean_actions", outputs[0])
+                import sys as _sys  # noqa: PLC0415
+                from pathlib import Path as _Path  # noqa: PLC0415
+                _sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
+                from ggswarm_utils.sim_helpers import extract_actions as _extract_actions  # noqa: PLC0415
+                actions = _extract_actions(agent, obs, env.unwrapped if hasattr(env, "unwrapped") else env)
             # env stepping (with --video, first step triggers render and can be slow)
             obs, _, _, _, _ = env.step(actions)
         timestep += 1

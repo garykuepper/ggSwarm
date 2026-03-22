@@ -12,7 +12,7 @@ from isaaclab.utils.math import quat_from_euler_xyz, sample_uniform
 
 from .drone_hover_env_cfg import GGSwarmHoverEnvCfg
 from .drone_swarm_env import GGSwarmMarlEnv
-from .contract_logic import HoverRewardParams, compute_hover_rewards
+from .contract_logic import HoverRewardParams, StableHoverRewardParams, compute_hover_rewards, compute_stable_hover_rewards
 
 
 class GGSwarmHoverEnv(GGSwarmMarlEnv):
@@ -34,20 +34,18 @@ class GGSwarmHoverEnv(GGSwarmMarlEnv):
         # shape: [num_envs, num_agents, 3]
         desired_pos_w = self._desired_pos_w
 
-        params = HoverRewardParams(
+        # Use simplified 3-term Isaac Lab reward (matches Isaac-Quadcopter-Direct-v0).
+        # The PD attitude controller provides inherent stability so no upright/alive/
+        # termination terms are needed here.
+        params = StableHoverRewardParams(
             rew_scale_pos=self.cfg.rew_scale_pos,
-            rew_pos_sigma=self.cfg.rew_pos_sigma,
             rew_scale_vel=self.cfg.rew_scale_vel,
             rew_scale_ang_vel=self.cfg.rew_scale_ang_vel,
-            rew_scale_alive=self.cfg.rew_scale_alive,
-            rew_scale_ground_hit=self.cfg.rew_scale_ground_hit,
-            rew_scale_terminated=self.cfg.rew_scale_terminated,
-            hover_reward_min_height=self.cfg.hover_reward_min_height,
-            ground_hit_height=self.cfg.ground_hit_height,
+            step_dt=self.step_dt,
         )
 
         # shape: [num_envs, num_agents]
-        total_rewards = compute_hover_rewards(
+        total_rewards = compute_stable_hover_rewards(
             pos_w=pos_w,
             desired_pos_w=desired_pos_w,
             lin_vel_b=lin_vel_b,
@@ -66,7 +64,7 @@ class GGSwarmHoverEnv(GGSwarmMarlEnv):
         time_out = self.episode_length_buf >= self.max_episode_length - 1
 
         # shape: [num_envs, num_agents]
-        ground_hit = pos_w[:, :, 2] < self.cfg.ground_hit_height
+        ground_hit = pos_w[:, :, 2] < self.cfg.min_height
         out_of_bounds_top = pos_w[:, :, 2] > self.cfg.max_height
         out_of_bounds = ground_hit | out_of_bounds_top
 

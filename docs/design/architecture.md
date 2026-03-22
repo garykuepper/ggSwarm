@@ -1,4 +1,4 @@
-# Architecture: ggSwarm Decentralized Drone Coordination
+﻿# Architecture: ggSwarm Decentralized Drone Coordination
 
 ## 1. Overview
 
@@ -62,12 +62,24 @@ It follows the **Graph Neural Swarm Control (GNSC)** 5-Layer model with a
 5. **MINCO:** EMA action smoother reduces velocity jitter (≥ 20% reduction target).
 6. **SwarmRaft:** On agent loss, the leader recomputes formation slots for surviving agents
    and updates `_desired_pos_w`; target is re-sync within 2.0 s.
-7. **Control:** Propeller forces and torques are applied via `permanent_wrench_composer`.
+7. **Control:** The PD attitude controller converts attitude commands to body-frame thrust +
+   moments, applied to the main body via a single `permanent_wrench_composer` call.
+
+**Action contract (Phase 2+):** The RL policy outputs 4-dim actions
+`[thrust_cmd, desired_roll, desired_pitch, desired_yaw_rate]` in `[-1, 1]`.
+An inner-loop PD attitude controller (`attitude_controller.py`) converts these to
+body-frame thrust force and moments each physics step.
+This matches real Crazyflie flight controller architecture (Bitcraze cascaded PID)
+and the OmniDrones deployment pattern. The policy focuses on navigation/coordination;
+raw flight dynamics are handled by the deterministic controller.
+
+**Previous action contract (Runs 1–A1, now retired):** Policy output raw torques
+(`moment_scale * action[1:4]`). This required the policy to simultaneously learn
+flight dynamics and navigation, which proved unlearnable in 4 consecutive failed runs.
 
 **Phase 2 prerequisite baseline:** `GGS-Hover-v0` trains a single drone to hold
 its spawn pose before multi-agent formation tuning. This task keeps the same
-observation/action interfaces but disables formation objectives and introduces an
-explicit ground-hit penalty to prevent reward artifacts while grounded.
+observation/action interfaces but disables formation objectives.
 
 **Phase 2 sub-phases:** Phase 2 is split into Phase A (hover-stability, formation OFF,
 `Template-GGSwarm-Marl-HoverStability-v0`) and Phase B (formation resume,
@@ -102,6 +114,7 @@ critic receives valid inputs.
 | :--- | :--- |
 | `drone_swarm_env.py` | MARL environment (scene, physics, obs, rewards, resets) |
 | `drone_swarm_env_cfg.py` | Env configs: base `GGSwarmMarlEnvCfg`, Phase A `GGSwarmMarlHoverStabilityCfg`, Phase B `GGSwarmMarlFormationCfg`, Phase 3/4 variants |
+| `attitude_controller.py` | Pure-torch PD attitude controller inner loop (no Isaac imports) |
 | `contract_logic.py` | Pure-torch reward logic and adjacency matrix computation |
 | `cbf_safety.py` | **Phase 3** L4: CBF pairwise safety projection |
 | `swarm_raft.py` | **Phase 3** L3: SwarmRaft consensus and formation redistribution |
