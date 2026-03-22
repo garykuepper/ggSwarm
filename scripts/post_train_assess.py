@@ -96,8 +96,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--seed",
         type=int,
-        default=1,
-        help="Eval RNG seed.",
+        default=42,
+        help="Eval RNG seed (default matches skrl_mappo_cfg.yaml for train–eval parity).",
     )
     parser.add_argument(
         "--video",

@@ -190,6 +190,12 @@ def _add_eval_args(p: argparse.ArgumentParser, default_episodes: int = 5) -> Non
     p.add_argument("--checkpoint", type=str, default=None)
     p.add_argument("--num_episodes", type=int, default=default_episodes)
     p.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Env RNG seed (default matches skrl_mappo_cfg.yaml).",
+    )
+    p.add_argument(
         "--no_gnn",
         action="store_true",
         default=False,
@@ -224,6 +230,12 @@ def _add_assess_args(p: argparse.ArgumentParser) -> None:
         help="Also run checkpoint progression sweep (adds ~3 min).",
     )
     p.add_argument("--device", type=str, default=None)
+    p.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Eval seed forwarded to post_train_assess (default matches skrl_mappo_cfg.yaml).",
+    )
     _add_eval_video_args(p)
 
 

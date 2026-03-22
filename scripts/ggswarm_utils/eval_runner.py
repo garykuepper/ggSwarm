@@ -21,7 +21,7 @@ Usage (the caller must have already booted AppLauncher):
         checkpoint="logs/.../checkpoints/best_agent.pt",
         num_episodes=5,
         gnn=True,
-        seed=1,
+        seed=42,
         device=None,
         num_envs=None,
         num_agents=None,

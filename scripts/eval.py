@@ -67,8 +67,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--seed",
         type=int,
-        default=1,
-        help="RNG seed for environment resets.",
+        default=42,
+        help="RNG seed for environment resets (default matches skrl_mappo_cfg.yaml).",
     )
     parser.add_argument(
         "--gnn",

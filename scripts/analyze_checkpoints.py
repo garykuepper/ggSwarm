@@ -27,7 +27,11 @@ from ggswarm_utils.eval_stats import (  # noqa: E402
     compute_orientation_metrics as _compute_orientation_metrics,
     pairwise_mean_abs_spacing_error as _pairwise_mean_abs_spacing_error,
 )
-from ggswarm_utils.sim_helpers import extract_actions  # noqa: E402
+from ggswarm_utils.sim_helpers import (  # noqa: E402
+    PHASE_REGISTRY,
+    configure_gnn_policy,
+    extract_actions,
+)
 
 
 parser = argparse.ArgumentParser(
@@ -63,6 +67,28 @@ parser.add_argument(
     default="Template-GGSwarm-Marl-Direct-v0",
     help="Gym task ID to evaluate checkpoints against.",
 )
+parser.add_argument(
+    "--num_envs",
+    type=int,
+    default=None,
+    help="Override scene.num_envs (default: keep value from env cfg).",
+)
+parser.add_argument(
+    "--seed",
+    type=int,
+    default=42,
+    help="Env / trainer seed (match skrl_mappo_cfg.yaml seed for train–eval parity).",
+)
+parser.add_argument(
+    "--gnn",
+    dest="use_gnn",
+    action=argparse.BooleanOptionalAction,
+    default=None,
+    help=(
+        "Use GGSwarmGNNPolicy (default: true when --task matches a PHASE_REGISTRY entry "
+        "with gnn_default=True, e.g. hover-stability / phase2)."
+    ),
+)
 
 AppLauncher.add_app_launcher_args(parser)
 args_cli, hydra_args = parser.parse_known_args()
@@ -70,8 +96,6 @@ sys.argv = [sys.argv[0]] + hydra_args
 
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
-
-import random
 
 import gymnasium as gym
 import skrl
@@ -92,6 +116,14 @@ if version.parse(skrl.__version__) < version.parse("1.4.3"):
     )
 
 from skrl.utils.runner.torch import Runner
+
+
+def _gnn_default_for_task(task: str) -> bool:
+    """Return True if the task is registered with ``gnn_default=True``."""
+    for p in PHASE_REGISTRY.values():
+        if p.task == task:
+            return p.gnn_default
+    return False
 
 
 def _collect_checkpoints(run_dir: Path, interval: int) -> list[tuple[int, Path]]:
@@ -138,10 +170,17 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, cfg:
         print(f"  {step:,} steps: {ckpt_path.name}")
 
     # Override environment config for evaluation
-    env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
+    if args_cli.num_envs is not None:
+        env_cfg.scene.num_envs = args_cli.num_envs
     env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
-    cfg["seed"] = random.randint(0, 10000)
-    env_cfg.seed = cfg["seed"]
+    cfg["seed"] = args_cli.seed
+    env_cfg.seed = args_cli.seed
+
+    use_gnn = args_cli.use_gnn
+    if use_gnn is None:
+        use_gnn = _gnn_default_for_task(args_cli.task)
+    if use_gnn:
+        configure_gnn_policy(cfg, Runner)
 
     # Disable checkpoint writing during eval
     cfg["trainer"]["checkpoint_interval"] = 0
@@ -267,10 +306,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, cfg:
             "survival_steps": summary["survival_steps"],
         })
 
-        print(f"  ✓ Formation error: {summary['mean_formation_error_m']:.4f}m")
-        print(f"  ✓ Separation event rate: {summary['separation_event_rate']:.4f}")
-        print(f"  ✓ Mean roll/pitch: {summary['mean_roll_deg']:.1f}°/{summary['mean_pitch_deg']:.1f}°")
-        print(f"  ✓ Airborne ratio: {summary['airborne_ratio']:.4f}")
+        print(f"  - Formation error: {summary['mean_formation_error_m']:.4f}m")
+        print(f"  - Separation event rate: {summary['separation_event_rate']:.4f}")
+        print(f"  - Mean roll/pitch: {summary['mean_roll_deg']:.1f}deg/{summary['mean_pitch_deg']:.1f}deg")
+        print(f"  - Airborne ratio: {summary['airborne_ratio']:.4f}")
 
     env.close()
 
@@ -283,7 +322,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, cfg:
         writer.writeheader()
         writer.writerows(results)
 
-    print(f"\n✓ Results written to: {output_csv}")
+    print(f"\nResults written to: {output_csv}")
     print("\nSummary:")
     print(f"  Checkpoints analyzed: {len(results)}")
     if results:

@@ -277,3 +277,34 @@ This document tracks major technical changes and milestone completions for each 
 - [2026-03-22] **TensorBoard telemetry:** `extras["log"]` adds `rew_low_clearance`, `mean_world_z`, `low_clearance_frac`.
 - [2026-03-22] **Docs / rules:** `docs/ops/phase2a_diagnostics.md` (TB, baselines, ladder, train-length policy); `post_train_analysis.md` metric definitions; `run_history.md` footnote for PD1/PD2 survival; `training_workflow.md`, `commands.md`, `architecture.md`; `.cursor/rules/project-rules.mdc` (Rule 18 `attitude_controller.py`, Rule 22 hover table, inner-loop SHOULD); `scorecard.py` assess report note + FAIL hint.
 - **Next:** Rule 22 smoke → GCE `hover-stability train` (≥80k) → pull → assess → append **`run_history.md`** with **post-fix** `survival_steps`.
+
+## Phase 2A: Run PD3 Assessment (2026-03-22)
+
+- **Run dir:** `logs/skrl/ggswarm_marl/2026-03-22_16-00-12_mappo_torch`
+- **Train budget:** 92,000 iterations (GCE); **config:** `GGSwarmMarlHoverStabilityCfg` with PD3 prep (`rew_scale_low_clearance`, survival metric fix in codebase; VM pulled `main` including PD3 bundle).
+- **Convergence:** peak reward **19071** @ step **90,000** | final **18615** @ step **92,000** | **entropy collapse @ step 81,000** (reward ~13748 at collapse) | recommended budget **~93k** steps
+- **Scorecard** (`best_agent.pt`, 5 episodes, hover-stability assess, **post-fix** `survival_steps`, **eval seed 42** — train parity; superseded seed-1 pass):
+  - `survival_steps=4.4` | `airborne_ratio=0.617` | `ground_hit_rate=0.494` (**scorecard WARN** vs threshold 0.5; was **FAIL** at 0.717 under seed 1)
+  - `mean_roll_deg=24.6°` | `orientation_violation_rate=0.349` | `mean_formation_error_m=1.17` (informational; not gated in Phase 2A)
+  - **Verdict: FAIL** (survival / airborne still far from pass; `ground_hit_rate` materially better with train-aligned seed)
+- **Vs Run PD2** (re-assessed PD2 with fixed collector: `2026-03-22_07-03-55`, `survival_steps≈4.8`): **Training signal improved strongly** (peak/final reward, no mid-run collapse like PD2’s 53k→80k drawdown). **Eval scorecard:** small moves only — `airborne_ratio` ↑ 0.571→0.596, `ground_hit_rate` ↓ 0.723→0.717, `mean_roll_deg` ↓ 24.6°→23.4°; **`survival_steps` unchanged in practice** (~4.6 vs ~4.8) — still immediate batch ground-contact regime on eval.
+- **Decision: FAIL** — do not advance to Phase 2B.
+- **Next action:** (1) TensorBoard: confirm `rew_low_clearance` / `mean_world_z` / policy entropy post–81k collapse vs eval failures. (2) Consider eval vs train **sim / seed / num_envs** parity check if dips persist. (3) If staying in 3-term + PD space: bounded tweak to `rew_scale_vel` / `rew_scale_ang_vel` or PD limits **after** TB review; log any cfg change here before another GCE run.
+
+- [2026-03-22] **Run PD3 next-step execution (local):**
+  - **TensorBoard autopsy:** Summarized scalars for `2026-03-22_16-00-12_mappo_torch` — `Reward/Total reward (mean)` **140 → ~18.6k**; `Policy/Standard deviation` **~0.36 → ~7.39** (matches entropy-collapse warning ~81k). Added `scripts/summarize_tb_scalars.py` and §7 in `docs/ops/phase2a_diagnostics.md`.
+  - **Train–eval parity:** Default eval/assess seed was **1** while `skrl_mappo_cfg.yaml` uses **42**. Defaults set to **42** in `post_train_assess.py`, `eval.py`, `eval_runner.py`, and `run.py` assess (`build_assess_cmd` forwards `--seed`).
+  - **Run PD3 re-assess (seed 42):** `hover-stability assess` re-run on `2026-03-22_16-00-12_mappo_torch`; `assess_report.md` / `assess_metrics.json` updated. **`run_history.md` PD3 row** now matches seed **42**. vs seed **1**: `ground_hit_rate` **0.717→0.494**, `airborne_ratio` **0.596→0.617**; `orientation_violation_rate` **0.284→0.349**; overall **FAIL** unchanged.
+  - **`analyze_checkpoints.py`:** Fixed missing `--num_envs` / `--seed` CLI (was crashing on `args_cli.num_envs`); removed non-reproducible `random.randint` seed — default **`--seed 42`**. Auto **`configure_gnn_policy`** when `--task` matches `PHASE_REGISTRY` with `gnn_default=True` (override with **`--no-gnn`**). Replaced Unicode checkmarks in prints (Windows **cp1252**). Doc’d hover-stability `--task` in `phase2a_diagnostics.md` §5.
+  - **No reward / MAPPO YAML change** in this pass (policy exploration cap left as a documented optional follow-up in §7).
+
+- [2026-03-22] **PD neutral (zero-action) baseline:** Added `scripts/pd_neutral_baseline.py` — local headless roll with constant neutral RL commands (no MAPPO checkpoint); prints time-averaged `mean_world_z`, per-step `ground_hit_rate` (any agent below `min_height` per env), and `airborne_ratio` (agent slots above `min_height + 0.2` m). Documented command and metrics in `docs/ops/phase2a_diagnostics.md` §3. Sample run (8 envs, 300 steps, seed 42): `mean_world_z ≈ 0.72 m`, `ground_hit_rate ≈ 0.23`, `airborne_ratio ≈ 0.80` — use as regression guard after PD/spawn edits.
+
+## Phase 2A: PD4 prep — eval semantics, exploration cap, hover nudges (2026-03-22)
+
+- **Eval uses mean actions:** Documented in `docs/ops/phase2a_diagnostics.md` §2.1 — `skrl` `GaussianMixin.act` samples for train, but `scripts/ggswarm_utils/sim_helpers.py` `extract_actions()` prefers `outputs["mean_actions"]` for eval/assess/checkpoint ladder. Wide TB policy std is **not** from stochastic eval sampling.
+- **`skrl_mappo_cfg.yaml`:** `max_log_std` **2.0 → 1.0** (caps train-time σ); `initial_log_std` **-1.0 → -0.5**; `entropy_loss_scale` **0.01 → 0.008**. Comments note GNN-only keys are injected in `train.py` / `configure_gnn_policy()` so MLP instantiation stays clean.
+- **`GGSwarmGNNPolicy`:** Constructor parameters `hidden_channels`, `num_heads`, `initial_log_std` (Rule 14). `train.py` logs active values when `--gnn`; `sim_helpers.configure_gnn_policy` sets GNN defaults for eval parity.
+- **`GGSwarmMarlHoverStabilityCfg`:** `spawn_z_min` **0.5 → 0.65**, `spawn_z_max` **1.5 → 1.65** (goal Z still follows spawn Z); `rew_scale_vel` **-0.05 → -0.055**, `rew_scale_ang_vel` **-0.01 → -0.012**.
+- **Ops:** `docs/status/run_history.md` **Run PD4** row `pending` until first post-train assess; Rule 22 smoke: `python scripts/run.py debug smoke --task Template-GGSwarm-Marl-HoverStability-v0 --iterations 1 --gnn`.
+- **GCE (user-triggered):** After smoke, launch hover-stability train on VM per `docs/ops/training_workflow.md` / `.cursor/rules/gce-training-ops.mdc`; pull → assess → replace PD4 `TBD` row with scorecard metrics.

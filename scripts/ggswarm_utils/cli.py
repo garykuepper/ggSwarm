@@ -287,6 +287,7 @@ def build_eval_cmd(
     _append_opt(cmd, "--num_envs", getattr(args, "num_envs", None))
     _append_opt(cmd, "--num_agents", getattr(args, "num_agents", None))
     _append_opt(cmd, "--num_episodes", getattr(args, "num_episodes", None))
+    _append_opt(cmd, "--seed", getattr(args, "seed", None))
     _append_opt(cmd, "--checkpoint", getattr(args, "checkpoint", None))
     if extra_flags:
         cmd.extend(extra_flags)
@@ -332,6 +333,7 @@ def build_assess_cmd(
     if getattr(args, "no_sync", False):
         cmd.append("--no_sync")
     _append_opt(cmd, "--device", getattr(args, "device", None))
+    _append_opt(cmd, "--seed", getattr(args, "seed", None))
     if getattr(args, "video", False):
         cmd.append("--video")
         _append_opt(cmd, "--video_length", getattr(args, "video_length", None))

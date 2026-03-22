@@ -33,25 +33,37 @@ class GGSwarmGNNPolicy(GaussianMixin, Model):
         min_log_std=-20,
         max_log_std=2,
         reduction="sum",
+        *,
+        hidden_channels: int = 128,
+        num_heads: int = 2,
+        initial_log_std: float = -0.5,
         **kwargs,
     ):
+        """Build GATv2 policy; architecture widths are cfg-driven (Rule 14).
+
+        Args:
+            hidden_channels: Output width of the second GAT layer (and action MLP input).
+            num_heads: Attention heads on the first GAT layer (second layer uses 1 head).
+            initial_log_std: Initial diagonal log-std for the Gaussian policy head.
+            kwargs: Absorbs extra keys from skrl's model instantiator.
+        """
+        _ = kwargs  # skrl may pass unused keys from YAML
         Model.__init__(self, observation_space, action_space, device)
         GaussianMixin.__init__(
             self, clip_actions, clip_log_std, min_log_std, max_log_std, reduction
         )
 
-        # Safely extract initial_log_std if provided in kwargs from skrl config
-        initial_log_std = kwargs.get("initial_log_std", 0.0)
-
         # Node features (observation space per agent)
         # shape: [obs_dim]
         in_channels = observation_space.shape[0]
-        hidden_channels = 128
         out_channels = action_space.shape[0]
+        # First layer: multi-head concat → mid_dim channels per node
+        mid_dim = (hidden_channels // 2) * num_heads
 
-        # GNN Layers (Limit to 2 heads to prevent over-smoothing - Rule 11/Proposal)
-        self.conv1 = GATv2Conv(in_channels, hidden_channels // 2, heads=2, concat=True)
-        self.conv2 = GATv2Conv(hidden_channels, hidden_channels, heads=1, concat=False)
+        self.conv1 = GATv2Conv(
+            in_channels, hidden_channels // 2, heads=num_heads, concat=True
+        )
+        self.conv2 = GATv2Conv(mid_dim, hidden_channels, heads=1, concat=False)
 
         # Action Head
         self.action_head = nn.Linear(hidden_channels, out_channels)

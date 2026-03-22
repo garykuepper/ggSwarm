@@ -414,10 +414,22 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # Override model with GNN if requested
     if args_cli.gnn:
         logger.info("Using GGSwarmGNNPolicy (GATv2) for training.")
-        agent_cfg["models"]["policy"]["class"] = "GGSwarmGNNPolicy"
+        policy_cfg = agent_cfg["models"]["policy"]
+        policy_cfg["class"] = "GGSwarmGNNPolicy"
+        # GNN architecture (Rule 14): inject here so YAML MLP path never passes these to gaussian_model.
+        hidden_ch = int(policy_cfg.setdefault("hidden_channels", 128))
+        num_heads = int(policy_cfg.setdefault("num_heads", 2))
+        init_ls = float(policy_cfg.get("initial_log_std", -0.5))
+        logger.info(
+            "GNN policy: GGSwarmGNNPolicy | hidden_channels=%s | num_heads=%s | "
+            "initial_log_std=%s",
+            hidden_ch,
+            num_heads,
+            init_ls,
+        )
         # Disable the default 'network' key as GGSwarmGNNPolicy defines its own architecture
-        if "network" in agent_cfg["models"]["policy"]:
-            del agent_cfg["models"]["policy"]["network"]
+        if "network" in policy_cfg:
+            del policy_cfg["network"]
             
         # Monkey-patch SKRL Runner to recognize the custom class string
         original_component = Runner._component

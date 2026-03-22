@@ -135,8 +135,12 @@ def configure_gnn_policy(cfg: dict, runner_cls: type) -> None:
         cfg:        The skrl experiment config dict (modified in-place).
         runner_cls: The skrl Runner class to monkey-patch.
     """
-    cfg["models"]["policy"]["class"] = "GGSwarmGNNPolicy"
-    cfg["models"]["policy"].pop("network", None)
+    policy = cfg["models"]["policy"]
+    policy["class"] = "GGSwarmGNNPolicy"
+    policy.pop("network", None)
+    # Match train.py: GNN-only kwargs must exist before skrl builds GGSwarmGNNPolicy.
+    policy.setdefault("hidden_channels", 128)
+    policy.setdefault("num_heads", 2)
     from ggswarm_utils.checkpoint import inject_gnn_policy  # noqa: PLC0415
     inject_gnn_policy(runner_cls)
 
@@ -177,15 +181,18 @@ def override_agent_count(
 
 
 def extract_actions(agent: object, obs: object, base_env: object) -> object:
-    """Run agent.act() and return deterministic actions in the env's format.
+    """Run agent.act() and return **mean** Gaussian actions when skrl exposes them.
 
-    Handles both multi-agent (returns dict keyed by agent ID) and single-agent
-    (returns tensor) environments with a single unified call.
+    ``GaussianMixin.act`` returns sampled actions in the first tuple slot but
+    attaches ``mean_actions`` to the third bundle; we prefer those so eval/assess
+    use deterministic policy means (training still samples).
+
+    Handles both multi-agent (dict keyed by agent ID) and single-agent (tensor).
 
     Replaces the 5-line if/else block that was copy-pasted into 7 scripts.
 
     Args:
-        agent:    The skrl agent (or first agent in a MAPPO runner).
+        agent:    The skrl agent (MAPPO object or single-agent wrapper).
         obs:      Current observation from the environment.
         base_env: The unwrapped gymnasium environment.
 

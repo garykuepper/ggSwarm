@@ -210,10 +210,10 @@ class GGSwarmMarlHoverStabilityCfg(GGSwarmMarlEnvCfg):
     # Simplified reward: Gaussian distance (exp(-dist/sigma)), vel/ang_vel penalties, low-clearance shaping.
     # The PD controller handles stability so the reward can be clean and sparse.
     rew_scale_pos: float = 18.0
-    # rew_scale_vel * step_dt * sum(square(lin_vel_b)) per step
-    rew_scale_vel: float = -0.05
-    # rew_scale_ang_vel * step_dt * sum(square(ang_vel_b)) per step
-    rew_scale_ang_vel: float = -0.01
+    # rew_scale_vel * step_dt * sum(square(lin_vel_b)) per step (PD4: slightly stronger damping).
+    rew_scale_vel: float = -0.055
+    # rew_scale_ang_vel * step_dt * sum(square(ang_vel_b)) per step (PD4: nudge vs PD3 tumble).
+    rew_scale_ang_vel: float = -0.012
 
     # Disable unused reward terms (PD controller makes these redundant)
     rew_scale_upright: float = 0.0
@@ -224,6 +224,10 @@ class GGSwarmMarlHoverStabilityCfg(GGSwarmMarlEnvCfg):
 
     # Moderate spawn yaw; PD controller recovers from wider perturbations
     spawn_yaw_range: float = 0.3  # ± rad
+
+    # Phase 2A-only: more vertical margin above min_height; goal Z still tracks spawn Z in _reset_idx.
+    spawn_z_min: float = 0.65
+    spawn_z_max: float = 1.65
 
     # Scale up parallel envs for GCE L4 GPU (24 GB VRAM).
     # 512 envs * 3 agents = 1536 parallel rollouts (4x vs base 128).

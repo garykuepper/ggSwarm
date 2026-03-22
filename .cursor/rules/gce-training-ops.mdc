@@ -74,6 +74,23 @@ gcloud compute ssh isaacsim --zone=us-central1-a --command="tail -f ~/train_phas
 gcloud compute ssh isaacsim --zone=us-central1-a --command="grep '\[PROGRESS\]' ~/train_phase2_<timestamp>.log | tail -3"
 ```
 
+### PowerShell + `gce_train_launch` logs (`~/train_ggswarm_*.log`)
+
+Do **not** use `tail -30 ~/train_ggswarm_*.log`: a glob can match **multiple** files and
+PuTTY/plink + some `tail` builds then throw `option used in invalid context` (from `-30`).
+Use **`-n 30`** and the **newest** log only. Outer quotes are **single** so `$(...)` runs on
+the Linux VM, not in PowerShell:
+
+```powershell
+gcloud compute ssh isaacsim --zone=us-central1-a --project=gg-swarm --command='bash -lc "tail -n 30 $(ls -t ~/train_ggswarm_*.log 2>/dev/null | head -1)"'
+```
+
+Live follow (blocking until Ctrl+C):
+
+```powershell
+gcloud compute ssh isaacsim --zone=us-central1-a --project=gg-swarm --command='bash -lc "tail -f $(ls -t ~/train_ggswarm_*.log 2>/dev/null | head -1)"'
+```
+
 [PROGRESS] format (after ETA fix): `N/120,000 (X.X%) | iters_per_sec=16.7 | eta=HH:MM:SS`
 ETA is based on max_iterations (120k), not total_timesteps (7.68M).
 

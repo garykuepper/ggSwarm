@@ -29,7 +29,13 @@ or relaunching (Rule 23). Full assessment workflow: [`docs/ops/post_train_analys
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | Run PD1 | 2026-03-22_04-32-04 | Phase 2A | 250.5 | 0.542 | 0.815 | 22.2° | 0.219 | FAIL |
 | Run PD2 | 2026-03-22_07-03-55 | Phase 2A | 250.5 | 0.571 | 0.723 | 24.6° | 0.296 | FAIL |
+| Run PD3 | 2026-03-22_16-00-12 | Phase 2A | 4.4 | 0.617 | 0.494 | 24.6° | 0.349 | FAIL |
+| Run PD4 | TBD | Phase 2A | — | — | — | — | — | pending |
 
+> **Run PD4:** Config bundle merged 2026-03-22 (exploration cap, hover spawn/reward nudges). Replace `TBD` with the run-directory timestamp after GCE train + GCS pull; fill metrics from `hover-stability assess` before declaring PASS/FAIL.
+
+> **Run PD3 scorecard:** row uses **eval seed 42** (matches `skrl_mappo_cfg.yaml` / training). An earlier assess pass used **seed 1** (`survival_steps` 4.6, `ground_hit_rate` 0.717, `airborne_ratio` 0.596) — superseded for cross-run comparison.
+>
 > **`survival_steps` for Run PD1 / Run PD2:** these values are **artifacts of a broken metric**
 > (pre-2026-03-22 `Phase2Collector`). They are **not** comparable to `survival_steps` from assess runs
 > after the fix. See [`post_train_analysis.md`](../ops/post_train_analysis.md) § Metric definitions.
