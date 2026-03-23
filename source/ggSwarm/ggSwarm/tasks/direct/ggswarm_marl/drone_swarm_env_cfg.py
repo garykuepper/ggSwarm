@@ -122,6 +122,8 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     # reward sigmas
     rew_pos_sigma = 0.5
     rew_formation_sigma = 0.3
+    # Tanh distance scale for stable-hover position reward (metres). Smaller = sharper.
+    pos_tanh_sigma: float = 0.8
 
     # reset states/conditions
     min_height = 0.1
@@ -228,20 +230,22 @@ class GGSwarmMarlHoverStabilityCfg(GGSwarmMarlEnvCfg):
     # Stable-hover reward: tanh distance (dt-scaled), squared vel/ang_vel penalties (dt-scaled),
     # plus low-clearance shaping (see ``compute_stable_hover_rewards``).
     rew_scale_pos: float = 18.0
-    # rew_scale_vel * step_dt * sum(square(lin_vel_b)) per step (PD4: slightly stronger damping).
-    rew_scale_vel: float = -0.055
-    # rew_scale_ang_vel * step_dt * sum(square(ang_vel_b)) per step (PD4: nudge vs PD3 tumble).
-    rew_scale_ang_vel: float = -0.012
+    # PD10: sharpen position discriminator — at sigma=0.25 reward drops to 5% at 0.5m drift
+    # (was 45% at sigma=0.8). Crash-reset strategy yields ~40 vs hover ~180 per episode (4.5x ratio).
+    pos_tanh_sigma: float = 0.25
+    # PD10: 5.5x increase so velocity penalty is visible in TB (still 60x below pos peak at hover).
+    rew_scale_vel: float = -0.3
+    # PD10: 5x increase so angular velocity penalty is visible in TB (was flat across PD1-PD9).
+    rew_scale_ang_vel: float = -0.06
 
     # Disable unused reward terms (PD controller makes these redundant)
     rew_scale_upright: float = 0.0
     rew_scale_alive: float = 0.0
     # Dense penalty each step while z < min_height (see compute_stable_hover_rewards).
-    # PD8: set to 0.0 — the -5.0 value created a "flee the floor" gradient that the stochastic
-    # training policy exploited by drifting to the ceiling (σ noise); the deterministic eval
-    # policy cannot reproduce this, causing a severe train-eval gap (ceiling escape in training,
-    # ground_hit_rate=0.71 in eval). Floor avoidance is handled by rew_scale_low_clearance=-8.0.
-    rew_scale_terminated: float = 0.0
+    # PD8: -5.0 caused ceiling escape (generous sigma=0.8 let policy drift up without losing
+    # position reward). PD10: re-enabled at -2.0 because tight sigma=0.25 suppresses ceiling
+    # escape — drifting up immediately loses position reward, countering any "flee floor" gradient.
+    rew_scale_terminated: float = -2.0
     # Penalty per metre below (min_height + low_clearance_margin_m); aligns MDP with scorecard airborne gate.
     rew_scale_low_clearance: float = -8.0
 
@@ -251,6 +255,9 @@ class GGSwarmMarlHoverStabilityCfg(GGSwarmMarlEnvCfg):
     # Phase 2A-only: more vertical margin above min_height; goal Z still tracks spawn Z in _reset_idx.
     spawn_z_min: float = 0.65
     spawn_z_max: float = 1.65
+
+    # PD10: enable action telemetry for full run — thrust_val_mean, moment saturation in TB.
+    action_telemetry_max_env_steps: int = 999999
 
     # Scale up parallel envs for GCE L4 GPU (24 GB VRAM).
     # 512 envs * 3 agents = 1536 parallel rollouts (4x vs base 128).

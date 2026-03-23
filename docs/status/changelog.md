@@ -187,6 +187,54 @@ This document tracks major technical changes and milestone completions for each 
   - **Post-train tooling:** `post_train_assess.py` now embeds TB scalar diagnostics (Policy std dev, mean_world_z, reward components) directly in `assess_report.md` via `extract_scalar_summary()` + `format_tb_diagnostics()`. Also prints ready-to-paste `run_history.md` row at end of assessment (Rule 23 compliance).
   - **Docs:** Rule 22 checklist PD9+ column with `max_log_std (YAML) = 0.0`.
 
+## Phase 2A Run PD9 — 2026-03-23
+
+- **Run dir:** `logs/skrl/ggswarm_marl/2026-03-23_16-19-28_mappo_torch`
+- **Config class:** `GGSwarmMarlHoverStabilityCfg` — `max_log_std=0.0` (σ ceiling = 1.0)
+- **Train budget:** 92,000 iterations (GCE)
+- **Convergence:** entropy collapse @ **58,000** | peak reward **235.97** @ step **84,000** | final **203.32** @ step **92,000** | recommended budget **66,700** steps
+- **Scorecard** (`post_train_assess.py`, seed **42**, `best_agent.pt`, 5 episodes):
+  - survival_steps = **6.2** (FAIL; gate > 500)
+  - airborne_ratio = **0.629** (FAIL; gate > 0.9)
+  - ground_hit_rate = **0.444** (WARN; gate < 0.5)
+  - mean_roll_deg = **29.7°** (WARN; gate < 15°)
+  - orientation_violation_rate = **0.469** (WARN; gate < 0.1)
+  - mean_formation_error_m = **1.199** (WARN; gate < 1.5)
+  - verdict = **FAIL**
+- **TensorBoard (key scalars):**
+  - `Policy / Standard deviation (drone_0)`: **0.609 → 1.000** (pinned at new `max_log_std=0.0` ceiling = e^0 = 1.0)
+  - `Info / mean_world_z`: **0.640 → 1.161 m** (roughly same as PD8)
+  - `Info / rew_pos`: **0.111 → 0.311** (improving — policy learns to be near goal, not to hover)
+  - `Info / rew_ang_vel`: **−0.118 → −0.114** (flat — attitude NEVER improves; 9 runs, always flat)
+  - `Info / rew_low_clearance`: **−0.654 → −0.002** (floor penalty working)
+- **Trajectory plots:** shark-fin crash cycles; 2–4 m XY drift; ±50–100° attitude swings.
+- **vs Run PD8:** σ ceiling fix worked (1.0 vs 2.7), but altitude/airborne **regressed** (0.629 vs 0.732).
+  Entropy collapsed at 58k — narrower policy converged to crash-reset local optimum before discovering hover.
+  Attitude marginally improved (29.7° vs 32.2°).
+- **Decision: FAIL** — do not advance to Phase 2B.
+- **Root cause analysis (PD1–PD9 deep dive):** The reward landscape has a deceptive local optimum.
+  With `pos_tanh_sigma=0.8`, a drone 0.5 m off-target still gets 45% of max reward.
+  Crash-reset cycles (~83 resets/episode) yield ~160 reward vs ~180 for hover — 1.12x ratio
+  the critic cannot distinguish. Velocity penalty (327x weaker than position) is ignored
+  (TB confirms `rew_ang_vel` flat across all 9 runs). `rew_scale_terminated=0.0` = free crash.
+- **Next action:** PD10 — sharpen position reward discriminator (see PD10 prep below).
+
+- [2026-03-23] **Phase 2A PD10 prep** (reward discriminator fix — **before** GCE PD10 train):
+  - **Root cause (PD1–PD9 retrospective):** `pos_tanh_sigma=0.8` (hardcoded, Rule 6 violation) makes
+    crash-reset nearly as rewarding as hover (1.12x ratio). Velocity/angular velocity penalties
+    327x weaker than position reward — policy ignores attitude. `rew_scale_terminated=0.0` = free crash.
+  - **Single conceptual change (Rule 22):** Sharpen position reward discriminator so crash-reset is
+    clearly worse than hover. At `pos_tanh_sigma=0.25`: reward drops to 5% at 0.5 m drift (was 45%);
+    crash-reset yields ~40 reward vs ~180 for hover (4.5x ratio without crash penalty).
+  - **Parameters changed:**
+    - `pos_tanh_sigma: 0.8 → 0.25` (new cfg param; Rule 6 fix for hardcoded 0.8 in `contract_logic.py`)
+    - `rew_scale_vel: -0.055 → -0.3` (5.5x increase; makes velocity visible in TB, still 60x below pos peak)
+    - `rew_scale_ang_vel: -0.012 → -0.06` (5x increase; makes attitude visible in TB)
+    - `rew_scale_terminated: 0.0 → -2.0` (moderate crash cost; ceiling escape suppressed by tight sigma)
+  - **No MAPPO hyperparameter changes:** `max_log_std=0.0`, `initial_log_std=-0.5`, `entropy_loss_scale=0.008` unchanged. Reward landscape fix should unblock exploration — standard PPO should suffice once crash-reset is no longer a competitive strategy.
+  - **Files changed:** `contract_logic.py` (add `pos_tanh_sigma` to `StableHoverRewardParams`), `drone_swarm_env_cfg.py` (add field + override), `drone_swarm_env.py` (pass-through), `test_ggswarm_utils.py` (2 new sigma tests; 11/11 pass).
+  - **Rule 22 smoke (local):** pending.
+
 ## Phase 2A Run PD7 — 2026-03-23
 
 - **Run dir:** `logs/skrl/ggswarm_marl/2026-03-23_03-38-53_mappo_torch`

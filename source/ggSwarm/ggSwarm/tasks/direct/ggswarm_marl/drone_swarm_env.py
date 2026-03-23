@@ -414,6 +414,7 @@ class GGSwarmMarlEnv(DirectMARLEnv):
                 low_clearance_margin_m=self.cfg.low_clearance_margin_m,
                 rew_scale_low_clearance=self.cfg.rew_scale_low_clearance,
                 rew_scale_terminated=self.cfg.rew_scale_terminated,
+                pos_tanh_sigma=self.cfg.pos_tanh_sigma,
             )
             total_rewards, terms_dict = compute_stable_hover_rewards(
                 pos_w=pos_w,
@@ -477,6 +478,10 @@ class GGSwarmMarlEnv(DirectMARLEnv):
         # isinstance(v, torch.Tensor) and v.numel() == 1 check passes and
         # they appear as "Info / *" scalars in TensorBoard.
         low_clearance_z = self.cfg.min_height + self.cfg.low_clearance_margin_m
+        # shape: [num_envs, num_agents]
+        dist_to_goal = torch.norm(desired_pos_w - pos_w, dim=-1)
+        # shape: [num_envs, num_agents]
+        ground_hit_this_step = (pos_w[:, :, 2] < self.cfg.min_height).float()
         self.extras["log"] = {
             "rew_pos": terms_dict["rew_pos"].mean(),
             "rew_formation": terms_dict["rew_formation"].mean(),
@@ -491,6 +496,10 @@ class GGSwarmMarlEnv(DirectMARLEnv):
             "mean_world_z": pos_w[:, :, 2].mean(),
             "low_clearance_frac": (pos_w[:, :, 2] < low_clearance_z).float().mean(),
             "curriculum_alpha": torch.tensor(alpha, device=self.device),
+            # PD10 diagnostics: direct learning-progress indicators
+            "mean_dist_to_goal": dist_to_goal.mean(),
+            "ground_hit_rate_step": ground_hit_this_step.mean(),
+            "mean_lin_speed": lin_vel_b.norm(dim=-1).mean(),
         }
         if self._pending_action_telemetry:
             self.extras["log"].update(self._pending_action_telemetry)

@@ -319,6 +319,9 @@ class StableHoverRewardParams:
     rew_scale_low_clearance: float = 0.0
     # Dense penalty each step while z < min_height; 0 disables. Often one step before reset.
     rew_scale_terminated: float = 0.0
+    # Tanh distance scale (metres). Smaller = sharper: reward drops faster with distance.
+    # PD10: 0.25 makes crash-reset ~4.5x worse than hover (was 1.1x at 0.8).
+    pos_tanh_sigma: float = 0.8
 
 
 def compute_stable_hover_rewards(
@@ -363,8 +366,8 @@ def compute_stable_hover_rewards(
     dist_to_goal = torch.norm(desired_pos_w - pos_w, dim=-1)
 
     # Tanh-mapped position reward: smooth, bounded in [0, 1], maximised at goal.
-    # 0.8 m scale gives strong gradient near the target.
-    rew_pos = (1.0 - torch.tanh(dist_to_goal / 0.8)) * params.rew_scale_pos * params.step_dt
+    # Smaller sigma = sharper: reward drops faster with distance from goal.
+    rew_pos = (1.0 - torch.tanh(dist_to_goal / params.pos_tanh_sigma)) * params.rew_scale_pos * params.step_dt
 
     # Squared velocity penalties: dt-scaled so total episode penalty is frequency-independent.
     # shape: [num_envs, num_agents]
