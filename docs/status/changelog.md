@@ -95,8 +95,23 @@ This document tracks major technical changes and milestone completions for each 
   - **Rule 22 smoke:** `python scripts/run.py debug smoke --task Template-GGSwarm-Marl-HoverStability-v0 --iterations 1 --gnn --headless` — PASS (env + GNN init, 512 envs).
   - **Checklist:** [`docs/ops/pd5_rule22_checklist.md`](ops/pd5_rule22_checklist.md) documents the five Rule 22 fields + optional `action_telemetry_max_env_steps` workflow.
   - **Knob choice:** **zero** additional deltas vs PD4 bundle (`max_moment`, `entropy_loss_scale`, `initial_log_std` unchanged); PD5 = stable-hover reward migration + existing PD4 exploration caps.
-  - **`run_history.md`:** Run PD5 row **`pending`** until GCE train completes and local assess runs.
-  - **Next action (operator):** `git push` → GCE `hover-stability train` **≥80k** iters per [`training_workflow.md`](../ops/training_workflow.md) / project GCE rules → pull → `python scripts/run.py hover-stability assess --run_dir logs/skrl/ggswarm_marl/<run>` (seed 42) → fill PD5 row + `Decision:` line here.
+
+## Phase 2A Run PD5 — 2026-03-23
+
+- **Run dir:** `logs/skrl/ggswarm_marl/2026-03-22_23-01-57_mappo_torch`
+- **Config class:** `GGSwarmMarlHoverStabilityCfg` — commit `2b87b83`
+- **Train budget:** 92,000 iterations (GCE); stable-hover reward path (`use_stable_hover_rewards=True`).
+- **Convergence:** entropy collapse not detected | peak reward **-0.48** @ step **21,000** | final **-0.77** @ step **92,000** | recommended budget **~106k** steps
+- **Scorecard** (`post_train_assess.py`, seed **42**, `best_agent.pt`, 5 episodes):
+  - survival_steps = **6.4**
+  - airborne_ratio = **0.623**
+  - ground_hit_rate = **0.542**
+  - mean_roll_deg = **19.2°**
+  - orientation_violation_rate = **0.168**
+  - verdict = **FAIL**
+- **vs Run PD4:** Attitude metrics improved (roll, orientation viol); altitude proxies and ground contact **worse** — stable-hover reshaping alone did not fix the Phase 2A gates.
+- **Decision: FAIL** — do not advance to Phase 2B. Do **not** change reward or PD knobs until TensorBoard is reviewed (`Reward/Total`, `mean_world_z`, `rew_low_clearance`, per-term stable-hover logs).
+- **Next action:** (1) TensorBoard on this run: confirm post-~21k reward drift vs policy entropy. (2) If adjusting, **one knob at a time** per [`pd_authority_tuning.md`](../ops/pd_authority_tuning.md) / [`phase2a_diagnostics.md`](../ops/phase2a_diagnostics.md) — e.g. bounded `rew_scale_low_clearance` / `rew_scale_vel` / `rew_scale_pos` nudge or PD authority only after TB narrative is clear; log any cfg change here before retrain.
 
 - [2026-03-22] Phase 2A hover-stability uses Isaac-style stable hover rewards and diagnostics:
   - `GGSwarmMarlHoverStabilityCfg` sets `use_stable_hover_rewards=True` so `_get_rewards` calls `compute_stable_hover_rewards` (tanh position, squared body-frame velocity penalties, `step_dt`-scaled) with optional low-clearance shaping via `StableHoverRewardParams`.

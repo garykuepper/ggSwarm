@@ -31,9 +31,9 @@ or relaunching (Rule 23). Full assessment workflow: [`docs/ops/post_train_analys
 | Run PD2 | 2026-03-22_07-03-55 | Phase 2A | 250.5 | 0.571 | 0.723 | 24.6° | 0.296 | FAIL |
 | Run PD3 | 2026-03-22_16-00-12 | Phase 2A | 4.4 | 0.617 | 0.494 | 24.6° | 0.349 | FAIL |
 | Run PD4 | 2026-03-22_18-38-39 | Phase 2A | 5.0 | 0.687 | 0.361 | 28.9° | 0.373 | FAIL |
-| Run PD5 | pending | Phase 2A | — | — | — | — | — | pending |
+| Run PD5 | 2026-03-22_23-01-57 | Phase 2A | 6.4 | 0.623 | 0.542 | 19.2° | 0.168 | FAIL |
 
-> **Run PD5:** first **≥80k** hover-stability train under **`use_stable_hover_rewards`** / `compute_stable_hover_rewards` (post–stable-hover MDP). Rule 22 smoke + checklist: [`pd5_rule22_checklist.md`](../ops/pd5_rule22_checklist.md). **Knob choice:** no extra `max_moment` / entropy delta vs PD4 YAML — stable-hover path is the experiment. Replace `pending` after GCE train → pull → `hover-stability assess` (seed **42**, `best_agent.pt`).
+> **Run PD5 scorecard:** GCE train **92,000** iters; first full run under **`use_stable_hover_rewards`** / `compute_stable_hover_rewards` (stable-hover MDP). **`post_train_assess.py`** (seed **42**, `best_agent.pt`, 5 episodes). **vs Run PD4:** `mean_roll_deg` **28.9°→19.2°**, `orientation_violation_rate` **0.373→0.168** (attitude improved); `airborne_ratio` **0.687→0.623**, `ground_hit_rate` **0.361→0.542** (altitude proxy regressed); `survival_steps` **5.0→6.4** (still far below gate). **FAIL** — do not advance to Phase 2B. TensorBoard: reward fell from peak **~-0.48 @ 21k** to **~-0.77 @ 92k**; review stable-hover term balance + low-clearance vs pos/vel before next cfg change.
 
 > **Run PD4 scorecard:** GCE train **92k** iters; config = PD4 bundle (`max_log_std=1.0`, spawn/reward nudges). **`post_train_assess.py`** (seed **42**, `best_agent.pt`, 5 episodes). vs **Run PD3:** `airborne_ratio` **0.617→0.687**, `ground_hit_rate` **0.494→0.361** (WARN); `mean_roll_deg` **24.6°→28.9°**, `orientation_violation_rate` **0.349→0.373** — altitude proxy improved, attitude slightly worse; overall **FAIL** (gates unchanged).
 
