@@ -147,6 +147,46 @@ This document tracks major technical changes and milestone completions for each 
   - **GCE launch:** command in [`docs/ops/training_workflow.md`](../ops/training_workflow.md) (PD7 block): `.\scripts\cloud\gce_train_launch.ps1 hover-stability train --headless --gnn --max_iterations 92000` after `git push`. **Pull/sync** after completion: `python scripts/cloud/pull_results_from_gcs.py --family marl --latest 1`.
   - **Train budget (GCE):** **92,000** iterations (`--max_iterations 92000`). **Post-train:** local `hover-stability assess`, then **Rule 23** row in [`run_history.md`](../status/run_history.md) + **Run PD7** section below.
 
+- [2026-03-23] **Phase 2A PD8 prep** (ceiling-escape fix + VM verification — **before** GCE PD8 train):
+  - **Root cause (PD7 trajectory diagnostics):** `hover_in_place` code was **never on the VM** during PD7 training — XY drift 4–8 m from spawn in every episode confirmed VM ran PD6 code (commit `0a87fb4`). Additionally, `rew_scale_terminated=-5.0` created ceiling escape: drone_0 climbed to 2.5–3.0 m every episode (altitude traces); stochastic policy exploited σ noise for ceiling hover, deterministic eval could not reproduce → train/eval gap.
+  - **Single knob (Rule 22):** `GGSwarmMarlHoverStabilityCfg.rew_scale_terminated: -5.0 → 0.0`. Floor avoidance via `rew_scale_low_clearance=-8.0` (penalty per metre below 0.3 m) + position reward.
+  - **VM verification:** SSH confirmed commit `7e9506c` with `hover_in_place: True` and `rew_scale_terminated: 0.0` before launch.
+  - **New diagnostic:** `scripts/plot_trajectories.py` — standalone trajectory recording via `TrajectoryCollector(Phase2Collector)` subclass; generates altitude, XY, and attitude PNG plots per eval episode.
+  - **Docs:** Rule 22 checklist PD8+ column; `training_workflow.md` PD8 launch command.
+  - **Rule 22 smoke (local):** PASS (512 envs, GNN `hidden_channels=128`, `rew_scale_terminated=0.0`).
+
+## Phase 2A Run PD8 — 2026-03-23
+
+- **Run dir:** `logs/skrl/ggswarm_marl/2026-03-23_06-23-47_mappo_torch`
+- **Config class:** `GGSwarmMarlHoverStabilityCfg` — commit `7e9506c` (VM verified via SSH before launch)
+- **Train budget:** 92,000 iterations (GCE); `rew_scale_terminated=0.0`, `hover_in_place=True`
+- **Convergence:** entropy collapse not detected | peak reward **243.06** @ step **85,000** | final **240.52** @ step **92,000** | recommended budget **105,799** steps
+- **Scorecard** (`post_train_assess.py`, seed **42**, `best_agent.pt`, 5 episodes):
+  - survival_steps = **7.0**
+  - airborne_ratio = **0.732**
+  - ground_hit_rate = **0.304**
+  - mean_roll_deg = **32.2°** | mean_pitch_deg = **31.5°**
+  - orientation_violation_rate = **0.525**
+  - verdict = **FAIL**
+- **TensorBoard (key scalars):**
+  - `Policy / Standard deviation (drone_0)`: **0.609 → 2.704** (pinned at `max_log_std=1.0` ceiling = e^1 = 2.718)
+  - `Policy / Standard deviation (drone_1)`: **0.609 → 2.718**; `(drone_2)`: **0.610 → 1.059**
+  - `Info / mean_world_z`: **0.640 → 1.142 m** (learning to hover — major improvement)
+  - `Info / low_clearance_frac`: **0.393 → 0.002** (floor penalty working, near zero by end)
+  - `Info / rew_pos`: **0.111 → 0.308** (position reward improving)
+  - `Info / rew_ang_vel`: **−0.112 → −0.116** (flat — attitude never improves)
+- **Checkpoint ladder** (`analyze_checkpoints.py`, 10k interval, 2 eps): **10k is best checkpoint** (airborne **0.766**, formation error **0.675 m**); later checkpoints degrade as σ explodes. Policy gets **worse over training** — stochastic training reward rises while deterministic eval quality falls.
+- **Trajectory plots:** shark-fin altitude pattern (~50-step crash-reset cycles, improved from PD7's 7-step saw-tooth); XY drift **1–3 m** (down from 4–8 m — `hover_in_place` confirmed working); attitude oscillating ±50–75° correlated with crash cycle.
+- **vs Run PD7:** `airborne_ratio` **0.516→0.732** (+0.22 ✓), `ground_hit_rate` **0.712→0.304** (−0.41 ✓); `mean_roll_deg` **18.4°→32.2°** (worse ✗ — σ explosion), `orientation_violation_rate` **0.191→0.525** (worse ✗). Both PD8 fixes confirmed (ceiling escape gone, hover_in_place working), but σ explosion is new dominant failure.
+- **Decision: FAIL** — do not advance to Phase 2B.
+- **Next action:** `max_log_std: 1.0 → 0.0` in `skrl_mappo_cfg.yaml` (clamp σ ceiling from 2.72 to 1.0). Single Rule 22 knob. The 10k checkpoint outperforming 90k proves σ blowout degrades deterministic policy quality; tighter ceiling should make later checkpoints the best.
+
+- [2026-03-23] **Phase 2A PD9 prep** (σ explosion fix + post-train tooling — **before** GCE PD9 train):
+  - **Root cause (PD8 TB diagnostics):** `max_log_std=1.0` in `skrl_mappo_cfg.yaml` allowed σ ceiling of e^1.0=2.718; drone_0/drone_1 pinned at ceiling throughout training. Stochastic training reward rises (wider Gaussian = better exploration credit) while deterministic eval quality degrades. 10k checkpoint outperforms 90k.
+  - **Single knob (Rule 22):** `skrl_mappo_cfg.yaml` `max_log_std: 1.0 → 0.0` (σ ceiling drops from 2.718 to 1.0; policy can still explore but can't blow out).
+  - **Post-train tooling:** `post_train_assess.py` now embeds TB scalar diagnostics (Policy std dev, mean_world_z, reward components) directly in `assess_report.md` via `extract_scalar_summary()` + `format_tb_diagnostics()`. Also prints ready-to-paste `run_history.md` row at end of assessment (Rule 23 compliance).
+  - **Docs:** Rule 22 checklist PD9+ column with `max_log_std (YAML) = 0.0`.
+
 ## Phase 2A Run PD7 — 2026-03-23
 
 - **Run dir:** `logs/skrl/ggswarm_marl/2026-03-23_03-38-53_mappo_torch`

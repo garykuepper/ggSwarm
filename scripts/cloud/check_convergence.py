@@ -87,6 +87,55 @@ def analyze_convergence(log_dir: str) -> dict:
     }
 
 
+# Tags to extract for the assess report TB diagnostics section.
+TB_DIAGNOSTIC_TAGS: list[str] = [
+    "Policy / Standard deviation (drone_0)",
+    "Info / mean_world_z",
+    "Info / rew_pos",
+    "Info / rew_ang_vel",
+    "Info / rew_low_clearance",
+    "Info / rew_terminated",
+]
+
+
+def extract_scalar_summary(
+    log_dir: str,
+    tags: list[str] | None = None,
+) -> list[dict]:
+    """Extract first/last scalar values for requested TensorBoard tags.
+
+    Args:
+        log_dir: Path to the log directory containing events.out.tfevents files.
+        tags: List of scalar tag names. Defaults to TB_DIAGNOSTIC_TAGS.
+
+    Returns:
+        List of dicts with keys: tag, first_value, last_value, first_step, last_step.
+        Tags not found in the event file are silently skipped.
+    """
+    if tags is None:
+        tags = TB_DIAGNOSTIC_TAGS
+
+    ea = EventAccumulator(log_dir)
+    ea.Reload()
+    available = set(ea.Tags().get("scalars", []))
+
+    results = []
+    for tag in tags:
+        if tag not in available:
+            continue
+        events = ea.Scalars(tag)
+        if len(events) < 2:
+            continue
+        results.append({
+            "tag": tag,
+            "first_value": events[0].value,
+            "last_value": events[-1].value,
+            "first_step": events[0].step,
+            "last_step": events[-1].step,
+        })
+    return results
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Analyze training convergence from TFEvents logs."

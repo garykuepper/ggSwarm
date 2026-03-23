@@ -15,8 +15,9 @@ models:
     clip_actions: False
     clip_log_std: True
     min_log_std: -20.0
-    # Caps train-time sampling for GaussianMixin (MLP and GNN). PD3 TB showed std ~7.4 (exp(2)); 1.0 → σ≈2.7.
-    max_log_std: 1.0
+    # Caps train-time sampling for GaussianMixin (MLP and GNN). PD8 showed σ pinned at e^1=2.7
+    # (drone_0/1 hit ceiling); 0.0 → σ_max=1.0, prevents train/eval gap from exploration blowout.
+    max_log_std: 0.0
     # MLP: initial diagonal log-std. GNN: passed to GGSwarmGNNPolicy (train.py logs active GNN widths).
     initial_log_std: -0.5
     # NOTE: GNN-only keys ``hidden_channels`` and ``num_heads`` are NOT listed here — train.py injects

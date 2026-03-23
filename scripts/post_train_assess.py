@@ -36,7 +36,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from ggswarm_utils.gcs_sync import DEFAULT_GCS_BUCKET, has_local_data, sync_from_gcs
-from ggswarm_utils.scorecard import print_scorecard, write_report
+from ggswarm_utils.scorecard import format_run_history_row, print_scorecard, write_report
 from ggswarm_utils.sim_helpers import PHASE_REGISTRY, phase_from_task
 
 
@@ -210,6 +210,24 @@ def main() -> None:
         convergence = {}
 
     # ------------------------------------------------------------------
+    # Step 1b: TB scalar diagnostics (same TFEvents, no Isaac Lab needed)
+    # ------------------------------------------------------------------
+    tb_diagnostics: list[dict] = []
+    try:
+        from cloud.check_convergence import extract_scalar_summary  # noqa: PLC0415
+
+        tb_diagnostics = extract_scalar_summary(str(run_dir))
+        if tb_diagnostics:
+            print(f"\n  TB diagnostics: {len(tb_diagnostics)} scalar(s) extracted")
+            for s in tb_diagnostics:
+                print(
+                    f"    {s['tag']}: {s['first_value']:.4f} → {s['last_value']:.4f}"
+                    f"  ({s['first_step'] // 1000}k → {s['last_step'] // 1000}k)"
+                )
+    except Exception as exc:
+        print(f"  [WARN] TB diagnostics extraction failed: {exc}")
+
+    # ------------------------------------------------------------------
     # Boot Isaac Lab (heavy — after convergence so output is visible early)
     # ------------------------------------------------------------------
     app_launcher = AppLauncher(args_cli)
@@ -311,7 +329,17 @@ def main() -> None:
         task=args_cli.task,
         num_episodes=args_cli.num_episodes,
         checkpoint_name=best_ckpt.name,
+        tb_diagnostics=tb_diagnostics,
     )
+
+    # ------------------------------------------------------------------
+    # Ready-to-paste run_history row
+    # ------------------------------------------------------------------
+    row = format_run_history_row(run_dir.name, metrics, overall)
+    print(f"\n{'─' * 70}")
+    print("  Copy to docs/status/run_history.md:")
+    print(f"  {row}")
+    print(f"{'─' * 70}\n")
 
     simulation_app.close()
     sys.exit(0 if overall != "FAIL" else 1)

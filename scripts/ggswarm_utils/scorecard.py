@@ -176,6 +176,62 @@ def print_scorecard(run_name: str, metrics: dict[str, float]) -> str:
 # ---------------------------------------------------------------------------
 
 
+def format_tb_diagnostics(scalars: list[dict]) -> list[str]:
+    """Format TB scalar summaries as markdown table lines for the assess report.
+
+    Args:
+        scalars: List of dicts from extract_scalar_summary() with keys:
+                 tag, first_value, last_value, first_step, last_step.
+
+    Returns:
+        List of markdown lines (header + rows). Empty list if no scalars.
+    """
+    if not scalars:
+        return []
+    lines = [
+        "## Training Diagnostics",
+        "",
+        "| Scalar | First | Last | Steps |",
+        "| :--- | :--- | :--- | :--- |",
+    ]
+    for s in scalars:
+        first_k = f"{s['first_step'] // 1000}k"
+        last_k = f"{s['last_step'] // 1000}k"
+        lines.append(
+            f"| `{s['tag']}` | {s['first_value']:.4f} | {s['last_value']:.4f} "
+            f"| {first_k} → {last_k} |"
+        )
+    return lines
+
+
+def format_run_history_row(
+    run_dir_name: str,
+    metrics: dict[str, float],
+    overall: str,
+) -> str:
+    """Format a ready-to-paste markdown table row for run_history.md.
+
+    Args:
+        run_dir_name: Run directory name (e.g. '2026-03-23_06-23-47_mappo_torch').
+        metrics:      Dict of metric_name -> float value.
+        overall:      Overall verdict string ('PASS'/'WARN'/'FAIL').
+
+    Returns:
+        Formatted markdown row string.
+    """
+    # Extract timestamp from dir name (first 19 chars = YYYY-MM-DD_HH-MM-SS)
+    timestamp = run_dir_name[:19] if len(run_dir_name) >= 19 else run_dir_name
+    surv = metrics.get("survival_steps", 0)
+    airb = metrics.get("airborne_ratio", 0)
+    ghit = metrics.get("ground_hit_rate", 0)
+    roll = metrics.get("mean_roll_deg", 0)
+    ovio = metrics.get("orientation_violation_rate", 0)
+    return (
+        f"| Run PD_ | {timestamp} | Phase 2A | {surv:.1f} | {airb:.3f} "
+        f"| {ghit:.3f} | {roll:.1f}° | {ovio:.3f} | {overall} |"
+    )
+
+
 def write_report(
     run_dir: Path,
     metrics: dict[str, float],
@@ -184,6 +240,7 @@ def write_report(
     task: str,
     num_episodes: int,
     checkpoint_name: str,
+    tb_diagnostics: list[dict] | None = None,
 ) -> None:
     """Write assess_report.md into the run directory.
 
@@ -195,6 +252,7 @@ def write_report(
         task:            Gym task ID used for evaluation.
         num_episodes:    Number of evaluation episodes run.
         checkpoint_name: Filename of the evaluated checkpoint.
+        tb_diagnostics:  List of dicts from extract_scalar_summary() (optional).
     """
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     run_name = run_dir.name
@@ -224,6 +282,14 @@ def write_report(
         f"| Final reward | {final_val:.2f} @ step {final_step:,} |",
         f"| Entropy collapse step | {collapse_str} |",
         f"| Recommended budget | {rec_budget:,} steps |",
+    ]
+
+    # TB scalar diagnostics (inserted between Convergence and Scorecard)
+    tb_lines = format_tb_diagnostics(tb_diagnostics or [])
+    if tb_lines:
+        lines += ["", *tb_lines]
+
+    lines += [
         "",
         "## Scorecard",
         "",
