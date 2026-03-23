@@ -87,6 +87,11 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     # of ``compute_marl_rewards``. Phase 2A hover-stability enables this; formation does not.
     use_stable_hover_rewards: bool = False
 
+    # When True, goal XY is overridden to each agent's spawn XY in _reset_idx.
+    # Makes Phase 2A a pure hover-in-place task: zero initial position error, no lateral gradient.
+    # Must be False for Phase 2B+ so agents navigate to formation circle slots.
+    hover_in_place: bool = False
+
     graph_connectivity_radius: float = 2.0  # (metres) for L2 adjacency matrix
     # Tighter yaw range (0.1 vs 0.3) keeps drones more level at spawn, reducing early tumble pressure.
     spawn_yaw_range: float = 0.1  # ± range for random yaw (rad)
@@ -211,6 +216,10 @@ class GGSwarmMarlHoverStabilityCfg(GGSwarmMarlEnvCfg):
     # Isaac-Quadcopter-Direct-v0 style rewards (see ``contract_logic.compute_stable_hover_rewards``).
     use_stable_hover_rewards: bool = True
 
+    # Pure hover-in-place: goal XY = spawn XY so the position reward has no lateral component.
+    # Root cause fix for PD1-PD6 persistent 21°/24° tilt (formation circle XY gradient).
+    hover_in_place: bool = True
+
     # Lock curriculum: hover signal at 100%, formation at 0% for full run
     curriculum_start_step: int = 999999
     curriculum_end_step: int = 1000000
@@ -228,8 +237,11 @@ class GGSwarmMarlHoverStabilityCfg(GGSwarmMarlEnvCfg):
     rew_scale_upright: float = 0.0
     rew_scale_alive: float = 0.0
     # Dense penalty each step while z < min_height (see compute_stable_hover_rewards).
-    # -5.0 per grounded step ~14× max tanh pos reward per step (18 * step_dt at step_dt=0.02).
-    rew_scale_terminated: float = -5.0
+    # PD8: set to 0.0 — the -5.0 value created a "flee the floor" gradient that the stochastic
+    # training policy exploited by drifting to the ceiling (σ noise); the deterministic eval
+    # policy cannot reproduce this, causing a severe train-eval gap (ceiling escape in training,
+    # ground_hit_rate=0.71 in eval). Floor avoidance is handled by rew_scale_low_clearance=-8.0.
+    rew_scale_terminated: float = 0.0
     # Penalty per metre below (min_height + low_clearance_margin_m); aligns MDP with scorecard airborne gate.
     rew_scale_low_clearance: float = -8.0
 

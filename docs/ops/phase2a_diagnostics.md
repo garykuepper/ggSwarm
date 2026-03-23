@@ -93,6 +93,8 @@ GNN is enabled automatically for registered tasks with `gnn_default=True` (e.g. 
 
 Review `survival_steps`, `airborne_ratio`, and `ground_hit_rate` in the printed table / CSV as a cheap progression check.
 
+**Script summary line:** the footer **`Worst airborne ratio`** is the **minimum** `airborne_ratio` across checkpoints (step at which airframe time above the band was lowest). Use per-checkpoint lines or **`checkpoint_progression.csv`** for “best” airborne at a given step.
+
 ## 6. Train length policy (post–PD2)
 
 - **80k iterations** remains a reasonable **minimum** exploration budget.

@@ -49,6 +49,18 @@ Phase 2 formation example (after you already pushed):
 .\scripts\cloud\gce_train_launch.ps1 -SkipGitPush phase2 train --headless --max_iterations 120000
 ```
 
+**Phase 2A PD7 (`hover_in_place`, 92k iters, GNN):** push your branch, then:
+
+```powershell
+.\scripts\cloud\gce_train_launch.ps1 hover-stability train --headless --gnn --max_iterations 92000
+```
+
+**Phase 2A PD8 (`rew_scale_terminated=0.0`, ceiling-escape fix, 92k iters, GNN):** push your branch, then:
+
+```powershell
+.\scripts\cloud\gce_train_launch.ps1 hover-stability train --headless --gnn --max_iterations 92000
+```
+
 Logs on the VM: `~/train_ggswarm_<timestamp>.log`. Results still sync via `train_and_push.sh` to `gs://gg-swarm-training-logs`.
 
 ### Resolve Git Conflicts on VM
@@ -81,7 +93,7 @@ After pulling, confirm critical parameters are present:
 
 ```bash
 # Phase 2A (hover-stability): PD + 3-term hover — upright/alive/terminated are 0 in GGSwarmMarlHoverStabilityCfg
-grep -E "thrust_to_weight|kp_att|max_moment|rew_scale_pos|rew_scale_vel|rew_scale_low_clearance|low_clearance_margin_m|curriculum_start_step" \
+grep -E "thrust_to_weight|kp_att|max_moment|rew_scale_pos|rew_scale_vel|rew_scale_low_clearance|low_clearance_margin_m|curriculum_start_step|hover_in_place" \
   source/ggSwarm/ggSwarm/tasks/direct/ggswarm_marl/drone_swarm_env_cfg.py
 
 # Parallel envs: GGSwarmMarlHoverStabilityCfg uses num_envs=512; base GGSwarmMarlEnvCfg uses 128
@@ -103,6 +115,7 @@ Expected values (align with **Rule 22** smoke checklist for your active task):
 
 - `thrust_to_weight: float = 2.0`, `kp_att` ~0.045, `max_moment` ~0.03, `curriculum_start_step: int = 999999`
 - `rew_scale_pos` ~18.0, `rew_scale_vel` / `rew_scale_ang_vel` per cfg; `rew_scale_low_clearance` non-zero (MDP aligned with airborne gate); `low_clearance_margin_m` ~0.2; `rew_scale_upright` **0.0**
+- **`hover_in_place: True`** on `GGSwarmMarlHoverStabilityCfg` (PD7+ spawn-hold goals); base / formation keep **`False`**
 - `num_envs=512` inside `GGSwarmMarlHoverStabilityCfg.scene`
 
 **Phase 2B (`phase2b train`, `GGSwarmMarlFormationCfg`):**

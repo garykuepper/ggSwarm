@@ -104,6 +104,16 @@ Phase 2A adds optional **low-clearance shaping** (`rew_scale_low_clearance`, `lo
 penalizes time spent below the same altitude band used in eval (`min_height + margin`).
 Optional **`rew_scale_terminated`** (hover-stability cfg) adds a **dense** penalty each step while `z < min_height`
 (see `compute_stable_hover_rewards` in `contract_logic.py`).
+
+**Phase 2A goal semantics (`hover_in_place`):** `GGSwarmMarlEnvCfg` defines **`hover_in_place: bool`**
+(default **`False`**). Phase 2A (`GGSwarmMarlHoverStabilityCfg`) sets **`hover_in_place=True`**.
+On reset, the env first assigns **formation-circle XY slots** and **Z = spawn Z** (historical layout);
+when **`hover_in_place`** is **True**, **`desired_pos_w[:, :, :2]`** is overwritten with **spawn XY**, so
+**`desired_pos_w` equals the full 3D spawn pose** per agent. The observation term **`rel_pos_to_goal`**
+(body-frame vector to **`_desired_pos_w`**) and stable-hover **`dist_to_goal`** then encode **hold
+position at spawn**, not navigation to lateral slot offsets. Phase 2B (`GGSwarmMarlFormationCfg`) keeps
+the default **`False`** so XY goals remain formation slots for coordination training.
+
 Phase B resumes the Phase A `best_agent.pt` checkpoint via `--checkpoint`.
 Phase C (perturbation) is a future placeholder — see `GGSwarmMarlFormationCfg`.
 

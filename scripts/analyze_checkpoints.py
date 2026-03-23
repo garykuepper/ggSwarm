@@ -332,7 +332,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, cfg:
             f"  Best formation error: {best_formation['formation_error_m']:.4f}m at step {best_formation['step']:,}"
         )
         print(
-            f"  Best airborne ratio: {1 - worst_airborne['airborne_ratio']:.4f} at step {worst_airborne['step']:,}"
+            f"  Worst airborne ratio: {worst_airborne['airborne_ratio']:.4f} at step {worst_airborne['step']:,}"
         )
 
 

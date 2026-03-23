@@ -17,15 +17,21 @@ GNN policy line with `hidden_channels=128`.
 
 Cross-check against [`drone_swarm_env_cfg.py`](../../source/ggSwarm/ggSwarm/tasks/direct/ggswarm_marl/drone_swarm_env_cfg.py) (`GGSwarmMarlHoverStabilityCfg`); smoke stdout does **not** dump these — read the cfg file or Hydra log if in doubt.
 
-| Field | Expected (PD5 baseline) | Expected (PD6+) |
-| :--- | :--- | :--- |
-| `rew_scale_upright` | `0.0` | `0.0` |
-| `rew_scale_ang_vel` | `-0.012` | `-0.012` |
-| `rew_scale_terminated` | `0.0` | **`-5.0`** (dense ground penalty; see changelog PD6) |
-| `curriculum_start_step` | `999999` (hover-only lock) | `999999` |
-| `spawn_yaw_range` | `0.3` | `0.3` |
+| Field | Expected (PD5 baseline) | Expected (PD6+) | Expected (PD7+) | Expected (PD8+) |
+| :--- | :--- | :--- | :--- | :--- |
+| `rew_scale_upright` | `0.0` | `0.0` | `0.0` | `0.0` |
+| `rew_scale_ang_vel` | `-0.012` | `-0.012` | `-0.012` | `-0.012` |
+| `rew_scale_terminated` | `0.0` | **`-5.0`** (dense ground penalty; see changelog PD6) | `-5.0` | **`0.0`** (ceiling-escape fix; see changelog PD8) |
+| `curriculum_start_step` | `999999` (hover-only lock) | `999999` | `999999` | `999999` |
+| `spawn_yaw_range` | `0.3` | `0.3` | `0.3` | `0.3` |
 
 Also confirm **`use_stable_hover_rewards: True`** (stable-hover reward path).
+
+**PD7+:** confirm **`hover_in_place: True`** on `GGSwarmMarlHoverStabilityCfg` (spawn-hold goals; Phase 2B keeps default **`False`**). Quick check:
+
+```powershell
+python -c "from ggSwarm.tasks.direct.ggswarm_marl.drone_swarm_env_cfg import GGSwarmMarlHoverStabilityCfg; print('hover_in_place:', GGSwarmMarlHoverStabilityCfg().hover_in_place)"
+```
 
 ## Short local run (behavior + optional telemetry)
 

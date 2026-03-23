@@ -640,6 +640,11 @@ class GGSwarmMarlEnv(DirectMARLEnv):
         desired_pos_w = env_origins + offsets.unsqueeze(0)
         # Keep Z goal equal to each agent's spawn height to avoid fighting altitude early.
         desired_pos_w[:, :, 2] = root_pos_w[:, :, 2]
+        # Phase 2A: override goal XY to spawn XY — pure hover in place, no lateral gradient.
+        # Without this, formation circle XY offsets create a persistent lateral reward gradient
+        # that causes the policy to command roll/pitch (observed ~21°/24° tilt in PD1–PD6).
+        if self.cfg.hover_in_place:
+            desired_pos_w[:, :, :2] = root_pos_w[:, :, :2]
         self._desired_pos_w[env_ids_tensor] = desired_pos_w
 
         # --- L3: Reset SwarmRaft state for these environments (Phase 3) ---

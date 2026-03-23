@@ -120,6 +120,52 @@ This document tracks major technical changes and milestone completions for each 
 - **Decision: FAIL** — do not advance to Phase 2B. Do **not** change reward or PD knobs until TensorBoard is reviewed (`Reward/Total`, `mean_world_z`, `rew_low_clearance`, per-term stable-hover logs).
 - **Next action:** (1) TensorBoard on this run: confirm post-~21k reward drift vs policy entropy. (2) If adjusting, **one knob at a time** per [`pd_authority_tuning.md`](../ops/pd_authority_tuning.md) / [`phase2a_diagnostics.md`](../ops/phase2a_diagnostics.md) — e.g. bounded `rew_scale_low_clearance` / `rew_scale_vel` / `rew_scale_pos` nudge or PD authority only after TB narrative is clear; log any cfg change here before retrain.
 
+## Phase 2A Run PD6 — 2026-03-23
+
+- **Run dir:** `logs/skrl/ggswarm_marl/2026-03-23_01-22-37_mappo_torch`
+- **Config class:** `GGSwarmMarlHoverStabilityCfg` — commit `0a87fb4`
+- **Train budget:** 80,000 iterations (GCE); PD6 = `rew_scale_terminated=-5.0` + `extras["log"]` tensor scalars for SKRL `Info / *` TensorBoard.
+- **Convergence:** entropy collapse not detected | peak / final reward **0.36** @ step **80,000** (recommended budget **92k** steps per convergence script)
+- **Scorecard** (`post_train_assess.py`, seed **42**, `best_agent.pt`, 5 episodes):
+  - survival_steps = **4.4**
+  - airborne_ratio = **0.612**
+  - ground_hit_rate = **0.534**
+  - mean_roll_deg = **21.1°**
+  - orientation_violation_rate = **0.234**
+  - verdict = **FAIL**
+- **vs Run PD5:** Marginal `ground_hit_rate` improvement; `survival_steps` and attitude metrics **regressed**; scalar training reward curve **qualitatively different** (positive plateau vs PD5 negative drift) — review **`Info / rew_*`** and `Info / rew_terminated` on this run before further reward edits.
+- **Decision: FAIL** — do not advance to Phase 2B.
+- **Next action:** TensorBoard: `Info / mean_world_z`, `Info / rew_low_clearance`, `Info / rew_terminated`, `Policy/Standard deviation`; decide whether to tune **`rew_scale_terminated` magnitude**, **`rew_scale_pos` / vel**, or PD authority **one at a time** with changelog entry before retrain.
+
+- [2026-03-23] **Phase 2A PD7 prep** (structural hover fix — **before** GCE PD7 train):
+  - **Root cause (PD1–PD6):** `_reset_idx` assigned **formation-circle XY slots** while Phase 2A had **no formation reward**; stable-hover **`dist_to_goal`** and obs **`rel_pos_to_goal`** still pulled agents laterally → persistent **~21° / ~24°** eval tilt and train/eval narrative mismatch vs TensorBoard aggregates.
+  - **Single logical change:** `GGSwarmMarlEnvCfg.hover_in_place: bool = False` (default); `GGSwarmMarlHoverStabilityCfg.hover_in_place = True`; in [`drone_swarm_env.py`](../../source/ggSwarm/ggSwarm/tasks/direct/ggswarm_marl/drone_swarm_env.py) `_reset_idx`, after **Z = spawn Z**, **`desired_pos_w[:, :, :2] = root_pos_w[:, :, :2]`** when **`hover_in_place`** — goal = **full 3D spawn pose**. Phase 2B unchanged (inherits **`False`**).
+  - **Reward scales (unchanged vs PD6):** `rew_scale_terminated=-5.0`, `rew_scale_pos=18.0`, `rew_scale_vel=-0.055`, `rew_scale_ang_vel=-0.012`, `rew_scale_low_clearance=-8.0`, spawn Z **0.65–1.65** m, `spawn_yaw_range=0.3`, **512** envs.
+  - **Docs:** [`docs/design/architecture.md`](../design/architecture.md) Phase 2A **`hover_in_place`** semantics; Rule 22 note in [`docs/ops/pd5_rule22_checklist.md`](../ops/pd5_rule22_checklist.md).
+  - **Rule 22 smoke (local):** `python scripts/run.py debug smoke --task Template-GGSwarm-Marl-HoverStability-v0 --iterations 1 --gnn --headless` — **PASS** (512 envs, `GGSwarmMarlHoverStabilityCfg`, GNN `hidden_channels=128`). **`hover_in_place`:** confirm with checklist one-liner under Isaac env or inspect `GGSwarmMarlHoverStabilityCfg` in [`drone_swarm_env_cfg.py`](../../source/ggSwarm/ggSwarm/tasks/direct/ggswarm_marl/drone_swarm_env_cfg.py) (**`True`**).
+  - **Tests:** removed duplicate root [`tests/test_contract_logic.py`](../../tests/test_contract_logic.py) (second copy without pytest fixtures; canonical suite is [`tests/unit/test_contract_logic.py`](../../tests/unit/test_contract_logic.py)). Full `pytest tests`: **403 passed**, 7 skipped.
+  - **GCE launch:** command in [`docs/ops/training_workflow.md`](../ops/training_workflow.md) (PD7 block): `.\scripts\cloud\gce_train_launch.ps1 hover-stability train --headless --gnn --max_iterations 92000` after `git push`. **Pull/sync** after completion: `python scripts/cloud/pull_results_from_gcs.py --family marl --latest 1`.
+  - **Train budget (GCE):** **92,000** iterations (`--max_iterations 92000`). **Post-train:** local `hover-stability assess`, then **Rule 23** row in [`run_history.md`](../status/run_history.md) + **Run PD7** section below.
+
+## Phase 2A Run PD7 — 2026-03-23
+
+- **Run dir:** `logs/skrl/ggswarm_marl/2026-03-23_03-38-53_mappo_torch`
+- **Config class:** `GGSwarmMarlHoverStabilityCfg` — `hover_in_place=True` (local source at assess); commit **`0a87fb4`** (verify VM revision matched for GCE train)
+- **Train budget:** 92,000 iterations (GCE); stable-hover + PD6 reward scales unchanged
+- **Convergence:** entropy collapse not detected | peak reward **0.50** @ step **91,000** | final **0.46** @ step **92,000** | recommended budget **~106k** steps
+- **Scorecard** (`post_train_assess.py`, seed **42**, `best_agent.pt`, 5 episodes):
+  - survival_steps = **7.0**
+  - airborne_ratio = **0.516**
+  - ground_hit_rate = **0.712**
+  - mean_roll_deg = **18.4°** | mean_pitch_deg = **22.7°**
+  - orientation_violation_rate = **0.191**
+  - verdict = **FAIL**
+- **TensorBoard (event scalars):** `Reward / Total reward (mean)` first/last **-42.2 → 0.46** @ 92k; `Info / rew_pos` **0.073 → 0.208** (first point is batch mean @ 1k logging step — same order as PD6, not a per-episode “all at spawn” probe); `Policy / Standard deviation (drone_0)` **0.61 → 0.22**
+- **Checkpoint ladder** (`analyze_checkpoints.py`, 10k interval, 2 eps): printed roll/pitch **~22° / ~23°** @ 10k–30k; **worst airborne ratio 0.518** @ **90k**; CSV `survival_steps` **14.5** @ 10k then **1.0** for 20k–90k (cheap eval — compare to 5-ep assess)
+- **vs Run PD6:** Attitude metrics slightly improved; **ground contact / airborne proxies regressed strongly** — **`hover_in_place` alone did not clear Phase 2A gates**
+- **Decision: FAIL** — do not advance to Phase 2B
+- **Next action:** (1) Confirm GCE trained repo revision with **`hover_in_place`** in `drone_swarm_env.py` / cfg. (2) TensorBoard + `logs/skrl/ggswarm_marl/2026-03-23_03-38-53_mappo_torch/checkpoint_progression.csv` for 70k–90k degradation. (3) **One** follow-up knob (clearance, vel damping, `spawn_dist`, or exploration) per ops docs — log in changelog before retrain.
+
 - [2026-03-22] Phase 2A hover-stability uses Isaac-style stable hover rewards and diagnostics:
   - `GGSwarmMarlHoverStabilityCfg` sets `use_stable_hover_rewards=True` so `_get_rewards` calls `compute_stable_hover_rewards` (tanh position, squared body-frame velocity penalties, `step_dt`-scaled) with optional low-clearance shaping via `StableHoverRewardParams`.
   - Formation and default MARL configs keep `compute_marl_rewards` (Gaussian position, L2 velocity norms, curriculum).
