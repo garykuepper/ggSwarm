@@ -2,7 +2,18 @@
   "permissions": {
     "allow": [
       "Bash(python -c \":*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(./env_isaaclab/Scripts/python.exe scripts/run.py hover-stability assess --help)",
+      "Bash(./env_isaaclab/Scripts/python.exe scripts/post_train_assess.py --run_dir logs/skrl/ggswarm_marl/2026-03-23_06-23-47_mappo_torch --task Template-GGSwarm-Marl-HoverStability-v0 --num_episodes 5 --headless)",
+      "Bash(./env_isaaclab/Scripts/python.exe scripts/analyze_checkpoints.py --run_dir logs/skrl/ggswarm_marl/2026-03-23_06-23-47_mappo_torch --task Template-GGSwarm-Marl-HoverStability-v0 --interval 10000 --num_episodes 2 --seed 42 --headless)",
+      "Bash(./env_isaaclab/Scripts/python.exe scripts/plot_trajectories.py --run_dir logs/skrl/ggswarm_marl/2026-03-23_06-23-47_mappo_torch --num_episodes 3 --num_envs 1 --headless)",
+      "Bash(./env_isaaclab/Scripts/python.exe scripts/summarize_tb_scalars.py --run_dir logs/skrl/ggswarm_marl/2026-03-23_06-23-47_mappo_torch)",
+      "Bash(python -m py_compile scripts/cloud/check_convergence.py)",
+      "Bash(python -m py_compile scripts/post_train_assess.py)",
+      "Bash(python scripts/run.py debug smoke --task Template-GGSwarm-Marl-HoverStability-v0 --iterations 1 --gnn --headless)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ]
   }
 }

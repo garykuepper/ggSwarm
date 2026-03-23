@@ -314,8 +314,12 @@ def main() -> None:
     import ggSwarm.tasks  # noqa: F401
     import isaaclab_tasks  # noqa: F401
 
+    from ggswarm_utils.collector_factory import make_collector
+    from ggswarm_utils.composite_collector import CompositeCollector
     from ggswarm_utils.eval_runner import run_eval
-    from ggswarm_utils.phases.phase2 import Phase2Collector
+    from ggswarm_utils.sim_helpers import PHASE_REGISTRY
+    from ggswarm_utils.trajectory_collector import TrajectoryDataCollector
+    from ggswarm_utils.trajectory_plots import generate_all_trajectory_plots
 
     euler_fn = None
     try:
@@ -326,8 +330,10 @@ def main() -> None:
         print("[WARN] euler_xyz_from_quat not available; attitude plots will be skipped.")
 
     # Build and run collector --------------------------------------------------
-    collector_cls = _make_trajectory_collector(Phase2Collector, args_cli.num_envs, euler_fn)
-    collector = collector_cls(airborne_height_margin=0.2)
+    phase_cfg = PHASE_REGISTRY["2"]
+    primary = make_collector(phase_cfg, airborne_height_margin=0.2)
+    traj_collector = TrajectoryDataCollector(track_envs=args_cli.num_envs, euler_fn=euler_fn)
+    collector = CompositeCollector(primary, traj_collector)
 
     metrics = run_eval(
         task=args_cli.task,
@@ -349,23 +355,22 @@ def main() -> None:
         print(f"  {k:<38} {v:.4f}")
 
     # Generate plots -----------------------------------------------------------
-    # Use defaults from GGSwarmMarlHoverStabilityCfg; these match the scoring thresholds.
     MIN_HEIGHT = 0.1
     MAX_HEIGHT = 3.0
     SPAWN_Z_MIN = 0.65
     SPAWN_Z_MAX = 1.65
 
     print(f"\n[plot_trajectories] Writing plots to {out_dir} ...")
-    for ep in sorted(collector.pos_traj):
-        steps = collector.pos_traj[ep]
-        if not steps:
-            continue
-        _plot_altitude(steps, ep, out_dir, MIN_HEIGHT, MAX_HEIGHT, SPAWN_Z_MIN, SPAWN_Z_MAX)
-        _plot_xy(steps, ep, out_dir)
-        if euler_fn is not None and collector.roll_traj.get(ep):
-            _plot_attitude(collector.roll_traj[ep], collector.pitch_traj[ep], ep, out_dir)
+    created = generate_all_trajectory_plots(
+        traj_collector,
+        out_dir,
+        min_height=MIN_HEIGHT,
+        max_height=MAX_HEIGHT,
+        spawn_z_min=SPAWN_Z_MIN,
+        spawn_z_max=SPAWN_Z_MAX,
+    )
 
-    print(f"\n[plot_trajectories] Done. {len(collector.pos_traj)} episode(s) saved to:")
+    print(f"\n[plot_trajectories] Done. {len(created)} plot(s) saved to:")
     print(f"  {out_dir}")
 
     simulation_app.close()

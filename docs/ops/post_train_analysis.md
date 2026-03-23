@@ -61,10 +61,16 @@ python scripts/run.py hover-stability assess `
     --num_episodes 5 `
     --no_sync
 
-# Optional: record a short eval clip (headless rgb_array → run_dir/videos/eval/)
+# Optional: record a short eval clip (headless rgb_array -> run_dir/videos/eval/)
 python scripts/run.py hover-stability assess `
     --run_dir logs/skrl/ggswarm_marl/<timestamp>_mappo_torch `
     --video --video_length 200
+
+# With trajectory diagnostic plots (altitude, XY, attitude -> run_dir/trajectories/)
+python scripts/run.py hover-stability assess `
+    --run_dir logs/skrl/ggswarm_marl/<timestamp>_mappo_torch `
+    --num_episodes 5 `
+    --trajectories
 ```
 
 Direct script (same pipeline):
@@ -98,8 +104,9 @@ After the script completes:
 
 1. Review `logs/skrl/ggswarm_marl/<timestamp>/assess_report.md` (written automatically)
 2. Check TensorBoard (see checklist below) for visual confirmation
-3. Fill in a row in `docs/status/run_history.md` (Rule 23)
-4. Log the result in `docs/status/changelog.md` using the template below
+3. Review trajectory plots if `--trajectories` was used (see section below)
+4. Fill in a row in `docs/status/run_history.md` (Rule 23)
+5. Log the result in `docs/status/changelog.md` using the template below
 
 ```powershell
 # Optional: TensorBoard visual inspection
@@ -198,6 +205,28 @@ For Phase 2B, also check:
 | :--- | :--- | :--- |
 | `Reward/rew_formation` | increases after step ~5k (curriculum active) | stays at 0 (curriculum not activating) |
 | `Reward/curriculum_alpha` | ramps from 0 to 1 over 80k steps | stuck at 0 (curriculum_start_step misconfigured) |
+
+---
+
+## Trajectory Diagnostic Plots
+
+When `--trajectories` is passed, `post_train_assess.py` generates three plot types
+per eval episode, saved to `<run_dir>/trajectories/`:
+
+| Plot | File | What it shows |
+| :--- | :--- | :--- |
+| Altitude trace | `altitude_trace_ep{N}.png` | Z position vs episode step per agent, with min_height (crash) and airborne threshold lines |
+| XY trace | `xy_trace_ep{N}.png` | Top-down XY path per agent (cross marks spawn) |
+| Attitude trace | `attitude_trace_ep{N}.png` | Roll and pitch (degrees) vs step, with +/-15 deg gate lines |
+
+### Interpreting trajectory plots
+
+- **Altitude:** A shark-fin saw-tooth (rapid drops to min_height followed by resets) indicates crash-reset cycles. Tight band around spawn altitude = stable hover.
+- **XY:** Tight cluster near spawn = good hover-in-place. Expanding spiral or drift > 2m = policy not station-keeping.
+- **Attitude:** Oscillations within +/-15 deg = stable. Sustained swings > 50 deg = tumbling / spin-up.
+
+Attitude plots require `isaaclab.utils.math.euler_xyz_from_quat` to be available;
+if Isaac Lab is not fully installed, a warning is printed and attitude plots are skipped.
 
 ---
 

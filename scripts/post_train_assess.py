@@ -26,8 +26,6 @@ Exits 0 if overall verdict is PASS or WARN, 1 if FAIL.
 from __future__ import annotations
 
 import argparse
-import importlib
-import inspect
 import json
 import sys
 from pathlib import Path
@@ -35,6 +33,7 @@ from pathlib import Path
 # Ensure scripts/ is on the path so ggswarm_utils resolves correctly.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from ggswarm_utils.collector_factory import make_collector
 from ggswarm_utils.gcs_sync import DEFAULT_GCS_BUCKET, has_local_data, sync_from_gcs
 from ggswarm_utils.scorecard import format_run_history_row, print_scorecard, write_report
 from ggswarm_utils.sim_helpers import PHASE_REGISTRY, phase_from_task
@@ -122,6 +121,12 @@ def _build_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help='Extra ffmpeg params as one string, e.g. "-cq 18 -rc vbr".',
+    )
+    parser.add_argument(
+        "--trajectories",
+        action="store_true",
+        default=False,
+        help="Generate trajectory diagnostic plots (altitude, XY, attitude) during eval.",
     )
     return parser
 
@@ -221,8 +226,8 @@ def main() -> None:
             print(f"\n  TB diagnostics: {len(tb_diagnostics)} scalar(s) extracted")
             for s in tb_diagnostics:
                 print(
-                    f"    {s['tag']}: {s['first_value']:.4f} → {s['last_value']:.4f}"
-                    f"  ({s['first_step'] // 1000}k → {s['last_step'] // 1000}k)"
+                    f"    {s['tag']}: {s['first_value']:.4f} -> {s['last_value']:.4f}"
+                    f"  ({s['first_step'] // 1000}k -> {s['last_step'] // 1000}k)"
                 )
     except Exception as exc:
         print(f"  [WARN] TB diagnostics extraction failed: {exc}")
@@ -267,17 +272,25 @@ def main() -> None:
         phase_key = "2"
     phase_cfg = PHASE_REGISTRY[phase_key]
 
-    # Instantiate the correct collector
-    module_path, cls_name = phase_cfg.collector_cls.rsplit(".", 1)
-    collector_module = importlib.import_module(module_path)
-    collector_cls = getattr(collector_module, cls_name)
+    # Instantiate the correct collector via shared factory
+    collector = make_collector(
+        phase_cfg, airborne_height_margin=args_cli.airborne_height_margin
+    )
 
-    # Phase2Collector accepts airborne_height_margin
-    sig = inspect.signature(collector_cls.__init__)
-    if "airborne_height_margin" in sig.parameters:
-        collector = collector_cls(airborne_height_margin=args_cli.airborne_height_margin)
-    else:
-        collector = collector_cls()
+    # Optionally wrap with trajectory data collector
+    traj_collector = None
+    if args_cli.trajectories:
+        from ggswarm_utils.composite_collector import CompositeCollector  # noqa: PLC0415
+        from ggswarm_utils.trajectory_collector import TrajectoryDataCollector  # noqa: PLC0415
+
+        euler_fn = None
+        try:
+            from isaaclab.utils.math import euler_xyz_from_quat  # noqa: PLC0415
+            euler_fn = euler_xyz_from_quat
+        except ImportError:
+            print("  [WARN] euler_xyz_from_quat unavailable; attitude plots skipped.")
+        traj_collector = TrajectoryDataCollector(track_envs=1, euler_fn=euler_fn)
+        collector = CompositeCollector(collector, traj_collector)
 
     from ggswarm_utils.eval_runner import run_eval  # noqa: PLC0415
 
@@ -319,6 +332,24 @@ def main() -> None:
     overall = print_scorecard(run_dir.name, metrics)
 
     # ------------------------------------------------------------------
+    # Step 3b: Trajectory plots (optional)
+    # ------------------------------------------------------------------
+    trajectory_dir = None
+    if traj_collector is not None:
+        from ggswarm_utils.trajectory_plots import generate_all_trajectory_plots  # noqa: PLC0415
+
+        trajectory_dir = run_dir / "trajectories"
+        created = generate_all_trajectory_plots(
+            traj_collector,
+            trajectory_dir,
+            min_height=0.3,
+            max_height=2.5,
+            spawn_z_min=0.5,
+            spawn_z_max=1.0,
+        )
+        print(f"\n[TRAJECTORIES] {len(created)} plot(s) saved to: {trajectory_dir}")
+
+    # ------------------------------------------------------------------
     # Step 4: Markdown report
     # ------------------------------------------------------------------
     write_report(
@@ -330,16 +361,17 @@ def main() -> None:
         num_episodes=args_cli.num_episodes,
         checkpoint_name=best_ckpt.name,
         tb_diagnostics=tb_diagnostics,
+        trajectory_dir=trajectory_dir,
     )
 
     # ------------------------------------------------------------------
     # Ready-to-paste run_history row
     # ------------------------------------------------------------------
     row = format_run_history_row(run_dir.name, metrics, overall)
-    print(f"\n{'─' * 70}")
+    print(f"\n{'-' * 70}")
     print("  Copy to docs/status/run_history.md:")
     print(f"  {row}")
-    print(f"{'─' * 70}\n")
+    print(f"{'-' * 70}\n")
 
     simulation_app.close()
     sys.exit(0 if overall != "FAIL" else 1)

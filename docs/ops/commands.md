@@ -99,9 +99,13 @@ Replace ``<run>`` below with your real timestamp folder (e.g. ``2026-03-22_04-32
 python scripts/run.py hover-stability eval --headless --video --checkpoint logs/skrl/ggswarm_marl/<run>/checkpoints/best_agent.pt
 
 python scripts/run.py hover-stability assess --run_dir logs/skrl/ggswarm_marl/<run> --video --no_sync
+
+# With trajectory diagnostic plots (altitude, XY, attitude -> run_dir/trajectories/)
+python scripts/run.py hover-stability assess --run_dir logs/skrl/ggswarm_marl/<run> --trajectories --no_sync
 ```
 
 Optional: `--video_length`, `--rendering_mode`, `--video_codec`, etc. (same semantics as `play --video`).
+`--trajectories` generates altitude, XY, and attitude plots per eval episode under `<run_dir>/trajectories/`.
 
 ### Phase 2A diagnostics
 

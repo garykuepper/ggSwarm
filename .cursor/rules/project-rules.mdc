@@ -270,6 +270,8 @@ After **every** training run (regardless of run length or phase):
    python scripts/run.py phase2 assess --run_dir logs/skrl/ggswarm_marl/<run>
    # or for hover-stability runs:
    python scripts/run.py hover-stability assess --run_dir logs/skrl/ggswarm_marl/<run>
+   # with trajectory diagnostic plots:
+   python scripts/run.py hover-stability assess --run_dir logs/skrl/ggswarm_marl/<run> --trajectories
    ```
 
 1. Log the scorecard output to `docs/status/changelog.md` using the standard entry format:

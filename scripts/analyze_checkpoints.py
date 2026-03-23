@@ -21,12 +21,7 @@ from isaaclab.app import AppLauncher
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ggswarm_utils.checkpoint import load_policy_from_checkpoint, resolve_agent  # noqa: E402
-from ggswarm_utils.eval_stats import (  # noqa: E402
-    EvalStats,
-    compute_altitude_metrics as _compute_altitude_metrics,
-    compute_orientation_metrics as _compute_orientation_metrics,
-    pairwise_mean_abs_spacing_error as _pairwise_mean_abs_spacing_error,
-)
+from ggswarm_utils.phases.phase2 import Phase2Collector  # noqa: E402
 from ggswarm_utils.sim_helpers import (  # noqa: E402
     PHASE_REGISTRY,
     configure_gnn_policy,
@@ -208,103 +203,36 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, cfg:
 
         load_policy_from_checkpoint(agent, ckpt_path)
 
-        # Run evaluation
-        stats = EvalStats()
+        # Use Phase2Collector instead of inline metric computation
+        collector = Phase2Collector(airborne_height_margin=0.2)
         obs, _ = env.reset()
         total_steps = args_cli.num_episodes * max_episode_length
-        steps = 0
+        sim_step = 0
         ep_step = 0
-        first_ground_step: int | None = None
+        episode_num = 0
 
-        while simulation_app.is_running() and steps < total_steps:
+        while simulation_app.is_running() and sim_step < total_steps:
             with torch.inference_mode():
                 actions = extract_actions(agent, obs, base_env)
                 obs, _, _, _, _ = env.step(actions)
-
-                pos_w = base_env.robot.data.root_pos_w.view(
-                    base_env.num_envs, base_env.cfg.num_agents, 3
-                )
-                formation_error = _pairwise_mean_abs_spacing_error(
-                    pos_w, float(base_env.cfg.target_formation_dist)
-                )
-
-                diff = pos_w.unsqueeze(2) - pos_w.unsqueeze(1)
-                dist = torch.norm(diff, dim=-1)
-                eye = torch.eye(base_env.cfg.num_agents, device=dist.device).unsqueeze(0)
-                separation_event_rate = (
-                    ((dist < float(base_env.cfg.min_separation_dist)) & (1.0 - eye).bool())
-                    .any(dim=2)
-                    .any(dim=1)
-                    .float()
-                    .mean()
-                )
-
-                lin_vel_b = base_env.robot.data.root_lin_vel_b.view(
-                    base_env.num_envs, base_env.cfg.num_agents, 3
-                )
-                mean_speed = torch.norm(lin_vel_b, dim=-1).mean()
-
-                desired_altitude = base_env._desired_pos_w[:, :, 2]
-                current_altitude = pos_w[:, :, 2]
-                mean_altitude_error = torch.abs(current_altitude - desired_altitude).mean()
-                ground_hit_rate = (
-                    (current_altitude < float(base_env.cfg.min_height))
-                    .any(dim=1)
-                    .float()
-                    .mean()
-                )
                 ep_step += 1
-                if float(ground_hit_rate.item()) > 0.0 and first_ground_step is None:
-                    first_ground_step = ep_step
-                airborne_threshold = float(base_env.cfg.min_height) + 0.2
-                airborne_ratio = (current_altitude > airborne_threshold).float().mean()
 
-                proj_grav_b = base_env.robot.data.projected_gravity_b.view(
-                    base_env.num_envs, base_env.cfg.num_agents, 3
-                )
-                mean_roll_deg, mean_pitch_deg, orientation_violation_rate = (
-                    _compute_orientation_metrics(proj_grav_b)
+                collector.on_step(
+                    base_env=base_env,
+                    obs=obs,
+                    step=sim_step,
+                    episode_step=ep_step,
+                    episode_num=episode_num,
                 )
 
-                altitude_std, _ = _compute_altitude_metrics(pos_w, base_env._desired_pos_w)
-
-                stats.update(
-                    formation_error=formation_error,
-                    separation_event_rate=separation_event_rate,
-                    mean_speed=mean_speed,
-                    mean_altitude_error=mean_altitude_error,
-                    ground_hit_rate=ground_hit_rate,
-                    airborne_ratio=airborne_ratio,
-                    mean_roll_deg=mean_roll_deg,
-                    mean_pitch_deg=mean_pitch_deg,
-                    orientation_violation_rate=orientation_violation_rate,
-                    altitude_std=altitude_std,
-                )
-
-            steps += 1
+            sim_step += 1
             if ep_step >= max_episode_length:
-                survival = float(
-                    first_ground_step if first_ground_step is not None else ep_step
-                )
-                stats.record_episode_survival(survival)
+                collector.on_episode_end(episode_num)
                 ep_step = 0
-                first_ground_step = None
+                episode_num += 1
 
-        summary = stats.summarize()
-        results.append({
-            "step": step,
-            "formation_error_m": summary["mean_formation_error_m"],
-            "separation_event_rate": summary["separation_event_rate"],
-            "mean_speed_mps": summary["mean_speed_mps"],
-            "altitude_error_m": summary["mean_altitude_error_m"],
-            "ground_hit_rate": summary["ground_hit_rate"],
-            "airborne_ratio": summary["airborne_ratio"],
-            "mean_roll_deg": summary["mean_roll_deg"],
-            "mean_pitch_deg": summary["mean_pitch_deg"],
-            "orientation_violation_rate": summary["orientation_violation_rate"],
-            "altitude_std_m": summary["altitude_std_m"],
-            "survival_steps": summary["survival_steps"],
-        })
+        summary = collector.summarize()
+        results.append({"step": step, **summary})
 
         print(f"  - Formation error: {summary['mean_formation_error_m']:.4f}m")
         print(f"  - Separation event rate: {summary['separation_event_rate']:.4f}")

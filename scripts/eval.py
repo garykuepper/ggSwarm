@@ -12,7 +12,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import importlib
 import json
 import sys
 from pathlib import Path
@@ -22,6 +21,7 @@ from isaaclab.app import AppLauncher
 # Ensure ggswarm_utils is importable when run from the repo root
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ggswarm_utils.checkpoint import validate_eval_checkpoint_path  # noqa: E402
+from ggswarm_utils.collector_factory import make_collector  # noqa: E402
 from ggswarm_utils.sim_helpers import PHASE_REGISTRY, resolve_phase  # noqa: E402
 
 
@@ -172,21 +172,10 @@ def main() -> None:
     import ggSwarm.tasks  # noqa: F401
     import isaaclab_tasks  # noqa: F401
 
-    # Lazy-load the collector class from its dotted path
-    module_path, cls_name = phase_cfg.collector_cls.rsplit(".", 1)
-    collector_module = importlib.import_module(module_path)
-    collector_cls = getattr(collector_module, cls_name)
-
-    # Phase 3/4 collectors accept kill_agent_step
-    if args_cli.kill_agent_step > 0 and hasattr(collector_cls, "__init__"):
-        import inspect  # noqa: PLC0415
-        sig = inspect.signature(collector_cls.__init__)
-        if "kill_agent_step" in sig.parameters:
-            collector = collector_cls(kill_agent_step=args_cli.kill_agent_step)
-        else:
-            collector = collector_cls()
-    else:
-        collector = collector_cls()
+    # Instantiate the correct collector via shared factory
+    collector = make_collector(
+        phase_cfg, kill_agent_step=args_cli.kill_agent_step
+    )
 
     from ggswarm_utils.eval_runner import run_eval  # noqa: PLC0415
 

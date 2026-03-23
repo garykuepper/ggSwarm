@@ -253,6 +253,12 @@ def _add_assess_args(p: argparse.ArgumentParser) -> None:
         default=False,
         help="Also run checkpoint progression sweep (adds ~3 min).",
     )
+    p.add_argument(
+        "--trajectories",
+        action="store_true",
+        default=False,
+        help="Generate trajectory diagnostic plots (altitude, XY, attitude) during eval.",
+    )
     p.add_argument("--device", type=str, default=None)
     p.add_argument(
         "--seed",

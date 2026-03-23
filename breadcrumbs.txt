@@ -291,3 +291,9 @@
 1774102038.9700255: Evaluation mode set
 1774102038.9721627: Resetting environment
 1774102039.351839: Environment reset complete
+1774281638.2602127: Runner created
+1774281638.2627082: Loading checkpoint file
+1774281638.439279: Checkpoint file loaded; policy loaded successfully.
+1774281638.4417818: Evaluation mode set
+1774281638.4432793: Resetting environment
+1774281638.5675201: Environment reset complete

@@ -199,7 +199,7 @@ def format_tb_diagnostics(scalars: list[dict]) -> list[str]:
         last_k = f"{s['last_step'] // 1000}k"
         lines.append(
             f"| `{s['tag']}` | {s['first_value']:.4f} | {s['last_value']:.4f} "
-            f"| {first_k} → {last_k} |"
+            f"| {first_k} -> {last_k} |"
         )
     return lines
 
@@ -241,6 +241,7 @@ def write_report(
     num_episodes: int,
     checkpoint_name: str,
     tb_diagnostics: list[dict] | None = None,
+    trajectory_dir: Path | None = None,
 ) -> None:
     """Write assess_report.md into the run directory.
 
@@ -253,6 +254,7 @@ def write_report(
         num_episodes:    Number of evaluation episodes run.
         checkpoint_name: Filename of the evaluated checkpoint.
         tb_diagnostics:  List of dicts from extract_scalar_summary() (optional).
+        trajectory_dir:  Path to trajectory plot directory (optional).
     """
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     run_name = run_dir.name
@@ -320,6 +322,19 @@ def write_report(
     ]
     for k, v in sorted(metrics.items()):
         lines.append(f"| `{k}` | {v:.6f} |")
+
+    # Trajectory plots section (if generated)
+    if trajectory_dir is not None and trajectory_dir.exists():
+        pngs = sorted(trajectory_dir.glob("*.png"))
+        if pngs:
+            rel = trajectory_dir.name  # e.g. "trajectories"
+            lines += [
+                "",
+                "## Trajectory Plots",
+                "",
+            ]
+            for png in pngs:
+                lines.append(f"- `{rel}/{png.name}`")
 
     report_path = run_dir / "assess_report.md"
     with report_path.open("w", encoding="utf-8") as fh:

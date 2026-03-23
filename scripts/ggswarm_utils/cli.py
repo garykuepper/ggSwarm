@@ -343,6 +343,8 @@ def build_assess_cmd(
     ]
     if getattr(args, "no_sync", False):
         cmd.append("--no_sync")
+    if getattr(args, "trajectories", False):
+        cmd.append("--trajectories")
     _append_opt(cmd, "--device", getattr(args, "device", None))
     _append_opt(cmd, "--seed", getattr(args, "seed", None))
     if getattr(args, "video", False):
