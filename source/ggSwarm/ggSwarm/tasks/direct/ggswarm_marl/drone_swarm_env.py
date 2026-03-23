@@ -94,7 +94,7 @@ class GGSwarmMarlEnv(DirectMARLEnv):
             self._moment_pre_clamp = torch.zeros(
                 num_instances, 1, 3, device=self.device
             )  # pre-allocated; reused every step
-        self._pending_action_telemetry: dict[str, float] = {}
+        self._pending_action_telemetry: dict[str, torch.Tensor] = {}
 
         # --- Phase 3: SwarmRaft Consensus (L3, gated by cfg.raft_enabled) ---
         if self.cfg.raft_enabled:
@@ -291,7 +291,9 @@ class GGSwarmMarlEnv(DirectMARLEnv):
             moment_pre_clamp_buf=self._moment_pre_clamp,
         )
 
-        # Optional TensorBoard telemetry (first N env steps only)
+        # Optional TensorBoard telemetry (first N env steps only).
+        # Values stored as 0-dim tensors so SKRL's isinstance+numel check passes
+        # and they appear as "Info / *" scalars in TensorBoard.
         self._pending_action_telemetry = {}
         if (
             self.cfg.action_telemetry_max_env_steps > 0
@@ -300,22 +302,20 @@ class GGSwarmMarlEnv(DirectMARLEnv):
             mm = float(self.cfg.max_moment)
             ra = raw_actions[..., 0]
             ca = all_actions[..., 0]
-            clamp_hit = (raw_actions != all_actions).float().mean().item()
-            self._pending_action_telemetry["act_raw_thrust_mean"] = ra.mean().item()
-            self._pending_action_telemetry["act_raw_thrust_std"] = ra.std(unbiased=False).item()
-            self._pending_action_telemetry["act_raw_thrust_min"] = ra.min().item()
-            self._pending_action_telemetry["act_raw_thrust_max"] = ra.max().item()
-            self._pending_action_telemetry["act_clamped_thrust_mean"] = ca.mean().item()
-            self._pending_action_telemetry["act_clamp_hit_frac"] = clamp_hit
+            self._pending_action_telemetry["act_raw_thrust_mean"] = ra.mean()
+            self._pending_action_telemetry["act_raw_thrust_std"] = ra.std(unbiased=False)
+            self._pending_action_telemetry["act_raw_thrust_min"] = ra.min()
+            self._pending_action_telemetry["act_raw_thrust_max"] = ra.max()
+            self._pending_action_telemetry["act_clamped_thrust_mean"] = ca.mean()
+            self._pending_action_telemetry["act_clamp_hit_frac"] = (raw_actions != all_actions).float().mean()
             thrust_val = (flat_actions[:, 0] + 1.0) * 0.5
-            self._pending_action_telemetry["thrust_val_mean"] = thrust_val.mean().item()
+            self._pending_action_telemetry["thrust_val_mean"] = thrust_val.mean()
             if self._moment_pre_clamp is not None:
                 pre = self._moment_pre_clamp[:, 0, :]
-                sat = (pre.abs() >= mm - 1e-6).any(dim=-1).float().mean().item()
-                self._pending_action_telemetry["moment_pre_abs_max_mean"] = (
-                    pre.abs().max(dim=1).values.mean().item()
+                self._pending_action_telemetry["moment_pre_abs_max_mean"] = pre.abs().max(dim=1).values.mean()
+                self._pending_action_telemetry["moment_saturated_frac"] = (
+                    (pre.abs() >= mm - 1e-6).any(dim=-1).float().mean()
                 )
-                self._pending_action_telemetry["moment_saturated_frac"] = sat
 
     def _apply_action(self) -> None:
         # Apply thrust (body-frame Z) and attitude moments to the main body in a
@@ -413,6 +413,7 @@ class GGSwarmMarlEnv(DirectMARLEnv):
                 min_height=self.cfg.min_height,
                 low_clearance_margin_m=self.cfg.low_clearance_margin_m,
                 rew_scale_low_clearance=self.cfg.rew_scale_low_clearance,
+                rew_scale_terminated=self.cfg.rew_scale_terminated,
             )
             total_rewards, terms_dict = compute_stable_hover_rewards(
                 pos_w=pos_w,
@@ -471,24 +472,25 @@ class GGSwarmMarlEnv(DirectMARLEnv):
             curriculum_end_step=self.cfg.curriculum_end_step,
         )
 
-        # Log per-term rewards for TensorBoard visualization
-        # Telemetry for TB: clearance fraction matches Phase2Collector airborne band.
+        # Log per-term rewards for TensorBoard visualization.
+        # Values must be 0-dim torch.Tensor (not Python float) so SKRL's
+        # isinstance(v, torch.Tensor) and v.numel() == 1 check passes and
+        # they appear as "Info / *" scalars in TensorBoard.
         low_clearance_z = self.cfg.min_height + self.cfg.low_clearance_margin_m
-        low_clearance_frac = (pos_w[:, :, 2] < low_clearance_z).float().mean().item()
         self.extras["log"] = {
-            "rew_pos": terms_dict["rew_pos"].mean().item(),
-            "rew_formation": terms_dict["rew_formation"].mean().item(),
-            "rew_cohesion": terms_dict["rew_cohesion"].mean().item(),
-            "rew_separation": terms_dict["rew_separation"].mean().item(),
-            "rew_upright": terms_dict["rew_upright"].mean().item(),
-            "rew_vel": terms_dict["rew_vel"].mean().item(),
-            "rew_ang_vel": terms_dict["rew_ang_vel"].mean().item(),
-            "rew_alive": terms_dict["rew_alive"].mean().item(),
-            "rew_terminated": terms_dict["rew_terminated"].mean().item(),
-            "rew_low_clearance": terms_dict["rew_low_clearance"].mean().item(),
-            "mean_world_z": pos_w[:, :, 2].mean().item(),
-            "low_clearance_frac": low_clearance_frac,
-            "curriculum_alpha": alpha,
+            "rew_pos": terms_dict["rew_pos"].mean(),
+            "rew_formation": terms_dict["rew_formation"].mean(),
+            "rew_cohesion": terms_dict["rew_cohesion"].mean(),
+            "rew_separation": terms_dict["rew_separation"].mean(),
+            "rew_upright": terms_dict["rew_upright"].mean(),
+            "rew_vel": terms_dict["rew_vel"].mean(),
+            "rew_ang_vel": terms_dict["rew_ang_vel"].mean(),
+            "rew_alive": terms_dict["rew_alive"].mean(),
+            "rew_terminated": terms_dict["rew_terminated"].mean(),
+            "rew_low_clearance": terms_dict["rew_low_clearance"].mean(),
+            "mean_world_z": pos_w[:, :, 2].mean(),
+            "low_clearance_frac": (pos_w[:, :, 2] < low_clearance_z).float().mean(),
+            "curriculum_alpha": torch.tensor(alpha, device=self.device),
         }
         if self._pending_action_telemetry:
             self.extras["log"].update(self._pending_action_telemetry)

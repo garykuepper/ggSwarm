@@ -302,8 +302,9 @@ class StableHoverRewardParams:
     - linear velocity squared penalty (step_dt scaled)
     - angular velocity squared penalty (step_dt scaled)
 
-    With the PD attitude controller providing inherent stability, no upright,
-    alive, or termination terms are needed for the hover phase.
+    With the PD attitude controller providing inherent stability, no upright or
+    alive terms are required for the hover phase. Optional ``rew_scale_terminated``
+    adds a dense penalty whenever ``z < min_height`` (see ``compute_stable_hover_rewards``).
 
     Optional low-clearance shaping (same semantics as ``compute_marl_rewards``)
     aligns Phase 2A training with the post-train airborne scorecard band.
@@ -316,6 +317,8 @@ class StableHoverRewardParams:
     min_height: float = 0.1
     low_clearance_margin_m: float = 0.2
     rew_scale_low_clearance: float = 0.0
+    # Dense penalty each step while z < min_height; 0 disables. Often one step before reset.
+    rew_scale_terminated: float = 0.0
 
 
 def compute_stable_hover_rewards(
@@ -327,10 +330,13 @@ def compute_stable_hover_rewards(
     params: StableHoverRewardParams,
     return_terms: bool = False,
 ) -> torch.Tensor | tuple[torch.Tensor, dict[str, torch.Tensor]]:
-    """Compute hover rewards using the Isaac Lab 3-term formulation.
+    """Compute hover rewards using the Isaac Lab-style formulation (pos + vel + ang_vel).
 
-    All terms are scaled by ``step_dt`` so reward magnitude is independent of
-    simulation frequency (matches Isaac-Quadcopter-Direct-v0 convention).
+    Position and velocity terms use ``step_dt`` so reward magnitude is independent of
+    simulation frequency (matches Isaac-Quadcopter-Direct-v0 convention). The optional
+    ground term ``rew_terminated`` is **not** dt-scaled: it applies ``scale`` on every
+    step where ``z < min_height`` (dense while grounded; often a single step before
+    episode reset in Isaac Lab, but not guaranteed).
 
     Args:
         pos_w: Current drone positions, shape ``[num_envs, num_agents, 3]``.
@@ -371,7 +377,13 @@ def compute_stable_hover_rewards(
     depth_below_clearance = torch.clamp(clearance_z - pos_w[:, :, 2], min=0.0)
     rew_low_clearance = params.rew_scale_low_clearance * depth_below_clearance
 
-    total_rewards = rew_pos + rew_vel + rew_ang_vel + rew_low_clearance
+    # Dense penalty each step while below min_height; 0 scale skips. Typically one step
+    # before reset when out_of_bounds fires on the same step, but not guaranteed.
+    # shape: [num_envs, num_agents]
+    ground_hit = pos_w[:, :, 2] < params.min_height
+    rew_terminated = ground_hit.float() * params.rew_scale_terminated
+
+    total_rewards = rew_pos + rew_vel + rew_ang_vel + rew_low_clearance + rew_terminated
 
     if total_rewards.shape != pos_w.shape[:2]:
         raise AssertionError("Reward tensor shape mismatch.")
@@ -383,12 +395,12 @@ def compute_stable_hover_rewards(
             "rew_vel": rew_vel,
             "rew_ang_vel": rew_ang_vel,
             "rew_low_clearance": rew_low_clearance,
+            "rew_terminated": rew_terminated,
             "rew_formation": z,
             "rew_cohesion": z,
             "rew_separation": z,
             "rew_upright": z,
             "rew_alive": z,
-            "rew_terminated": z,
         }
         return total_rewards, terms_dict
 

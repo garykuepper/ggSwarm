@@ -28,9 +28,22 @@ those numbers to post-fix assess runs.
 
 ### Training telemetry (TensorBoard)
 
-Logged from `GGSwarmMarlEnv` (`extras["log"]`): `mean_world_z`, `low_clearance_frac` (fraction of agents
-with `z < min_height + low_clearance_margin_m`), and `rew_low_clearance` when the low-clearance scale is
-non-zero (Phase 2A hover-stability).
+Logged from `GGSwarmMarlEnv` (`extras["log"]`) as **0-dim tensors** (required for SKRL's `Info /` path — see `architecture.md`):
+
+| TensorBoard key | Description |
+| :--- | :--- |
+| `Info / rew_pos` | Mean tanh position reward per step |
+| `Info / rew_vel` | Mean linear velocity squared penalty |
+| `Info / rew_ang_vel` | Mean angular velocity squared penalty |
+| `Info / rew_low_clearance` | Mean low-clearance depth penalty (non-zero when `rew_scale_low_clearance ≠ 0`) |
+| `Info / rew_terminated` | Mean ground-hit penalty (non-zero when `rew_scale_terminated ≠ 0`; PD6+: −5.0) |
+| `Info / mean_world_z` | Mean agent altitude (m) — tracks whether policy is hovering or sinking |
+| `Info / low_clearance_frac` | Fraction of agents below `min_height + low_clearance_margin_m` |
+| `Info / curriculum_alpha` | Curriculum blend weight (0 = hover only, 1 = full formation) |
+| `Info / rew_formation` etc. | Formation/cohesion/separation terms (zero in Phase 2A hover-stability) |
+
+Action telemetry keys (`Info / act_raw_thrust_mean`, `Info / thrust_val_mean`, `Info / moment_saturated_frac`, etc.)
+are written only during the first `action_telemetry_max_env_steps` env steps when that cfg field is > 0.
 
 ---
 
@@ -147,7 +160,7 @@ Listed here so you can interpret partial scorecard output without opening code.
 | :--- | :--- | :--- | :--- |
 | Phase 2A PASS | yes | n/a | Launch Phase 2B: `phase2b train --checkpoint <2A_run>/checkpoints/best_agent.pt --max_iterations 120000` |
 | Phase 2A WARN | partial | n/a | Extend Phase 2A by 20k iters OR reduce `rew_scale_pos` to 1.5 and retrain |
-| Phase 2A FAIL (survival < 10) | no | n/a | Hover-stability: `rew_scale_terminated` is 0 — check TensorBoard for early entropy collapse; tune `rew_scale_pos` / `rew_scale_vel` or PD (`kp_att`, `max_moment`, `thrust_to_weight`). |
+| Phase 2A FAIL (survival < 10) | no | n/a | Check `Info/rew_terminated`: negative = floor hits; ~0 = penalty off (verify `rew_scale_terminated ≠ 0`). Also `Info/thrust_val_mean` < 0.5 = under-hover; check entropy + PD authority. |
 | Phase 2A FAIL (roll ≥ 60°) | no | n/a | Hover-stability (PD era): raise `kp_att` / `max_moment` first; then `rew_scale_ang_vel` in the 3-term reward — **not** `rew_scale_upright` (disabled in `GGSwarmMarlHoverStabilityCfg` unless you explicitly re-enable). |
 | Phase 2B PASS | yes | yes | Advance to Phase 3 |
 | Phase 2B WARN | yes | partial | Reduce `curriculum_end_step` by 20k so full formation pressure applies for longer |
@@ -168,6 +181,16 @@ metrics will be uninformative.
 | `Reward/rew_upright` | increases steadily and stays > 2.0 | stays near 0 or drops after early spike |
 | `Reward/rew_ang_vel` | small negative value, magnitude decreasing | large negative throughout (still spinning) |
 | `Policy/Standard deviation (drone_0)` | decreases from ~1.0 to ~0.3 over training | stays flat from step 1 (never explored) |
+
+**Phase 2A stable-hover (PD6+):** SKRL logs env extras under the `Info /` prefix when values are 0-dim tensors. Prefer these over the legacy `Reward/rew_*` names above (upright is disabled in hover-stability).
+
+| Curve | Good (Phase 2A stable-hover) | Bad |
+| :--- | :--- | :--- |
+| `Info / rew_pos` | positive, stable band mid-training | collapses to ~0 from step 1 |
+| `Info / rew_vel` | small negative, not diverging | large negative throughout (high speed) |
+| `Info / rew_low_clearance` | not pegged at extreme negative | dominates total return (mis-tuned scale) |
+| `Info / rew_terminated` | sparse / near zero once policy lifts | frequently negative (repeated ground contact) |
+| `Info / mean_world_z` | tracks spawn band | drifts to min_height |
 
 For Phase 2B, also check:
 

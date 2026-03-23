@@ -227,7 +227,9 @@ class GGSwarmMarlHoverStabilityCfg(GGSwarmMarlEnvCfg):
     # Disable unused reward terms (PD controller makes these redundant)
     rew_scale_upright: float = 0.0
     rew_scale_alive: float = 0.0
-    rew_scale_terminated: float = 0.0
+    # Dense penalty each step while z < min_height (see compute_stable_hover_rewards).
+    # -5.0 per grounded step ~14× max tanh pos reward per step (18 * step_dt at step_dt=0.02).
+    rew_scale_terminated: float = -5.0
     # Penalty per metre below (min_height + low_clearance_margin_m); aligns MDP with scorecard airborne gate.
     rew_scale_low_clearance: float = -8.0
 

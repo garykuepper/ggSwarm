@@ -84,6 +84,13 @@ This document tracks major technical changes and milestone completions for each 
   
 ## Phase 2: Evaluation & Training Optimization (Weeks 8-9)
 
+- [2026-03-23] **Phase 2A PD6 prep** (TensorBoard contract + ground penalty knob — **before** GCE PD6 train):
+  - **TensorBoard / SKRL:** `extras["log"]` values are **0-dim `torch.Tensor`** scalars (not Python `float`) so SKRL’s `environment_info: log` path passes `isinstance(v, torch.Tensor) and v.numel() == 1` and writes **`Info / rew_pos`**, **`Info / rew_vel`**, **`Info / rew_low_clearance`**, **`Info / rew_terminated`**, **`Info / mean_world_z`**, etc. CBF `cbf_intervention_rate` / obstacle rate return tensors from [`cbf_safety.py`](../../source/ggSwarm/ggSwarm/tasks/direct/ggswarm_marl/cbf_safety.py).
+  - **Reward (single knob):** `GGSwarmMarlHoverStabilityCfg.rew_scale_terminated` **`-5.0`**. `compute_stable_hover_rewards` adds **`rew_terminated = (z < min_height).float() * scale`** each step while below `min_height` (dense penalty; often one step before reset — not a one-shot lump-sum). Rationale: with `rew_scale_pos=18` and env **`step_dt=0.02`** (physics `dt` × decimation), max tanh position reward per step is **`18 × 0.02 = 0.36`**; **`-5.0`** per grounded step is ~**14×** that upper bound so the critic can separate crash-short episodes from 500-step survivors without swamping the dt-scaled pos/vel terms early on.
+  - **Docs:** [`docs/design/architecture.md`](../design/architecture.md) telemetry note; Rule 22 table in [`docs/ops/pd5_rule22_checklist.md`](../ops/pd5_rule22_checklist.md) updated for PD6.
+  - **Tests:** `TestComputeStableHoverRewards` includes `rew_terminated` in term-sum invariant + `test_ground_hit_applies_rew_scale_terminated`.
+  - **Rule 22 smoke (local):** `python scripts/run.py debug smoke --task Template-GGSwarm-Marl-HoverStability-v0 --iterations 1 --gnn --headless` — PASS after PD6 doc/code pass (512 envs, `GGSwarmMarlHoverStabilityCfg` + `rew_scale_terminated=-5.0`).
+
 - [2026-03-23] **`run.py` train/play:** accept `--gnn` (forwards to `train.py` / `play.py`); hover-stability
   already defaulted to GNN via `build_train_cmd`, but the flag was missing from argparse and was rejected.
 
@@ -93,7 +100,7 @@ This document tracks major technical changes and milestone completions for each 
 
 - [2026-03-23] **Phase 2A PD5 prep** (first train under stable-hover rewards):
   - **Rule 22 smoke:** `python scripts/run.py debug smoke --task Template-GGSwarm-Marl-HoverStability-v0 --iterations 1 --gnn --headless` — PASS (env + GNN init, 512 envs).
-  - **Checklist:** [`docs/ops/pd5_rule22_checklist.md`](ops/pd5_rule22_checklist.md) documents the five Rule 22 fields + optional `action_telemetry_max_env_steps` workflow.
+  - **Checklist:** [`docs/ops/pd5_rule22_checklist.md`](ops/pd5_rule22_checklist.md) documents Rule 22 cfg fields + optional `action_telemetry_max_env_steps` workflow (PD6 extends table with `rew_scale_terminated`).
   - **Knob choice:** **zero** additional deltas vs PD4 bundle (`max_moment`, `entropy_loss_scale`, `initial_log_std` unchanged); PD5 = stable-hover reward migration + existing PD4 exploration caps.
 
 ## Phase 2A Run PD5 — 2026-03-23

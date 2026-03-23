@@ -37,7 +37,7 @@ def apply_cbf_safety(
     pos_w: torch.Tensor,
     lin_vel_w: torch.Tensor,
     params: CbfParams,
-) -> tuple[torch.Tensor, float]:
+) -> tuple[torch.Tensor, torch.Tensor]:
     """Apply CBF safety projection to raw policy actions.
 
     Projects each agent's action onto the safe half-space for every pairwise
@@ -153,8 +153,8 @@ def apply_cbf_safety(
     # Clamp corrected actions to valid range
     safe_actions = safe_actions.clamp(-1.0, 1.0)
 
-    intervention_rate = intervention_mask.float().mean().item()
-    return safe_actions, intervention_rate
+    # Return 0-dim tensor so SKRL's isinstance+numel check passes for TensorBoard logging
+    return safe_actions, intervention_mask.float().mean()
 
 
 def apply_cbf_obstacle_safety(
@@ -164,7 +164,7 @@ def apply_cbf_obstacle_safety(
     obstacle_positions: torch.Tensor,
     obstacle_d_safe: float,
     gamma: float = 1.0,
-) -> tuple[torch.Tensor, float]:
+) -> tuple[torch.Tensor, torch.Tensor]:
     """Apply CBF safety projection for static obstacle avoidance.
 
     Barrier function per obstacle k for agent i:
@@ -239,8 +239,8 @@ def apply_cbf_obstacle_safety(
             intervention_mask[:, i] |= needs_correction
 
     safe_actions = safe_actions.clamp(-1.0, 1.0)
-    intervention_rate = intervention_mask.float().mean().item()
-    return safe_actions, intervention_rate
+    # Return 0-dim tensor so SKRL's isinstance+numel check passes for TensorBoard logging
+    return safe_actions, intervention_mask.float().mean()
 
 
 def compute_pairwise_distances(pos_w: torch.Tensor) -> torch.Tensor:

@@ -1,7 +1,7 @@
-# Phase 2A PD5 — Rule 22 smoke checklist
+# Phase 2A PD5+ — Rule 22 smoke checklist
 
-Before any long hover-stability GCE run (PD5+), run a **1-iteration** local smoke and
-confirm the five fields below match the **intended** `GGSwarmMarlHoverStabilityCfg`.
+Before any long hover-stability GCE run (PD5 onward), run a **1-iteration** local smoke and
+confirm the checklist fields below match the **intended** `GGSwarmMarlHoverStabilityCfg`.
 
 ## Command
 
@@ -17,13 +17,13 @@ GNN policy line with `hidden_channels=128`.
 
 Cross-check against [`drone_swarm_env_cfg.py`](../../source/ggSwarm/ggSwarm/tasks/direct/ggswarm_marl/drone_swarm_env_cfg.py) (`GGSwarmMarlHoverStabilityCfg`); smoke stdout does **not** dump these — read the cfg file or Hydra log if in doubt.
 
-| Field | Expected (PD5 baseline) |
-| :--- | :--- |
-| `rew_scale_upright` | `0.0` |
-| `rew_scale_ang_vel` | `-0.012` |
-| `rew_scale_terminated` | `0.0` |
-| `curriculum_start_step` | `999999` (hover-only lock) |
-| `spawn_yaw_range` | `0.3` |
+| Field | Expected (PD5 baseline) | Expected (PD6+) |
+| :--- | :--- | :--- |
+| `rew_scale_upright` | `0.0` | `0.0` |
+| `rew_scale_ang_vel` | `-0.012` | `-0.012` |
+| `rew_scale_terminated` | `0.0` | **`-5.0`** (dense ground penalty; see changelog PD6) |
+| `curriculum_start_step` | `999999` (hover-only lock) | `999999` |
+| `spawn_yaw_range` | `0.3` | `0.3` |
 
 Also confirm **`use_stable_hover_rewards: True`** (stable-hover reward path).
 
@@ -53,6 +53,9 @@ tensorboard --logdir logs\skrl\ggswarm_marl
 Watch **`Reward/act_clamp_hit_frac`**, **`Reward/moment_saturated_frac`**, **`Reward/act_raw_thrust_mean`**
 (only written for the first **200** env steps when `--action_telemetry_steps 200` is set).
 
+**PD6+:** With `extras["log"]` tensor scalars, also watch **`Info / rew_pos`**, **`Info / rew_vel`**,
+**`Info / rew_low_clearance`**, **`Info / rew_terminated`**, **`Info / mean_world_z`**.
+
 **3. Visual playback** (needs a checkpoint — use `best_agent.pt` from the short run, or any saved ckpt):
 
 ```powershell
@@ -67,9 +70,11 @@ on `GGSwarmMarlHoverStabilityCfg` — **do not commit**; prefer the CLI flag abo
 
 See also [`pd_authority_tuning.md`](pd_authority_tuning.md).
 
-## PD5 knob policy
+## PD5 / PD6 knob policy
 
-**Default:** no extra deltas beyond the stable-hover migration — PD5 is the first full
-train under `compute_stable_hover_rewards`. At most **one** of `max_moment` or
-exploration (`entropy_loss_scale` / `initial_log_std`) if smoke or TB forces it;
+**PD5 default:** no extra deltas beyond the stable-hover migration — first full train under
+`compute_stable_hover_rewards`. **PD6:** single reward knob `rew_scale_terminated=-5.0` on hover-stability
+(documented in [`changelog.md`](../status/changelog.md)).
+
+At most **one** further knob per smoke (`max_moment` or exploration) if TB forces it;
 document any change in [`changelog.md`](../status/changelog.md).

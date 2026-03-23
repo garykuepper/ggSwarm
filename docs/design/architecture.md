@@ -76,6 +76,15 @@ This matches real Crazyflie flight controller architecture (Bitcraze cascaded PI
 and the OmniDrones deployment pattern. The policy focuses on navigation/coordination;
 raw flight dynamics are handled by the deterministic controller.
 
+**Training telemetry (`extras["log"]` → TensorBoard):** SKRL’s MAPPO trainer logs
+`infos["log"]` only when each value is a **0-dim `torch.Tensor`** on the training device
+(`isinstance(v, torch.Tensor)` and `v.numel() == 1`). Python `float`s are **not** logged.
+Populate per-step diagnostics as tensor scalars — e.g. `terms_dict["rew_pos"].mean()` — so
+they appear as **`Info / rew_pos`**, **`Info / rew_vel`**, **`Info / rew_ang_vel`**,
+**`Info / rew_low_clearance`**, **`Info / rew_terminated`**, **`Info / mean_world_z`**,
+**`Info / low_clearance_frac`**, **`Info / curriculum_alpha`**, plus optional action telemetry
+and CBF rates when enabled.
+
 **Previous action contract (Runs 1–A1, now retired):** Policy output raw torques
 (`moment_scale * action[1:4]`). This required the policy to simultaneously learn
 flight dynamics and navigation, which proved unlearnable in 4 consecutive failed runs.
@@ -93,6 +102,8 @@ GATv2 policy — reward path differs: Phase 2A sets `use_stable_hover_rewards=Tr
 (Gaussian position, L2 velocity norms, curriculum/formation terms).
 Phase 2A adds optional **low-clearance shaping** (`rew_scale_low_clearance`, `low_clearance_margin_m` in cfg) so training
 penalizes time spent below the same altitude band used in eval (`min_height + margin`).
+Optional **`rew_scale_terminated`** (hover-stability cfg) adds a **dense** penalty each step while `z < min_height`
+(see `compute_stable_hover_rewards` in `contract_logic.py`).
 Phase B resumes the Phase A `best_agent.pt` checkpoint via `--checkpoint`.
 Phase C (perturbation) is a future placeholder — see `GGSwarmMarlFormationCfg`.
 
