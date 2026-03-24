@@ -33,7 +33,7 @@ from .contract_logic import (
 from .cbf_safety import CbfParams, apply_cbf_safety, apply_cbf_obstacle_safety
 from .minco_trajectory import MincoParams, MincoSmoother
 from .swarm_raft import SwarmRaft, SwarmRaftParams
-from .attitude_controller import AttitudeControllerParams, compute_attitude_control
+from .attitude_controller import AttitudeControllerParams, compute_attitude_control  # kept for Phase 3
 
 # import logger
 logger = logging.getLogger("isaaclab")
@@ -60,39 +60,13 @@ class GGSwarmMarlEnv(DirectMARLEnv):
         self._gravity_magnitude = gravity.norm()
         self._robot_weight = (self._robot_mass * self._gravity_magnitude).item()
 
-        # Build attitude controller params from cfg (Rule 6 — no magic numbers here)
-        self._att_ctrl_params = AttitudeControllerParams(
-            kp_att=self.cfg.kp_att,
-            kd_att=self.cfg.kd_att,
-            kp_yaw=self.cfg.kp_yaw,
-            max_tilt_angle=self.cfg.max_tilt_angle,
-            max_yaw_rate=self.cfg.max_yaw_rate,
-            max_moment=self.cfg.max_moment,
-            thrust_to_weight=self.cfg.thrust_to_weight,
-        )
-        # Log PD gains and verify damping ratio against sim inertia
-        inertias = self.robot.root_physx_view.get_inertias()  # shape: [num_instances, num_bodies, 9]
-        if inertias.dim() == 3:
-            _body_inertia = inertias[0, self._body_indices].flatten()
-        else:
-            _body_inertia = inertias[0].flatten()
-        _Ixx = float(_body_inertia[0])
-        _Iyy = float(_body_inertia[4])
-        _Izz = float(_body_inertia[8])
-        _omega_n = (_Ixx > 0 and (self.cfg.kp_att / _Ixx) ** 0.5) or 0.0
-        _zeta = (self.cfg.kd_att / (2.0 * (self.cfg.kp_att * _Ixx) ** 0.5)) if _Ixx > 0 else 0.0
+        # PD16: direct moment control matching Isaac Lab Isaac-Quadcopter-Direct-v0.
+        # Policy outputs [thrust_cmd, moment_x, moment_y, moment_z]; moments scaled
+        # by moment_scale (default 0.01 Nm). No PD controller, no saturation clamp.
         logger.info(
-            "AttitudeController active | kp_att=%.4f kd_att=%.5f kp_yaw=%.4f max_moment=%.3f",
-            self.cfg.kp_att,
-            self.cfg.kd_att,
-            self.cfg.kp_yaw,
-            self.cfg.max_moment,
-        )
-        logger.info(
-            "PD dynamics | Ixx=%.2e Iyy=%.2e Izz=%.2e | omega_n=%.1f rad/s zeta=%.3f t_settle=%.4fs",
-            _Ixx, _Iyy, _Izz,
-            _omega_n, _zeta,
-            (4.0 / (_zeta * _omega_n)) if _zeta * _omega_n > 0 else float("inf"),
+            "Direct moment control | thrust_to_weight=%.2f moment_scale=%.4f",
+            self.cfg.thrust_to_weight,
+            self.cfg.moment_scale,
         )
         if self.cfg.use_stable_hover_rewards:
             logger.info(
@@ -106,12 +80,6 @@ class GGSwarmMarlEnv(DirectMARLEnv):
         self._thrust = torch.zeros(num_instances, 1, 3, device=self.device)  # pre-allocated; reused every step
         # Roll/pitch/yaw moments applied to main body; pre-allocated, reused every step
         self._moment = torch.zeros(num_instances, 1, 3, device=self.device)  # pre-allocated; reused every step
-        # PD moments before max_moment clamp; only used when action telemetry is enabled
-        self._moment_pre_clamp: torch.Tensor | None = None
-        if self.cfg.action_telemetry_max_env_steps > 0:
-            self._moment_pre_clamp = torch.zeros(
-                num_instances, 1, 3, device=self.device
-            )  # pre-allocated; reused every step
         self._pending_action_telemetry: dict[str, torch.Tensor] = {}
 
         # --- Phase 3: SwarmRaft Consensus (L3, gated by cfg.raft_enabled) ---
@@ -290,50 +258,24 @@ class GGSwarmMarlEnv(DirectMARLEnv):
         # Reshape to (num_instances, 4) (num_instances = num_envs * num_agents)
         flat_actions = all_actions.view(-1, 4)
 
-        # Read current attitude state for the PD controller
-        # shape: [num_instances, 3]
-        proj_grav_b = self.robot.data.projected_gravity_b
-        ang_vel_b = self.robot.data.root_ang_vel_b
-
-        # PD attitude controller: converts [thrust_cmd, desired_roll, desired_pitch,
-        # desired_yaw_rate] into body-frame thrust force and moments.
-        # Writes in-place into pre-allocated self._thrust and self._moment (Rule 15).
-        compute_attitude_control(
-            actions=flat_actions,
-            proj_grav_b=proj_grav_b,
-            ang_vel_b=ang_vel_b,
-            robot_weight=self._robot_weight,
-            params=self._att_ctrl_params,
-            thrust_buf=self._thrust,
-            moment_buf=self._moment,
-            moment_pre_clamp_buf=self._moment_pre_clamp,
-        )
+        # PD16: Direct moment control matching Isaac Lab Isaac-Quadcopter-Direct-v0.
+        # Policy outputs [thrust_cmd, moment_x, moment_y, moment_z] in [-1, 1].
+        # Thrust: action 0 maps [-1,1] -> [0,1] -> [0, thrust_to_weight * weight].
+        # Moments: actions 1:3 scaled by moment_scale (default 0.01 Nm).
+        # No PD controller, no saturation clamp — identical to Isaac Lab line 152-153.
+        thrust_val = (flat_actions[:, 0] + 1.0) * 0.5  # [-1,1] -> [0,1]
+        self._thrust[:, 0, 2] = self.cfg.thrust_to_weight * self._robot_weight * thrust_val
+        self._moment[:, 0, :] = self.cfg.moment_scale * flat_actions[:, 1:]
 
         # Optional TensorBoard telemetry (first N env steps only).
-        # Values stored as 0-dim tensors so SKRL's isinstance+numel check passes
-        # and they appear as "Info / *" scalars in TensorBoard.
         self._pending_action_telemetry = {}
         if (
             self.cfg.action_telemetry_max_env_steps > 0
             and int(self.common_step_counter) < self.cfg.action_telemetry_max_env_steps
         ):
-            mm = float(self.cfg.max_moment)
-            ra = raw_actions[..., 0]
-            ca = all_actions[..., 0]
-            self._pending_action_telemetry["act_raw_thrust_mean"] = ra.mean()
-            self._pending_action_telemetry["act_raw_thrust_std"] = ra.std(unbiased=False)
-            self._pending_action_telemetry["act_raw_thrust_min"] = ra.min()
-            self._pending_action_telemetry["act_raw_thrust_max"] = ra.max()
-            self._pending_action_telemetry["act_clamped_thrust_mean"] = ca.mean()
-            self._pending_action_telemetry["act_clamp_hit_frac"] = (raw_actions != all_actions).float().mean()
-            thrust_val = (flat_actions[:, 0] + 1.0) * 0.5
             self._pending_action_telemetry["thrust_val_mean"] = thrust_val.mean()
-            if self._moment_pre_clamp is not None:
-                pre = self._moment_pre_clamp[:, 0, :]
-                self._pending_action_telemetry["moment_pre_abs_max_mean"] = pre.abs().max(dim=1).values.mean()
-                self._pending_action_telemetry["moment_saturated_frac"] = (
-                    (pre.abs() >= mm - 1e-6).any(dim=-1).float().mean()
-                )
+            self._pending_action_telemetry["moment_abs_mean"] = self._moment[:, 0, :].abs().mean()
+            self._pending_action_telemetry["act_clamp_hit_frac"] = (raw_actions != all_actions).float().mean()
 
     def _apply_action(self) -> None:
         # Apply thrust (body-frame Z) and attitude moments to the main body in a
