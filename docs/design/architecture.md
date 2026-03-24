@@ -122,7 +122,27 @@ Phase C (perturbation) is a future placeholder — see `GGSwarmMarlFormationCfg`
 unchanged. Use `Template-GGSwarm-Marl-Phase3-v0` (or override config flags) to
 enable Phase 3 features.
 
-## 4. Training Pipeline
+## 4. Platform & Training Pipeline
+
+### Robot: Bitcraze Crazyflie 2.x
+
+| Spec | Value |
+| :--- | :--- |
+| Dimensions (WxHxD) | 92 x 92 x 29 mm (motor-to-motor) |
+| Mass (sim) | ~0.027 kg (from `CRAZYFLIE_CFG` URDF) |
+| `drone_radius` (cfg) | 0.05 m (approximate collision envelope) |
+
+Reward and spacing parameters are calibrated to this physical scale:
+
+| Parameter | Value | In body-widths (~9 cm) |
+| :--- | :--- | :--- |
+| `pos_tanh_sigma` | 0.25 m | ~2.7x |
+| `target_formation_dist` | 0.20 m | ~2.2x |
+| `min_separation_dist` | 0.10 m | ~1.1x |
+| `spawn_dist` | 0.50 m | ~5.4x |
+| `graph_connectivity_radius` | 2.00 m | ~21.7x |
+
+### Training Stack
 
 | Component | Technology |
 | :--- | :--- |

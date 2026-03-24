@@ -279,6 +279,57 @@ This document tracks major technical changes and milestone completions for each 
   - **All PD10 reward parameters preserved** — reward landscape is working correctly.
   - **No MAPPO changes** — `max_log_std=0.0`, `entropy_loss_scale=0.008`, `learning_rate=1e-4` unchanged.
 
+## Phase 2A Run PD11 — 2026-03-24
+
+- **Run dir:** `logs/skrl/ggswarm_marl/2026-03-24_02-19-01_mappo_torch`
+- **Config class:** `GGSwarmMarlHoverStabilityCfg` — `max_moment=0.05` (PD authority increase),
+  all PD10 reward parameters preserved
+- **Train budget:** 92,000 iterations (GCE)
+- **Convergence:** no entropy collapse | peak reward **-17.91** @ step **65,000** | final **-159.92** @ step
+  **92,000** | recommended budget **105,799** steps
+- **Scorecard** (`post_train_assess.py`, seed **42**, `best_agent.pt`, 5 episodes):
+  - survival_steps = **4.2** (FAIL; gate > 500)
+  - airborne_ratio = **0.757** (FAIL; gate > 0.9)
+  - ground_hit_rate = **0.358** (WARN; gate < 0.5)
+  - mean_roll_deg = **49.6°** (WARN; gate < 60°)
+  - orientation_violation_rate = **0.582** (FAIL; gate < 0.1)
+  - mean_formation_error_m = **0.548** (WARN; gate < 1.5)
+  - verdict = **FAIL**
+- **Training Curve Progression (new diagnostic — first run with `extract_training_progression`):**
+  - `thrust_val_mean`: **0.43 → 0.07 → 0.12** — policy cut thrust by 10k and never recovered hover.
+    PD10 converged to 0.499 (hover); PD11 converged to 0.12 (diving).
+  - `mean_dist_to_goal`: **0.68 → 0.47** (flat; PD10 reached **0.015 m**)
+  - `ground_hit_rate_step`: **0.19 → 0.28** (getting **worse** over training)
+  - `rew_ang_vel`: **-1.57 → -0.36** (improving — but via "don't fly" exploit, not stable hover)
+  - `moment_saturated_frac`: **0.97 → 0.45** (still high despite 67% larger `max_moment`)
+- **Root cause:** `max_moment: 0.03 → 0.05` increased PD corrective moments, but stronger corrections
+  produce larger angular velocities during recovery. `rew_scale_ang_vel=-0.06` punishes this heavily.
+  The policy's cheapest escape: cut thrust → no flight → less angular velocity → less penalty. This
+  "don't fly" exploit was not possible in PD10 because weaker moments (0.03) produced gentler corrections
+  that didn't trigger the angular velocity penalty as hard.
+- **vs PD10:** `mean_roll_deg` **23.9° → 49.6°** (2x worse); `thrust_val_mean` **0.499 → 0.125**
+  (not hovering); `orientation_violation_rate` **0.455 → 0.582** (worse). Clear regression.
+- **Decision: FAIL** — do not advance to Phase 2B.
+- **Next action:** PD12 — reduce `rew_scale_ang_vel` to make the angular velocity penalty compatible
+  with stronger PD moments. Keep `max_moment=0.05` (needed for train-eval gap closure).
+
+- [2026-03-24] **Phase 2A PD12 prep** (ang_vel penalty rebalance — **before** GCE PD12 train):
+  - **Root cause (PD11 regression):** `rew_scale_ang_vel=-0.06` + `max_moment=0.05` created a
+    "don't fly" exploit. Stronger PD moments produce larger transient angular velocities during
+    attitude correction. The ang_vel penalty punished corrections so heavily that the policy
+    learned to cut thrust (0.12 vs 0.50 hover) rather than fly and risk angular velocity penalties.
+  - **Fix (two knobs, one conceptual change):**
+    - `rew_scale_ang_vel: -0.06 → -0.01` — weaker ang_vel penalty so the policy tolerates transient
+      angular velocity from PD corrections. PD10 had -0.06 with weaker moments (0.03); with stronger
+      moments (0.05), corrections are more vigorous and need a gentler penalty.
+    - `rew_scale_vel: -0.3 → -0.1` — reduce velocity penalty proportionally. PD10 showed the policy
+      converges to near-zero speed regardless; 3x weaker still provides signal without suppressing
+      early exploration.
+  - **Preserved from PD10/PD11:** `max_moment=0.05` (needed for train-eval gap), `pos_tanh_sigma=0.25`
+    (sharp discriminator working), `rew_scale_pos=18.0`, `rew_scale_terminated=-2.0`,
+    `rew_scale_low_clearance=-8.0`, `max_log_std=0.0`.
+  - **No MAPPO changes.**
+
 ## Phase 2A Run PD7 — 2026-03-23
 
 - **Run dir:** `logs/skrl/ggswarm_marl/2026-03-23_03-38-53_mappo_torch`

@@ -204,6 +204,61 @@ def format_tb_diagnostics(scalars: list[dict]) -> list[str]:
     return lines
 
 
+def format_training_progression(
+    progression: dict[str, list[dict[str, float | int]]],
+) -> list[str]:
+    """Format training curve progression as a markdown table for the assess report.
+
+    Args:
+        progression: Dict mapping tag name to list of {step, value} samples,
+                     as returned by extract_training_progression().
+
+    Returns:
+        List of markdown lines (section header + table). Empty list if no data.
+    """
+    if not progression:
+        return []
+
+    # Collect all unique steps across all tags for column headers
+    all_steps: list[int] = []
+    for samples in progression.values():
+        for s in samples:
+            if s["step"] not in all_steps:
+                all_steps.append(s["step"])
+    all_steps.sort()
+
+    # Short label for each tag (strip "Info / " prefix for readability)
+    def _short(tag: str) -> str:
+        return tag.replace("Info / ", "").replace("Policy / ", "")
+
+    # Build header with step columns as "Nk"
+    step_headers = [f"{s // 1000}k" for s in all_steps]
+    header = "| Scalar | " + " | ".join(step_headers) + " |"
+    sep = "| :--- | " + " | ".join(":---" for _ in all_steps) + " |"
+
+    lines: list[str] = [
+        "## Training Curve Progression",
+        "",
+        header,
+        sep,
+    ]
+
+    for tag, samples in progression.items():
+        # Build a step -> value lookup for this tag
+        step_map = {s["step"]: s["value"] for s in samples}
+        cells: list[str] = []
+        for step in all_steps:
+            if step in step_map:
+                val = step_map[step]
+                # Use compact formatting: 4 decimal places, skip leading zero
+                cells.append(f"{val:.4f}")
+            else:
+                cells.append("—")
+        lines.append(f"| `{_short(tag)}` | " + " | ".join(cells) + " |")
+
+    return lines
+
+
 def format_run_history_row(
     run_dir_name: str,
     metrics: dict[str, float],
@@ -242,19 +297,21 @@ def write_report(
     checkpoint_name: str,
     tb_diagnostics: list[dict] | None = None,
     trajectory_dir: Path | None = None,
+    training_progression: dict[str, list[dict[str, float | int]]] | None = None,
 ) -> None:
     """Write assess_report.md into the run directory.
 
     Args:
-        run_dir:         Path to the training run directory.
-        metrics:         Flat dict of all eval metric values.
-        convergence:     Dict returned by analyze_convergence().
-        overall:         Overall scorecard verdict ('PASS'/'WARN'/'FAIL').
-        task:            Gym task ID used for evaluation.
-        num_episodes:    Number of evaluation episodes run.
-        checkpoint_name: Filename of the evaluated checkpoint.
-        tb_diagnostics:  List of dicts from extract_scalar_summary() (optional).
-        trajectory_dir:  Path to trajectory plot directory (optional).
+        run_dir:               Path to the training run directory.
+        metrics:               Flat dict of all eval metric values.
+        convergence:           Dict returned by analyze_convergence().
+        overall:               Overall scorecard verdict ('PASS'/'WARN'/'FAIL').
+        task:                  Gym task ID used for evaluation.
+        num_episodes:          Number of evaluation episodes run.
+        checkpoint_name:       Filename of the evaluated checkpoint.
+        tb_diagnostics:        List of dicts from extract_scalar_summary() (optional).
+        trajectory_dir:        Path to trajectory plot directory (optional).
+        training_progression:  Dict from extract_training_progression() (optional).
     """
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     run_name = run_dir.name
@@ -290,6 +347,11 @@ def write_report(
     tb_lines = format_tb_diagnostics(tb_diagnostics or [])
     if tb_lines:
         lines += ["", *tb_lines]
+
+    # Training curve progression (sampled at ~10k intervals)
+    prog_lines = format_training_progression(training_progression or {})
+    if prog_lines:
+        lines += ["", *prog_lines]
 
     lines += [
         "",

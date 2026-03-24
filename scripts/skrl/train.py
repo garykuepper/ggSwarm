@@ -120,6 +120,23 @@ parser.add_argument(
     help="Use the custom GATv2 GNN policy instead of the default MLP.",
 )
 parser.add_argument(
+    "--early_stop_step",
+    type=int,
+    default=20000,
+    help=(
+        "Step at which to run a health check on TensorBoard scalars. "
+        "If key metrics indicate a failed run (e.g. thrust collapsed, "
+        "ground_hit rising), training is stopped early. 0 = disabled. "
+        "Default: 20000."
+    ),
+)
+parser.add_argument(
+    "--no_early_stop",
+    action="store_true",
+    default=False,
+    help="Disable the automatic early-stop health check.",
+)
+parser.add_argument(
     "--action_telemetry_steps",
     type=int,
     default=None,
@@ -249,6 +266,81 @@ def _latest_event_step(log_dir: Path) -> int:
     return max_step
 
 
+def _check_training_health(log_dir: Path, check_step: int) -> tuple[bool, str]:
+    """Check TensorBoard scalars for known failure patterns.
+
+    Args:
+        log_dir: Path to the training run log directory.
+        check_step: The step at which to evaluate health.
+
+    Returns:
+        Tuple of (healthy, reason). If healthy is False, reason explains why.
+    """
+    try:
+        from tensorboard.backend.event_processing.event_accumulator import (
+            EventAccumulator,
+        )
+    except ImportError:
+        return True, "tensorboard not available; skipping health check"
+
+    try:
+        ea = EventAccumulator(str(log_dir))
+        ea.Reload()
+    except Exception:
+        return True, "could not load TFEvents; skipping health check"
+
+    available = set(ea.Tags().get("scalars", []))
+    failures: list[str] = []
+
+    # Check 1: thrust_val_mean — should be approaching 0.5 (hover), not collapsed
+    tag = "Info / thrust_val_mean"
+    if tag in available:
+        events = ea.Scalars(tag)
+        # Find the value closest to check_step
+        recent = [e for e in events if e.step >= check_step * 0.8]
+        if recent:
+            val = recent[-1].value
+            if val < 0.25:
+                failures.append(
+                    f"thrust_val_mean={val:.3f} at step {recent[-1].step} "
+                    f"(expected >0.25 for hover; policy may be cutting thrust)"
+                )
+
+    # Check 2: ground_hit_rate_step — should be decreasing, not increasing
+    tag = "Info / ground_hit_rate_step"
+    if tag in available:
+        events = ea.Scalars(tag)
+        early = [e for e in events if e.step <= check_step * 0.3]
+        recent = [e for e in events if e.step >= check_step * 0.8]
+        if early and recent:
+            early_val = sum(e.value for e in early) / len(early)
+            recent_val = sum(e.value for e in recent) / len(recent)
+            if recent_val > early_val * 1.5 and recent_val > 0.2:
+                failures.append(
+                    f"ground_hit_rate_step rising: {early_val:.3f} -> {recent_val:.3f} "
+                    f"(crashes increasing over training)"
+                )
+
+    # Check 3: mean_dist_to_goal — should be decreasing
+    tag = "Info / mean_dist_to_goal"
+    if tag in available:
+        events = ea.Scalars(tag)
+        early = [e for e in events if e.step <= check_step * 0.3]
+        recent = [e for e in events if e.step >= check_step * 0.8]
+        if early and recent:
+            early_val = sum(e.value for e in early) / len(early)
+            recent_val = sum(e.value for e in recent) / len(recent)
+            if recent_val > early_val * 0.9 and recent_val > 0.4:
+                failures.append(
+                    f"mean_dist_to_goal not improving: {early_val:.3f} -> {recent_val:.3f} "
+                    f"(policy not learning to approach goal)"
+                )
+
+    if failures:
+        return False, "; ".join(failures)
+    return True, "all checks passed"
+
+
 def _progress_monitor(
     *,
     stop_event: Event,
@@ -258,13 +350,15 @@ def _progress_monitor(
     progress_target: int,
     poll_interval_s: float,
     eta_window_s: float,
+    early_stop_step: int = 0,
 ) -> None:
     """Emit periodic progress and throughput-based ETA logs.
-    
+
     Args:
         progress_target: Target for progress reporting (iterations or timesteps).
                         When max_iterations is set, this is the iteration count.
                         Otherwise, this equals total_timesteps.
+        early_stop_step: Step at which to run health check. 0 = disabled.
     """
     start_time = time.time()
     history: deque[tuple[float, int]] = deque()
@@ -272,6 +366,7 @@ def _progress_monitor(
     last_emitted_step = -1
     last_heartbeat_time = start_time
     heartbeat_interval_s = max(30.0, poll_interval_s * 3.0)
+    health_checked = False
     # Determine unit label based on whether we're tracking iterations or timesteps
     is_iteration_tracking = (progress_target != total_timesteps)
     unit_label = "iters" if is_iteration_tracking else "steps"
@@ -315,6 +410,39 @@ def _progress_monitor(
         # Heartbeat spam after 100% clutters the log with no useful information.
         if current_step >= progress_target and not is_new_progress:
             continue
+
+        # --- Early-stop health check (runs once at early_stop_step) ---
+        if (
+            early_stop_step > 0
+            and not health_checked
+            and current_step >= early_stop_step
+        ):
+            health_checked = True
+            healthy, reason = _check_training_health(log_dir, early_stop_step)
+            if healthy:
+                print(
+                    f"[HEALTH] Step {current_step:,}: {reason}",
+                    flush=True,
+                )
+            else:
+                print(
+                    f"[HEALTH] EARLY STOP at step {current_step:,}: {reason}",
+                    flush=True,
+                )
+                # Write a marker file for post-training detection
+                kill_file = log_dir / "EARLY_STOP"
+                kill_file.write_text(
+                    f"Early stop triggered at step {current_step}\n"
+                    f"Reason: {reason}\n"
+                )
+                # Signal the main thread to stop
+                stop_event.set()
+                # Send SIGTERM to own process — SKRL's runner.run() is blocking,
+                # but the signal handler will interrupt it cleanly.
+                import os as _os
+                import signal as _signal
+                _os.kill(_os.getpid(), _signal.SIGTERM)
+                return
 
         status_suffix = ""
         if not is_new_progress:
@@ -547,6 +675,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # When max_iterations is provided, track progress in iteration-space (not timestep-space).
     # Otherwise, fall back to timestep-space for backward compatibility.
     progress_target = args_cli.max_iterations if args_cli.max_iterations else total_timesteps
+    early_stop_step = 0 if args_cli.no_early_stop else args_cli.early_stop_step
     if not args_cli.no_progress:
         monitor_stop_event = Event()
         monitor_thread = Thread(
@@ -559,16 +688,23 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                 "progress_target": progress_target,
                 "poll_interval_s": args_cli.progress_interval_s,
                 "eta_window_s": args_cli.eta_window_s,
+                "early_stop_step": early_stop_step,
             },
             daemon=True,
         )
         monitor_thread.start()
+        early_stop_msg = (
+            f", early_stop_step={early_stop_step}" if early_stop_step > 0
+            else ", early_stop=disabled"
+        )
         print(
             "[INFO] Progress reporting enabled "
             f"(interval={args_cli.progress_interval_s:.1f}s, "
-            f"eta_window={args_cli.eta_window_s:.1f}s)."
+            f"eta_window={args_cli.eta_window_s:.1f}s"
+            f"{early_stop_msg})."
         )
 
+    early_stop_file = Path(log_dir) / "EARLY_STOP"
     try:
         runner.run()
     finally:
@@ -576,6 +712,15 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             monitor_stop_event.set()
         if monitor_thread is not None:
             monitor_thread.join(timeout=2.0)
+
+    if early_stop_file.exists():
+        reason = early_stop_file.read_text().strip()
+        print(f"\n[EARLY STOP] Training terminated early.\n{reason}")
+        print(f"Training time: {round(time.time() - start_time, 2)} seconds")
+        # Exit with code 2 so train_and_push.sh can distinguish early stop from success
+        env.close()
+        simulation_app.close()
+        sys.exit(2)
 
     print(f"Training time: {round(time.time() - start_time, 2)} seconds")
 

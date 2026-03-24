@@ -235,10 +235,13 @@ class GGSwarmMarlHoverStabilityCfg(GGSwarmMarlEnvCfg):
     # PD10: sharpen position discriminator — at sigma=0.25 reward drops to 5% at 0.5m drift
     # (was 45% at sigma=0.8). Crash-reset strategy yields ~40 vs hover ~180 per episode (4.5x ratio).
     pos_tanh_sigma: float = 0.25
-    # PD10: 5.5x increase so velocity penalty is visible in TB (still 60x below pos peak at hover).
-    rew_scale_vel: float = -0.3
-    # PD10: 5x increase so angular velocity penalty is visible in TB (was flat across PD1-PD9).
-    rew_scale_ang_vel: float = -0.06
+    # PD12: reduced from -0.3 (PD10). Velocity penalty still provides signal but doesn't suppress
+    # early exploration when combined with stronger PD moments (max_moment=0.05).
+    rew_scale_vel: float = -0.1
+    # PD12: reduced from -0.06 (PD10). Stronger PD moments (0.05) produce larger transient angular
+    # velocities during attitude correction; -0.06 caused "don't fly" exploit in PD11 where the
+    # policy cut thrust to avoid ang_vel penalties. -0.01 tolerates PD correction transients.
+    rew_scale_ang_vel: float = -0.01
 
     # Disable unused reward terms (PD controller makes these redundant)
     rew_scale_upright: float = 0.0

@@ -233,6 +233,26 @@ def main() -> None:
         print(f"  [WARN] TB diagnostics extraction failed: {exc}")
 
     # ------------------------------------------------------------------
+    # Step 1c: Training curve progression (sampled at ~10k intervals)
+    # ------------------------------------------------------------------
+    training_progression: dict[str, list[dict]] = {}
+    try:
+        from cloud.check_convergence import extract_training_progression  # noqa: PLC0415
+
+        training_progression = extract_training_progression(str(run_dir))
+        if training_progression:
+            print(f"\n  Training progression: {len(training_progression)} scalar(s) sampled")
+            for tag, samples in training_progression.items():
+                short = tag.replace("Info / ", "").replace("Policy / ", "")
+                first, last = samples[0], samples[-1]
+                print(
+                    f"    {short}: {first['value']:.4f} ({first['step'] // 1000}k)"
+                    f" -> {last['value']:.4f} ({last['step'] // 1000}k)"
+                )
+    except Exception as exc:
+        print(f"  [WARN] Training progression extraction failed: {exc}")
+
+    # ------------------------------------------------------------------
     # Boot Isaac Lab (heavy — after convergence so output is visible early)
     # ------------------------------------------------------------------
     app_launcher = AppLauncher(args_cli)
@@ -362,6 +382,7 @@ def main() -> None:
         checkpoint_name=best_ckpt.name,
         tb_diagnostics=tb_diagnostics,
         trajectory_dir=trajectory_dir,
+        training_progression=training_progression,
     )
 
     # ------------------------------------------------------------------

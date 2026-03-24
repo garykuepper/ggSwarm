@@ -97,6 +97,17 @@ TB_DIAGNOSTIC_TAGS: list[str] = [
     "Info / rew_terminated",
 ]
 
+# Tags to sample at regular intervals for training curve progression.
+TB_PROGRESSION_TAGS: list[str] = [
+    "Info / rew_ang_vel",
+    "Info / moment_saturated_frac",
+    "Info / ground_hit_rate_step",
+    "Info / mean_dist_to_goal",
+    "Info / mean_lin_speed",
+    "Info / thrust_val_mean",
+    "Info / mean_world_z",
+]
+
 
 def extract_scalar_summary(
     log_dir: str,
@@ -133,6 +144,66 @@ def extract_scalar_summary(
             "first_step": events[0].step,
             "last_step": events[-1].step,
         })
+    return results
+
+
+def extract_training_progression(
+    log_dir: str,
+    tags: list[str] | None = None,
+    interval: int = 10000,
+) -> dict[str, list[dict[str, float | int]]]:
+    """Sample key scalars at regular step intervals for training curve analysis.
+
+    Args:
+        log_dir: Path to the log directory containing events.out.tfevents files.
+        tags: List of scalar tag names. Defaults to TB_PROGRESSION_TAGS.
+        interval: Step interval for sampling (default 10,000).
+
+    Returns:
+        Dict mapping tag name to a list of {step, value} dicts at each interval.
+        Tags not found in the event file are silently skipped.
+    """
+    if tags is None:
+        tags = TB_PROGRESSION_TAGS
+
+    ea = EventAccumulator(log_dir)
+    ea.Reload()
+    available = set(ea.Tags().get("scalars", []))
+
+    results: dict[str, list[dict[str, float | int]]] = {}
+    for tag in tags:
+        if tag not in available:
+            continue
+        events = ea.Scalars(tag)
+        if len(events) < 2:
+            continue
+
+        # Find the max step to determine sampling points
+        max_step = events[-1].step
+        sample_steps = list(range(0, max_step + 1, interval))
+        if sample_steps[-1] < max_step:
+            sample_steps.append(max_step)
+
+        # For each sample point, find the closest logged event
+        sampled: list[dict[str, float | int]] = []
+        event_idx = 0
+        for target in sample_steps:
+            # Advance to the closest event at or after target
+            while event_idx < len(events) - 1 and events[event_idx].step < target:
+                event_idx += 1
+            # Pick the closer of event_idx and event_idx-1
+            if event_idx > 0:
+                prev_dist = abs(events[event_idx - 1].step - target)
+                curr_dist = abs(events[event_idx].step - target)
+                best = event_idx - 1 if prev_dist < curr_dist else event_idx
+            else:
+                best = event_idx
+            sampled.append({
+                "step": events[best].step,
+                "value": events[best].value,
+            })
+
+        results[tag] = sampled
     return results
 
 
