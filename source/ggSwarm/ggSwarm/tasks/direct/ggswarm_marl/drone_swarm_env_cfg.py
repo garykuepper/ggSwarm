@@ -65,35 +65,38 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     # --- PD Attitude Controller (inner loop) ---
     # The RL policy outputs [thrust, desired_roll, desired_pitch, desired_yaw_rate].
     # The PD controller converts these into body-frame thrust + moments each step.
-    # Gains derived from sim inertia (scripts/extract_crazyflie_inertia.py):
-    #   Ixx = Iyy = 1.66e-5 kg*m^2, Izz = 2.93e-5 kg*m^2 (from PhysX)
-    #   omega_n = sqrt(kp_att / Ixx) = 52.1 rad/s
-    #   zeta = kd_att / (2 * sqrt(kp_att * Ixx)) = 1.0 (critical damping)
-    #   t_settle = 4 / omega_n = 0.077 s (4 control steps @ 50 Hz)
+    # Sim inertia (scripts/extract_crazyflie_inertia.py): Ixx=1.66e-5, zeta=2.9 at these gains.
+    # PD13/PD14 proved critical damping (kd=0.00173) is unstable during early RL training:
+    # without heavy damping, random policy commands cause violent flips (mean_world_z > 13m).
+    # The overdamped response (zeta=2.9) acts as a natural safety limiter during exploration.
     # Proportional gain for roll/pitch attitude error (Nm/rad).
     kp_att: float = 0.045
     # Derivative/damping gain for roll/pitch (Nm/(rad/s)).
-    # PD13: 0.005 -> 0.00173. Old value gave zeta=2.9 (heavily overdamped); D-term consumed
-    # 107% of P-term budget at 5 rad/s, leaving no corrective authority. Critical damping
-    # (zeta=1.0) computed from sim Ixx=1.66e-5: kd = 2*sqrt(kp*I) = 0.00173.
-    kd_att: float = 0.00173
+    # PD15: reverted to 0.005 (PD10 value). Overdamped (zeta=2.9) is intentional — prevents
+    # ballistic flips during early random-policy exploration. PD13 (kd=0.00173, zeta=1.0) and
+    # PD14 (same kd, lower max_moment) both caused drones to fly away at 6-13m altitude.
+    kd_att: float = 0.005
     # Proportional gain for yaw rate error (Nm/(rad/s)).
     kp_yaw: float = 0.01
     # Maximum tilt angle the policy can command (rad). 0.52 rad ≈ 30 degrees.
     max_tilt_angle: float = 0.52
     # Maximum yaw rate the policy can command (rad/s). pi rad/s = 180 deg/s.
     max_yaw_rate: float = 3.14159
-    # Moment output clamp (Nm). PD14: 0.08 -> 0.04. PD13's 0.08 gave 4800 rad/s^2 angular
-    # accel at Ixx=1.66e-5 — drones flipped violently (mean_world_z hit 6.5m, dist_to_goal 6.7m).
-    # 0.04 Nm = 2400 rad/s^2 peak accel; P-term at 30 deg = 0.023 Nm fits with 43% headroom.
-    # With critically-damped kd=0.00173, D-term at 5 rad/s = 0.0087 Nm; total = 0.032 fits.
-    # PD10 used 0.03 with overdamped kd=0.005 (33% saturation); 0.04 + critical kd should
-    # have less saturation because D-term is 3x smaller.
-    max_moment: float = 0.04
+    # Moment output clamp (Nm). PD15: reverted to 0.03 (PD10 value). PD10 learned to hover
+    # in training with these gains; the 155x train-eval gap is addressed by adding eval noise
+    # (eval_noise_std in play.py) instead of raising max_moment.
+    max_moment: float = 0.03
 
     # When > 0, log raw vs clamped action stats and PD moment saturation to extras["log"]
     # for the first N env steps (TensorBoard). 0 = disabled (default).
     action_telemetry_max_env_steps: int = 0
+
+    # Standard deviation of Gaussian noise added to mean actions during eval/play.
+    # PD15: addresses PD10's 155x train-eval gap. The PD controller saturates at max_moment=0.03;
+    # stochastic training noise (std ~0.12) dithers past saturation, but deterministic eval can't.
+    # Small eval noise (0.05) replicates the dithering effect without changing the PD gains.
+    # 0.0 = fully deterministic (default for training); set in HoverStabilityCfg for eval.
+    eval_noise_std: float = 0.0
 
     # Use ``compute_stable_hover_rewards`` (tanh position, squared vel, dt-scaled) instead
     # of ``compute_marl_rewards``. Phase 2A hover-stability enables this; formation does not.
@@ -272,6 +275,11 @@ class GGSwarmMarlHoverStabilityCfg(GGSwarmMarlEnvCfg):
 
     # PD10: enable action telemetry for full run — thrust_val_mean, moment saturation in TB.
     action_telemetry_max_env_steps: int = 999999
+
+    # PD15: eval noise to bridge PD saturation train-eval gap.
+    # PD10 trained to 0.24% crash rate but eval had 37% — stochastic noise dithered past
+    # the 0.03 Nm saturation boundary. 0.05 std = ~3 deg attitude noise per step.
+    eval_noise_std: float = 0.05
 
     # Scale up parallel envs for GCE L4 GPU (24 GB VRAM).
     # 512 envs * 3 agents = 1536 parallel rollouts (4x vs base 128).

@@ -359,9 +359,14 @@ def run_eval(
         episode_step = 0
         episode_num = 0
 
+        # Read eval_noise_std from env config (PD15: dithering for PD saturation gap)
+        _eval_noise = float(getattr(base_env.cfg, "eval_noise_std", 0.0))
+        if _eval_noise > 0:
+            print(f"  [EVAL] eval_noise_std = {_eval_noise} (PD saturation dithering)")
+
         while simulation_app.is_running() and step < total_steps:  # type: ignore[union-attr]
             with torch.inference_mode():
-                actions = extract_actions(agent, obs, base_env)
+                actions = extract_actions(agent, obs, base_env, eval_noise_std=_eval_noise)
                 obs, _, _, _, _ = env.step(actions)
 
                 collector.on_step(

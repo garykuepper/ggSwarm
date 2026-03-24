@@ -180,33 +180,51 @@ def override_agent_count(
 # ---------------------------------------------------------------------------
 
 
-def extract_actions(agent: object, obs: object, base_env: object) -> object:
+def extract_actions(
+    agent: object,
+    obs: object,
+    base_env: object,
+    eval_noise_std: float = 0.0,
+) -> object:
     """Run agent.act() and return **mean** Gaussian actions when skrl exposes them.
 
     ``GaussianMixin.act`` returns sampled actions in the first tuple slot but
     attaches ``mean_actions`` to the third bundle; we prefer those so eval/assess
     use deterministic policy means (training still samples).
 
+    When ``eval_noise_std > 0``, small Gaussian noise is added to the mean actions
+    to replicate the dithering effect that helps the PD controller escape saturation
+    during stochastic training (see PD10 train-eval gap analysis in changelog).
+
     Handles both multi-agent (dict keyed by agent ID) and single-agent (tensor).
 
-    Replaces the 5-line if/else block that was copy-pasted into 7 scripts.
-
     Args:
-        agent:    The skrl agent (MAPPO object or single-agent wrapper).
-        obs:      Current observation from the environment.
-        base_env: The unwrapped gymnasium environment.
+        agent:          The skrl agent (MAPPO object or single-agent wrapper).
+        obs:            Current observation from the environment.
+        base_env:       The unwrapped gymnasium environment.
+        eval_noise_std: Standard deviation of Gaussian noise added to mean actions
+                        during eval. 0.0 = fully deterministic (default).
 
     Returns:
         A dict ``{agent_id: action_tensor}`` for multi-agent envs, or a plain
         action tensor for single-agent envs.
     """
+    import torch  # noqa: PLC0415
+
     outputs = agent.act(obs, timestep=0, timesteps=0)  # type: ignore[attr-defined]
     if hasattr(base_env, "possible_agents"):
-        return {
+        actions = {
             a: outputs[-1][a].get("mean_actions", outputs[0][a])
             for a in base_env.possible_agents  # type: ignore[attr-defined]
         }
-    return outputs[-1].get("mean_actions", outputs[0])
+        if eval_noise_std > 0:
+            for a in actions:
+                actions[a] = (actions[a] + eval_noise_std * torch.randn_like(actions[a])).clamp(-1.0, 1.0)
+        return actions
+    act = outputs[-1].get("mean_actions", outputs[0])
+    if eval_noise_std > 0:
+        act = (act + eval_noise_std * torch.randn_like(act)).clamp(-1.0, 1.0)
+    return act
 
 
 # ---------------------------------------------------------------------------

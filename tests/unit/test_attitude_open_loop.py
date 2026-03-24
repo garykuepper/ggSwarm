@@ -11,11 +11,11 @@ from attitude_controller import AttitudeControllerParams, compute_attitude_contr
 
 _DEFAULT_PARAMS = AttitudeControllerParams(
     kp_att=0.045,
-    kd_att=0.00173,
+    kd_att=0.005,
     kp_yaw=0.01,
     max_tilt_angle=0.52,
     max_yaw_rate=3.14159,
-    max_moment=0.08,
+    max_moment=0.03,
     thrust_to_weight=2.0,
 )
 
@@ -86,60 +86,51 @@ def test_restoring_roll_moment_opposes_actual_roll_at_zero_desired() -> None:
         assert mx * actual_roll < 0.0
 
 
-def test_no_saturation_at_max_tilt_and_moderate_ang_vel() -> None:
-    """PD moment stays within max_moment at worst-case tilt and moderate angular velocity.
+def test_p_term_fits_at_zero_angular_velocity() -> None:
+    """PD P-term at max tilt fits within max_moment when angular velocity is zero.
 
-    With critically-damped gains (kd=0.00173, derived from Ixx=1.66e-5), the combined
-    P+D moment at 30 deg tilt + 5 rad/s angular velocity must fit within max_moment=0.08.
-    Previous overdamped gains (kd=0.005) caused the D-term to consume 107% of the P budget.
+    With overdamped gains (kd=0.005, zeta=2.9), saturation at high angular velocity
+    is expected and intentional — the heavy damping acts as a safety limiter during
+    early RL exploration (PD13/PD14 proved critical damping causes ballistic flips).
+    But the pure P-term at max tilt should fit within the moment budget.
     """
     params = _DEFAULT_PARAMS
     robot_weight = 0.276
 
-    # Test at several (tilt, angular velocity) combinations
-    test_cases = [
-        (0.52, 0.0, "max tilt, zero omega"),
-        (0.52, 5.0, "max tilt, 5 rad/s"),
-        (0.26, 10.0, "15 deg, 10 rad/s"),
-        (0.10, 20.0, "6 deg, 20 rad/s"),
-    ]
+    # P-term only (zero angular velocity): should NOT saturate
+    grav_y = math.sin(0.52)  # 30 deg tilt
+    grav_z = -math.cos(0.52)
+    proj = torch.tensor([[0.0, grav_y, grav_z]])
+    ang_vel = torch.zeros(1, 3)
+    actions = torch.zeros(1, 4)
 
-    for tilt_rad, ang_vel_val, label in test_cases:
-        grav_y = math.sin(tilt_rad)
-        grav_z = -math.cos(tilt_rad)
-        proj = torch.tensor([[0.0, grav_y, grav_z]])
-        ang_vel = torch.tensor([[ang_vel_val, 0.0, 0.0]])
-        actions = torch.zeros(1, 4)
+    thrust_buf = torch.zeros(1, 1, 3)
+    moment_buf = torch.zeros(1, 1, 3)
+    pre_clamp = torch.zeros(1, 1, 3)
 
-        thrust_buf = torch.zeros(1, 1, 3)
-        moment_buf = torch.zeros(1, 1, 3)
-        pre_clamp = torch.zeros(1, 1, 3)
+    compute_attitude_control(
+        actions, proj, ang_vel, robot_weight, params,
+        thrust_buf, moment_buf, pre_clamp,
+    )
 
-        compute_attitude_control(
-            actions, proj, ang_vel, robot_weight, params,
-            thrust_buf, moment_buf, pre_clamp,
-        )
-
-        pre_moment = float(pre_clamp[0, 0, 0])
-        clamped_moment = float(moment_buf[0, 0, 0])
-
-        # Pre-clamp should not exceed max_moment (no saturation)
-        assert abs(pre_moment) < params.max_moment, (
-            f"[{label}] Saturated: pre-clamp={pre_moment:.6f} >= max_moment={params.max_moment}"
-        )
-        # Clamped and pre-clamp should be equal (no clipping occurred)
-        assert abs(pre_moment - clamped_moment) < 1e-6, (
-            f"[{label}] Moment was clipped: pre={pre_moment:.6f} vs clamped={clamped_moment:.6f}"
-        )
+    pre_moment = float(pre_clamp[0, 0, 0])
+    assert abs(pre_moment) < params.max_moment, (
+        f"P-term alone saturates at max tilt: {pre_moment:.6f} >= {params.max_moment}"
+    )
 
 
-def test_damping_ratio_is_near_critical() -> None:
-    """Verify the gain/inertia combination produces near-critical damping (zeta ~ 1.0)."""
+def test_damping_ratio_is_overdamped() -> None:
+    """Verify the gain/inertia combination is intentionally overdamped (zeta > 1.0).
+
+    PD13/PD14 proved that critical damping (zeta=1.0) causes ballistic flips during
+    early RL exploration. The overdamped response (zeta ~2.9) acts as a natural safety
+    limiter. The train-eval gap from saturation is addressed via eval_noise_std instead.
+    """
     kp = _DEFAULT_PARAMS.kp_att
     kd = _DEFAULT_PARAMS.kd_att
     I = _IXX
     zeta = kd / (2.0 * math.sqrt(kp * I))
-    assert 0.8 <= zeta <= 1.3, (
-        f"Damping ratio {zeta:.3f} is outside [0.8, 1.3] — "
-        f"gains may need recalibration for Ixx={I:.2e}"
+    assert zeta > 1.5, (
+        f"Damping ratio {zeta:.3f} is not sufficiently overdamped — "
+        f"PD13/PD14 showed zeta < 1.5 causes ballistic flips during RL exploration"
     )
