@@ -330,6 +330,44 @@ This document tracks major technical changes and milestone completions for each 
     `rew_scale_low_clearance=-8.0`, `max_log_std=0.0`.
   - **No MAPPO changes.**
 
+## Phase 2A Run PD12 — 2026-03-24
+
+- **Run dir:** `logs/skrl/ggswarm_marl/2026-03-24_04-42-36_mappo_torch`
+- **Config class:** `GGSwarmMarlHoverStabilityCfg` — `rew_scale_ang_vel=-0.01`, `rew_scale_vel=-0.1`,
+  `max_moment=0.05`
+- **Train budget:** early-stopped at **20,000** iterations (health check)
+- **Early stop reason:** `ground_hit_rate_step rising: 0.170 -> 0.371; mean_dist_to_goal not improving: 0.503 -> 0.754`
+- **Training progression (20k):**
+  - `moment_saturated_frac`: **0.97 -> 0.98** (worse than PD11 — 98% saturation despite 0.05 max_moment)
+  - `thrust_val_mean`: **0.44 -> 0.42** (not collapsing as badly as PD11)
+  - `ground_hit_rate_step`: **0.19 -> 0.31** (rising — not learning)
+- **Root cause:** Inertia extraction (`scripts/extract_crazyflie_inertia.py`) revealed Ixx=**1.66e-5** kg*m^2 —
+  18x smaller than the estimated 0.0003. At this inertia, the current gains (kp=0.045, kd=0.005) give
+  **zeta=2.9 (heavily overdamped)**, not 0.68 (underdamped) as assumed. The D-term (kd*omega) consumes
+  **107% of the P-term budget** at 5 rad/s, leaving zero corrective authority. The PD was not oscillating —
+  it was too sluggish to correct.
+- **Decision: FAIL** — do not advance.
+- **Next action:** PD13 — inertia-based critically-damped gains.
+
+- [2026-03-24] **Phase 2A PD13 prep** (inertia-based PD gain tuning — **before** GCE PD13 train):
+  - **Root cause (PD11/PD12 retrospective):** Gains were empirically chosen without knowing sim inertia.
+    `scripts/extract_crazyflie_inertia.py` extracted Ixx=1.66e-5, Iyy=1.67e-5, Izz=2.93e-5 kg*m^2
+    from PhysX. At I=1.66e-5, kd=0.005 gives zeta=2.9 (heavily overdamped); D-term at 5 rad/s
+    produces 0.025 Nm, exceeding the P-term at 10 deg error (0.008 Nm). No corrective authority.
+  - **Fix (inertia-derived gains):**
+    - `kd_att: 0.005 -> 0.00173` — critical damping: kd = 2*sqrt(kp*I) = 2*sqrt(0.045*1.66e-5) = 0.00173.
+      omega_n=52.1 rad/s, t_settle=0.077s (4 control steps). D-term at 5 rad/s now 0.0087 Nm (was 0.025).
+    - `max_moment: 0.05 -> 0.08` — worst-case P+D moment at 30 deg tilt + peak omega is 0.070 Nm;
+      0.08 provides 15% headroom. Previous 0.05 cap was 71% of needed budget.
+    - `kp_att`: unchanged (0.045). `kp_yaw`: unchanged (0.01, fits in budget).
+  - **Reward scales reverted to PD10:** `rew_scale_ang_vel: -0.01 -> -0.06`, `rew_scale_vel: -0.1 -> -0.3`.
+    PD11/PD12 reduced these to work around overdamped PD; with critically-damped gains, corrections
+    no longer produce excessive angular velocities.
+  - **Verification:** `pd_neutral_baseline.py` (8 envs, 500 steps): airborne=1.000, ground_hit=0.000,
+    mean_z=1.147m — perfect hover with zero RL actions. 434 unit tests pass.
+  - **New tooling:** `scripts/extract_crazyflie_inertia.py`, inertia/zeta logging in env `__init__`,
+    `test_no_saturation_at_max_tilt_and_moderate_ang_vel`, `test_damping_ratio_is_near_critical`.
+
 ## Phase 2A Run PD7 — 2026-03-23
 
 - **Run dir:** `logs/skrl/ggswarm_marl/2026-03-23_03-38-53_mappo_torch`

@@ -65,21 +65,29 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     # --- PD Attitude Controller (inner loop) ---
     # The RL policy outputs [thrust, desired_roll, desired_pitch, desired_yaw_rate].
     # The PD controller converts these into body-frame thrust + moments each step.
-    # Reference: OmniDrones AttitudeController (deployed to real Crazyflie 2.1 hardware).
+    # Gains derived from sim inertia (scripts/extract_crazyflie_inertia.py):
+    #   Ixx = Iyy = 1.66e-5 kg*m^2, Izz = 2.93e-5 kg*m^2 (from PhysX)
+    #   omega_n = sqrt(kp_att / Ixx) = 52.1 rad/s
+    #   zeta = kd_att / (2 * sqrt(kp_att * Ixx)) = 1.0 (critical damping)
+    #   t_settle = 4 / omega_n = 0.077 s (4 control steps @ 50 Hz)
     # Proportional gain for roll/pitch attitude error (Nm/rad).
     kp_att: float = 0.045
     # Derivative/damping gain for roll/pitch (Nm/(rad/s)).
-    kd_att: float = 0.005
+    # PD13: 0.005 -> 0.00173. Old value gave zeta=2.9 (heavily overdamped); D-term consumed
+    # 107% of P-term budget at 5 rad/s, leaving no corrective authority. Critical damping
+    # (zeta=1.0) computed from sim Ixx=1.66e-5: kd = 2*sqrt(kp*I) = 0.00173.
+    kd_att: float = 0.00173
     # Proportional gain for yaw rate error (Nm/(rad/s)).
     kp_yaw: float = 0.01
     # Maximum tilt angle the policy can command (rad). 0.52 rad ≈ 30 degrees.
     max_tilt_angle: float = 0.52
-    # Maximum yaw rate the policy can command (rad/s). π rad/s = 180 deg/s.
+    # Maximum yaw rate the policy can command (rad/s). pi rad/s = 180 deg/s.
     max_yaw_rate: float = 3.14159
-    # Moment output clamp (Nm). PD11: 0.03→0.05 to eliminate PD saturation within
-    # the 30° tilt envelope. At 0.03 Nm, moment_saturated_frac was 33% at PD10 end,
-    # causing 155x train-eval gap (stochastic noise dithered past saturation; deterministic couldn't).
-    max_moment: float = 0.05
+    # Moment output clamp (Nm). PD13: 0.05 -> 0.08. At critical damping, worst-case moment
+    # (full 30 deg tilt + peak ang_vel) is 0.070 Nm; 0.08 provides 15% headroom.
+    # Previous values (0.03, 0.05) caused 33-98% saturation because the overdamped D-term
+    # consumed the clamp budget before the P-term could correct attitude.
+    max_moment: float = 0.08
 
     # When > 0, log raw vs clamped action stats and PD moment saturation to extras["log"]
     # for the first N env steps (TensorBoard). 0 = disabled (default).
@@ -235,13 +243,12 @@ class GGSwarmMarlHoverStabilityCfg(GGSwarmMarlEnvCfg):
     # PD10: sharpen position discriminator — at sigma=0.25 reward drops to 5% at 0.5m drift
     # (was 45% at sigma=0.8). Crash-reset strategy yields ~40 vs hover ~180 per episode (4.5x ratio).
     pos_tanh_sigma: float = 0.25
-    # PD12: reduced from -0.3 (PD10). Velocity penalty still provides signal but doesn't suppress
-    # early exploration when combined with stronger PD moments (max_moment=0.05).
-    rew_scale_vel: float = -0.1
-    # PD12: reduced from -0.06 (PD10). Stronger PD moments (0.05) produce larger transient angular
-    # velocities during attitude correction; -0.06 caused "don't fly" exploit in PD11 where the
-    # policy cut thrust to avoid ang_vel penalties. -0.01 tolerates PD correction transients.
-    rew_scale_ang_vel: float = -0.01
+    # PD10: 5.5x increase so velocity penalty is visible in TB (still 60x below pos peak at hover).
+    # PD13: reverted to PD10 value. PD11/PD12 reduced these to work around overdamped PD;
+    # with critically-damped gains (kd=0.00173), corrections no longer produce excessive ang_vel.
+    rew_scale_vel: float = -0.3
+    # PD10: 5x increase so angular velocity penalty is visible in TB (was flat across PD1-PD9).
+    rew_scale_ang_vel: float = -0.06
 
     # Disable unused reward terms (PD controller makes these redundant)
     rew_scale_upright: float = 0.0

@@ -70,11 +70,29 @@ class GGSwarmMarlEnv(DirectMARLEnv):
             max_moment=self.cfg.max_moment,
             thrust_to_weight=self.cfg.thrust_to_weight,
         )
+        # Log PD gains and verify damping ratio against sim inertia
+        inertias = self.robot.root_physx_view.get_inertias()  # shape: [num_instances, num_bodies, 9]
+        if inertias.dim() == 3:
+            _body_inertia = inertias[0, self._body_indices].flatten()
+        else:
+            _body_inertia = inertias[0].flatten()
+        _Ixx = float(_body_inertia[0])
+        _Iyy = float(_body_inertia[4])
+        _Izz = float(_body_inertia[8])
+        _omega_n = (_Ixx > 0 and (self.cfg.kp_att / _Ixx) ** 0.5) or 0.0
+        _zeta = (self.cfg.kd_att / (2.0 * (self.cfg.kp_att * _Ixx) ** 0.5)) if _Ixx > 0 else 0.0
         logger.info(
-            "AttitudeController active | kp_att=%.4f kd_att=%.4f kp_yaw=%.4f",
+            "AttitudeController active | kp_att=%.4f kd_att=%.5f kp_yaw=%.4f max_moment=%.3f",
             self.cfg.kp_att,
             self.cfg.kd_att,
             self.cfg.kp_yaw,
+            self.cfg.max_moment,
+        )
+        logger.info(
+            "PD dynamics | Ixx=%.2e Iyy=%.2e Izz=%.2e | omega_n=%.1f rad/s zeta=%.3f t_settle=%.4fs",
+            _Ixx, _Iyy, _Izz,
+            _omega_n, _zeta,
+            (4.0 / (_zeta * _omega_n)) if _zeta * _omega_n > 0 else float("inf"),
         )
         if self.cfg.use_stable_hover_rewards:
             logger.info(
