@@ -148,6 +148,13 @@ def _add_train_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--eta_window_s", type=float, default=120.0)
     p.add_argument("--checkpoint", type=str, default=None)
     p.add_argument(
+        "--early_stop_step",
+        type=int,
+        default=None,
+        help="Step at which to run health check (default: train.py default of 20000). 0 = disabled.",
+    )
+    p.add_argument("--no_early_stop", action="store_true", default=False)
+    p.add_argument(
         "--gnn",
         action="store_true",
         default=False,
