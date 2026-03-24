@@ -83,11 +83,13 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     max_tilt_angle: float = 0.52
     # Maximum yaw rate the policy can command (rad/s). pi rad/s = 180 deg/s.
     max_yaw_rate: float = 3.14159
-    # Moment output clamp (Nm). PD13: 0.05 -> 0.08. At critical damping, worst-case moment
-    # (full 30 deg tilt + peak ang_vel) is 0.070 Nm; 0.08 provides 15% headroom.
-    # Previous values (0.03, 0.05) caused 33-98% saturation because the overdamped D-term
-    # consumed the clamp budget before the P-term could correct attitude.
-    max_moment: float = 0.08
+    # Moment output clamp (Nm). PD14: 0.08 -> 0.04. PD13's 0.08 gave 4800 rad/s^2 angular
+    # accel at Ixx=1.66e-5 — drones flipped violently (mean_world_z hit 6.5m, dist_to_goal 6.7m).
+    # 0.04 Nm = 2400 rad/s^2 peak accel; P-term at 30 deg = 0.023 Nm fits with 43% headroom.
+    # With critically-damped kd=0.00173, D-term at 5 rad/s = 0.0087 Nm; total = 0.032 fits.
+    # PD10 used 0.03 with overdamped kd=0.005 (33% saturation); 0.04 + critical kd should
+    # have less saturation because D-term is 3x smaller.
+    max_moment: float = 0.04
 
     # When > 0, log raw vs clamped action stats and PD moment saturation to extras["log"]
     # for the first N env steps (TensorBoard). 0 = disabled (default).
