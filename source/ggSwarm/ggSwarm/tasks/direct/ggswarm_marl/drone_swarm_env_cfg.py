@@ -264,9 +264,11 @@ class GGSwarmMarlHoverStabilityCfg(GGSwarmMarlEnvCfg):
     action_telemetry_max_env_steps: int = 999999
 
     # Scale up parallel envs for GCE L4 GPU (24 GB VRAM).
-    # 512 envs * 3 agents = 1536 parallel rollouts (4x vs base 128).
+    # PD17: 512 -> 2048 envs. At 512 envs, training used only 2.7 GB of 23 GB VRAM (12%).
+    # 2048 envs * 3 agents = 6144 parallel rollouts (vs Isaac Lab's 4096 single-agent).
+    # Should improve gradient diversity and convergence speed.
     scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=512, env_spacing=5.0, replicate_physics=True
+        num_envs=2048, env_spacing=5.0, replicate_physics=True
     )
 
 
