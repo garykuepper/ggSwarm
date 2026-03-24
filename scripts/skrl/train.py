@@ -122,7 +122,7 @@ parser.add_argument(
 parser.add_argument(
     "--early_stop_step",
     type=int,
-    default=20000,
+    default=40000,
     help=(
         "Step at which to run a health check on TensorBoard scalars. "
         "If key metrics indicate a failed run (e.g. thrust collapsed, "
@@ -306,34 +306,20 @@ def _check_training_health(log_dir: Path, check_step: int) -> tuple[bool, str]:
                     f"(expected >0.25 for hover; policy may be cutting thrust)"
                 )
 
-    # Check 2: ground_hit_rate_step — should be decreasing, not increasing
-    tag = "Info / ground_hit_rate_step"
-    if tag in available:
-        events = ea.Scalars(tag)
-        early = [e for e in events if e.step <= check_step * 0.3]
-        recent = [e for e in events if e.step >= check_step * 0.8]
-        if early and recent:
-            early_val = sum(e.value for e in early) / len(early)
-            recent_val = sum(e.value for e in recent) / len(recent)
-            if recent_val > early_val * 1.5 and recent_val > 0.2:
-                failures.append(
-                    f"ground_hit_rate_step rising: {early_val:.3f} -> {recent_val:.3f} "
-                    f"(crashes increasing over training)"
-                )
-
-    # Check 3: mean_dist_to_goal — should be decreasing
+    # Check 2: mean_dist_to_goal — should not be diverging (> 2m = flying away)
+    # Note: ground_hit_rate check removed — PD10 showed a normal "exploration dip"
+    # where crashes spike at 20k then recover by 50k. Only truly pathological
+    # runs (PD13/PD14: dist_to_goal > 6m) need to be caught.
     tag = "Info / mean_dist_to_goal"
     if tag in available:
         events = ea.Scalars(tag)
-        early = [e for e in events if e.step <= check_step * 0.3]
         recent = [e for e in events if e.step >= check_step * 0.8]
-        if early and recent:
-            early_val = sum(e.value for e in early) / len(early)
+        if recent:
             recent_val = sum(e.value for e in recent) / len(recent)
-            if recent_val > early_val * 0.9 and recent_val > 0.4:
+            if recent_val > 2.0:
                 failures.append(
-                    f"mean_dist_to_goal not improving: {early_val:.3f} -> {recent_val:.3f} "
-                    f"(policy not learning to approach goal)"
+                    f"mean_dist_to_goal={recent_val:.3f} at step {recent[-1].step} "
+                    f"(> 2.0m — drones flying away from goal)"
                 )
 
     if failures:
