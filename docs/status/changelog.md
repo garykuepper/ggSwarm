@@ -233,7 +233,51 @@ This document tracks major technical changes and milestone completions for each 
     - `rew_scale_terminated: 0.0 → -2.0` (moderate crash cost; ceiling escape suppressed by tight sigma)
   - **No MAPPO hyperparameter changes:** `max_log_std=0.0`, `initial_log_std=-0.5`, `entropy_loss_scale=0.008` unchanged. Reward landscape fix should unblock exploration — standard PPO should suffice once crash-reset is no longer a competitive strategy.
   - **Files changed:** `contract_logic.py` (add `pos_tanh_sigma` to `StableHoverRewardParams`), `drone_swarm_env_cfg.py` (add field + override), `drone_swarm_env.py` (pass-through), `test_ggswarm_utils.py` (2 new sigma tests; 11/11 pass).
-  - **Rule 22 smoke (local):** pending.
+  - **Rule 22 smoke (local):** PASS (142 tests, 512 envs, GNN).
+
+## Phase 2A Run PD10 — 2026-03-23
+
+- **Run dir:** `logs/skrl/ggswarm_marl/2026-03-23_23-36-16_mappo_torch`
+- **Config class:** `GGSwarmMarlHoverStabilityCfg` — `pos_tanh_sigma=0.25`, `rew_scale_vel=-0.3`,
+  `rew_scale_ang_vel=-0.06`, `rew_scale_terminated=-2.0`, `max_log_std=0.0`
+- **Train budget:** 92,000 iterations (GCE)
+- **Convergence:** no entropy collapse | peak reward **419.97** @ step **56,000** | final **196.28** @ step
+  **92,000** | recommended budget **105,799** steps
+- **Scorecard** (`post_train_assess.py`, seed **42**, `best_agent.pt` = 80k checkpoint, 5 episodes):
+  - survival_steps = **5.2** (FAIL; gate > 500)
+  - airborne_ratio = **0.736** (FAIL; gate > 0.9)
+  - ground_hit_rate = **0.373** (WARN; gate < 0.5)
+  - mean_roll_deg = **23.9°** (WARN; gate < 60°)
+  - orientation_violation_rate = **0.455** (WARN; gate < 0.5)
+  - mean_formation_error_m = **0.676** (WARN; gate < 1.5)
+  - verdict = **FAIL**
+- **TensorBoard — TRAINING BREAKTHROUGH (first run with healthy dynamics):**
+  - `Policy / Standard deviation (drone_0)`: **0.60 → 0.12** (healthy decay; no explosion/ceiling)
+  - `Info / mean_dist_to_goal`: **0.91 → 0.015 m** (1.5 cm error — policy learned to hover!)
+  - `Info / ground_hit_rate_step`: **0.22 → 0.0024** (99% crash reduction in training)
+  - `Info / mean_lin_speed`: **1.59 → 0.035 m/s** (nearly stationary in training)
+  - `Info / thrust_val_mean`: **0.41 → 0.499** (converged to hover thrust)
+  - `Info / rew_ang_vel`: **-0.56 → -0.03** (attitude learning — first time ever across PD1-PD10)
+  - `Info / moment_saturated_frac`: **0.98 → 0.33** (PD still saturating 33% of time)
+  - `Episode / Total timesteps (mean)`: **9 → 217** (24x episode length improvement)
+- **Checkpoint ladder** (10k intervals, 2 eps each): all checkpoints plateau at airborne **0.71-0.76**;
+  90k is best (airborne **0.746**, ground_hit **0.337**, roll **22.0°**). mean_speed ≈ **1.7 m/s** in ALL
+  checkpoints despite training converging to 0.035 m/s. Flat ceiling = architectural limit (PD saturation).
+- **Train-eval gap: 155x** (ground_hit 0.0024 training vs 0.373 eval). Stochastic noise during training
+  acts as dithering past PD saturation boundary; deterministic eval commits to saturating commands.
+- **Decision: FAIL** — do not advance to Phase 2B.
+- **Next action:** PD11 — increase PD moment authority (`max_moment: 0.03 → 0.05`) to eliminate saturation.
+
+- [2026-03-23] **Phase 2A PD11 prep** (PD authority fix — **before** GCE PD11 train):
+  - **Root cause (PD10 TB + checkpoint analysis):** `moment_saturated_frac = 33%` at training end.
+    At `max_moment=0.03`, PD saturates at 6.4° error when ang_vel = 5 rad/s. Stochastic training
+    survives via noise dithering; deterministic eval locks into saturation → 155x crash rate gap.
+    All 9 checkpoints hit same eval ceiling (airborne 0.71-0.76) regardless of training step.
+  - **Single knob (Rule 22):** `max_moment: 0.03 → 0.05`. At 0.05 Nm, PD can correct full 30° tilt
+    envelope without saturating even at 5 rad/s (threshold = 32°). Deterministic policy no longer
+    needs noise to escape saturation lock.
+  - **All PD10 reward parameters preserved** — reward landscape is working correctly.
+  - **No MAPPO changes** — `max_log_std=0.0`, `entropy_loss_scale=0.008`, `learning_rate=1e-4` unchanged.
 
 ## Phase 2A Run PD7 — 2026-03-23
 

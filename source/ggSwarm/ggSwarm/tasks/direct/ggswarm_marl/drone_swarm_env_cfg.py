@@ -76,8 +76,10 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     max_tilt_angle: float = 0.52
     # Maximum yaw rate the policy can command (rad/s). π rad/s = 180 deg/s.
     max_yaw_rate: float = 3.14159
-    # Moment output clamp (Nm). Prevents runaway torques at episode start.
-    max_moment: float = 0.03
+    # Moment output clamp (Nm). PD11: 0.03→0.05 to eliminate PD saturation within
+    # the 30° tilt envelope. At 0.03 Nm, moment_saturated_frac was 33% at PD10 end,
+    # causing 155x train-eval gap (stochastic noise dithered past saturation; deterministic couldn't).
+    max_moment: float = 0.05
 
     # When > 0, log raw vs clamped action stats and PD moment saturation to extras["log"]
     # for the first N env steps (TensorBoard). 0 = disabled (default).
