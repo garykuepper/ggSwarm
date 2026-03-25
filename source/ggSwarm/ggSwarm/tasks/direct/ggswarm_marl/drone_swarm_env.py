@@ -285,7 +285,10 @@ class GGSwarmMarlEnv(DirectMARLEnv):
             forces=self._thrust,
             torques=self._moment,
         )
-        self.robot.write_data_to_sim()
+        # Do NOT call self.robot.write_data_to_sim() here — the DirectRLEnv
+        # base class handles it at the correct simulation boundary.  Calling it
+        # here caused a double-write that corrupted physics integration and
+        # created the persistent train-eval gap (PD10–PD16).
 
     def _get_observations(self) -> dict[str, torch.Tensor]:
         # Issue 5: Cache GPU memory reads once per step

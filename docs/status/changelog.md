@@ -368,6 +368,58 @@ This document tracks major technical changes and milestone completions for each 
   - **New tooling:** `scripts/extract_crazyflie_inertia.py`, inertia/zeta logging in env `__init__`,
     `test_no_saturation_at_max_tilt_and_moderate_ang_vel`, `test_damping_ratio_is_near_critical`.
 
+## Phase 2A Run PD15b — 2026-03-24
+
+- **Run dir:** `logs/skrl/ggswarm_marl/2026-03-24_15-13-09_mappo_torch`
+- **Config class:** `GGSwarmMarlHoverStabilityCfg` — PD15 config: reverted to PD10 gains (`kd_att=0.005`,
+  `max_moment=0.03`), `eval_noise_std=0.05` (PD saturation dithering added)
+- **Train budget:** 92,000 iterations (GCE)
+- **Convergence:** peak reward **419.97** @ step **56,000** | final **196.28** @ step **92,000** |
+  entropy collapse: not detected | std **0.5951 → 0.1249** | recommended budget **~105,799** steps
+- **Training diagnostics (TB scalars, 1k → 92k):**
+  - `rew_ang_vel`: **-0.5631 → -0.0318** (strong attitude improvement)
+  - `moment_saturated_frac`: **0.9789 → 0.3323** (saturation greatly reduced)
+  - `ground_hit_rate_step`: **0.2209 → 0.0024** (near-zero by 60k — healthy in-training hover)
+  - `mean_dist_to_goal`: **0.9119 → 0.0154** (nearly at goal)
+  - `mean_world_z`: **0.6497 → 1.1441 m** (drones climbed to target altitude)
+  - `thrust_val_mean`: **0.4125 → 0.4993** (converging to hover thrust)
+- **Scorecard** (`best_agent.pt`, 5 episodes, seed 42, `eval_noise_std=0.05`):
+  - `survival_steps` = **5.0** | `airborne_ratio` = **0.737** | `ground_hit_rate` = **0.353**
+  - `mean_roll_deg` = **23.6°** | `mean_pitch_deg` = **27.7°** | `orientation_violation_rate` = **0.305**
+  - `mean_formation_error_m` = **0.717** (informational)
+  - **Verdict: FAIL**
+- **Key observation:** Severe train–eval gap. In-training `ground_hit_rate_step` reached 0.002 by 60k
+  (near-perfect hover), but eval scorecard shows `survival_steps=5` and `ground_hit_rate=0.353`.
+  Reward peaked at 56k then decayed to 196 by 92k — policy likely overfit or destabilized in late
+  training. `eval_noise_std=0.05` dithering may be amplifying the gap.
+- **Decision: FAIL** — do not advance to Phase 2B.
+- **Next action:** Diagnose train–eval gap before next run. Candidates: (1) reduce `eval_noise_std`
+  or disable dithering during assess; (2) use 56k checkpoint (peak) instead of `best_agent.pt`;
+  (3) early-stop or checkpoint at peak reward rather than running to 92k with reward decay.
+
+## Phase 2A Run PD16 — 2026-03-24
+
+- **Run dir:** `logs/skrl/ggswarm_marl/2026-03-24_22-37-14_mappo_torch`
+- **Config class:** `GGSwarmMarlHoverStabilityCfg` — dropped PD controller, switched to Isaac Lab
+  direct moment control (`moment_scale=0.01`). All PD10 reward params preserved.
+- **Train budget:** 92,000 iterations (GCE, 512 envs)
+- **Convergence:** peak reward **477.58** @ step **13,000** | final **433.75** @ step **92,000**
+- **Training diagnostics (TB scalars, 1k → 92k):**
+  - `ground_hit_rate_step`: **0.179 → 0.000** (zero crashes from 10k onward)
+  - `mean_dist_to_goal`: **0.551 → 0.009 m** (9 mm precision)
+  - `thrust_val_mean`: **0.452 → 0.503** (perfect hover by 10k)
+  - `rew_ang_vel`: **-0.611 → -0.057**
+- **Scorecard** (`best_agent.pt`, 5 episodes, seed 42):
+  - `survival_steps` = **5.0** | `airborne_ratio` = **0.473** | `ground_hit_rate` = **0.706**
+  - `mean_roll_deg` = **83.1°** | `mean_pitch_deg` = **85.2°**
+  - **Verdict: FAIL** — train-eval gap even worse without PD damping
+- **Root cause identified:** `self.robot.write_data_to_sim()` in `_apply_action()` (line 288).
+  Isaac Lab's reference quadcopter does NOT call this — the `DirectRLEnv` base class handles it
+  at the correct simulation boundary. The double-write corrupts physics integration; stochastic
+  noise masks it during training, deterministic eval exposes it.
+- **Next action:** PD17 — remove `write_data_to_sim()` (one-line fix), resume from PD16 checkpoint,
+  4096 envs, 30k iterations.
+
 ## Phase 2A Run PD7 — 2026-03-23
 
 - **Run dir:** `logs/skrl/ggswarm_marl/2026-03-23_03-38-53_mappo_torch`
