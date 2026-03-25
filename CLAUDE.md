@@ -21,7 +21,21 @@ All rules below are MANDATORY unless marked SHOULD.
 - Instance: `isaacsim`, zone: `us-central1-a`, project: `gg-swarm`
 - Repo path on VM: `~/ggSwarm`
 - GCS bucket: `gs://gg-swarm-training-logs` (only valid bucket)
-- Launch training via `.\scripts\cloud\gce_train_launch.ps1`
+- **Launch training via `gcloud compute ssh`** using `scripts/run.py` syntax. `train_and_push.sh` wraps `run.py` and auto-pushes logs to GCS on completion.
+- Pattern:
+
+  ```text
+  gcloud compute ssh isaacsim --zone=us-central1-a --project=gg-swarm \
+    --command='cd ~/ggSwarm && git pull origin main && \
+    GGSWARM_GCS_URI=gs://gg-swarm-training-logs \
+    nohup bash scripts/cloud/train_and_push.sh \
+    phase2b train --headless --max_iterations 30000 \
+    --checkpoint <path/to/best_agent.pt> \
+    > ~/train_ggswarm_<label>.log 2>&1 &'
+  ```
+
+- The args after `train_and_push.sh` are passed directly to `python scripts/run.py`.
+
 - Always inline `GGSWARM_GCS_URI=gs://gg-swarm-training-logs` before `nohup` — `source ~/.bashrc` does NOT propagate to backgrounded processes.
 - **GCE is for training only.** eval / play / assess / tensorboard / git must run locally.
 - Do NOT suggest running eval, play, assess, or analysis scripts via `gcloud compute ssh --command`.
