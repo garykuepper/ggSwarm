@@ -40,7 +40,7 @@ from isaaclab.app import AppLauncher
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Play a checkpoint of an RL agent from skrl.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
-parser.add_argument("--video_length", type=int, default=500, help="Length of the recorded video (in steps). 500 = 10s at step_dt=0.02.")
+parser.add_argument("--video_length", type=int, default=1000, help="Length of the recorded video (in steps). 500 = 10s at step_dt=0.02.")
 parser.add_argument(
     "--video_codec",
     type=str,
@@ -278,7 +278,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
     # wrap for video recording
     if args_cli.video:
         checkpoint_stem = os.path.splitext(os.path.basename(resume_path))[0]
-        raw_video_prefix = f"{run_name}__{checkpoint_stem}"
+        # Extract a short phase tag from the task name for video filenames.
+        # e.g. "Template-GGSwarm-Marl-Formation-v0" → "Formation"
+        task_parts = args_cli.task.split("-")
+        phase_tag = task_parts[-2] if len(task_parts) >= 2 else args_cli.task
+        raw_video_prefix = f"{phase_tag}__{run_name}__{checkpoint_stem}"
         safe_video_prefix = "".join(
             ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in raw_video_prefix
         )
