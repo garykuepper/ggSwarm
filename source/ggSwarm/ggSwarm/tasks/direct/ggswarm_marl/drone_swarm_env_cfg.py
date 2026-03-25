@@ -274,21 +274,28 @@ class GGSwarmMarlFormationCfg(GGSwarmMarlEnvCfg):
     3. Assess with ``phase2b assess --run_dir <PhaseB_run>``.
     4. Advance to Phase 3 when formation_error < 0.5 m and stability metrics hold.
 
-    # TODO (Phase C): once Phase B assess gate passes, add perturbation disturbance
-    # to force robust attitude recovery under external forces.  See Rule 2 —
-    # do not implement until Phase B is complete.
+    # TODO (Phase C): once Phase B assess gate passes, add circular orbit formation —
+    # drones maintain a horizontal circle with equal angular spacing while following
+    # a time-varying orbit path.  See Rule 2 — do not implement until Phase B is complete.
     """
+
+    # Scale up parallel envs to match Phase A (L4 GPU, 24 GB VRAM).
+    # 4096 envs * 3 agents = 12,288 parallel rollouts per step.
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(
+        num_envs=4096, env_spacing=5.0, replicate_physics=True
+    )
 
     # Curriculum active from step 1 (Rule 21 — counter resets to 0 on resume)
     curriculum_start_step: int = 0
-    curriculum_end_step: int = 80000   # full formation strength by 80k steps of Phase B
+    curriculum_end_step: int = 10000   # ~123M experiences at 4096 envs; full formation strength
     curriculum_pos_floor: float = 0.3  # hover signal never drops below 30%
 
-    # Stability rewards carried over from Phase A (Run 1 levels that passed gate)
-    rew_scale_upright: float = 3.0
-    rew_scale_ang_vel: float = -0.25
-    rew_scale_terminated: float = -10.0
-    rew_scale_alive: float = 1.5
+    # Stability rewards: match Phase 2A success config (PD16 re-eval PASS).
+    # Phase 2A used direct moment control with entropy_loss_scale=0.0.
+    rew_scale_upright: float = 0.0
+    rew_scale_ang_vel: float = -0.06
+    rew_scale_terminated: float = -2.0
+    rew_scale_alive: float = 0.0
 
     # Formation rewards re-enabled
     rew_scale_formation: float = 1.0

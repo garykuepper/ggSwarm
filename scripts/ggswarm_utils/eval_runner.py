@@ -252,6 +252,7 @@ def run_eval(
     )
     from ggswarm_utils.sim_helpers import configure_eval_cfg, configure_gnn_policy  # noqa: PLC0415
     from ggswarm_utils.sim_helpers import extract_actions, override_agent_count  # noqa: PLC0415
+    from ggswarm_utils.sim_helpers import patch_mappo_gnn_adj_matrix  # noqa: PLC0415
 
     # Mutable holder — @hydra_task_config swallows return values
     _result_holder: list[dict[str, float] | None] = [None]
@@ -350,6 +351,11 @@ def run_eval(
         # cause of the train-eval gap across PD1-PD20.
         agent.load(str(resume_path))
         agent.set_running_mode("eval")
+
+        # Inject adj_matrix into GNN policy during act() so GATv2 receives
+        # real graph edges instead of falling back to self-loops.
+        if gnn:
+            patch_mappo_gnn_adj_matrix(agent, env)
 
         # ----------------------------------------------------------------
         # Sim loop

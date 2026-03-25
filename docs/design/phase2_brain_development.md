@@ -46,7 +46,8 @@ The **mean formation error** for an evaluation run is the average of \(e_t\) ove
   - separation event rate (fraction of steps where any pair violates minimum separation)
   - mean linear speed \(\|\mathrm{lin\_vel}\|\) (jitter proxy)
 
-Implementation lives in `scripts/eval_phase2.py`.
+Implementation lives in `scripts/ggswarm_utils/eval_runner.py` with phase-specific
+collectors in `scripts/ggswarm_utils/phases/`.
 
 ---
 
@@ -72,28 +73,32 @@ Rewards dynamically scale based on training progress to prevent early-stage trai
 
 | Component | Scale | Formula |
 | :--- | :--- | :--- |
-| **Separation Penalty** | `-5.0` | Applied if `dist < 2 * drone_radius` (prevents physical clipping/collapse) |
-| **Formation error** | `+2.0 * α` | `exp(-mean_spacing_error / 0.3)` where spacing error = `\|actual_dist - target_dist\|` |
-| **Cohesion** | `+0.5 * α` | `exp(-max_neighbor_dist / connectivity_threshold)` |
-| Position (Hover) | `+1.0 * (1-α)` | `exp(-dist_to_goal / 0.5)` |
-| Velocity penalty | `-0.05` | `‖lin_vel_b‖` |
-| Alive bonus | `+0.1` | Constant |
+| **Separation Penalty** | `-5.0` | Applied if `dist < min_separation_dist` (0.10m) |
+| **Formation error** | `+1.0 * α` | `exp(-mean_spacing_error / 0.3)` |
+| **Cohesion** | `+0.2 * α` | `exp(-max_neighbor_dist / connectivity_radius)` |
+| Position (Hover) | `+15.0 * (1-α+floor)` | `exp(-dist_to_goal / 0.5)` (floor=0.3) |
+| Velocity penalty | `-0.05` | L2 body-frame linear velocity |
+| Angular vel penalty | `-0.06` | L2 body-frame angular velocity |
+| Alive bonus | `0.0` | Disabled (direct moment control) |
+| Terminated | `-2.0` | Height-bounds violation |
 
-*(Where `α` scales from 0.0 to 1.0 between `curriculum_start_step` and `curriculum_end_step` in `GGSwarmMarlEnvCfg`, currently 10k → 50k environment steps).*
+*(Where `α` scales from 0.0 to 1.0 between `curriculum_start_step=0` and `curriculum_end_step=10000` in `GGSwarmMarlFormationCfg`. At 4096 envs × 3 agents = 12,288 experiences/step, this is ~123M total experiences for the curriculum ramp.)*
 
 ---
 
-## SKRL Configuration Tuning (`skrl_mappo_cfg.yaml`)
+## SKRL Configuration (`skrl_mappo_cfg.yaml`)
 
-| Parameter | Current | Target | Rationale |
-| :--- | :--- | :--- | :--- |
-| `network.layers` | `[32, 32]` | `[128, 64]` | Larger capacity for multi-agent coordination |
-| `trainer.timesteps` | `4800` | `100000+` | Sufficient training for convergence |
-| `experiment.directory` | `cart_double_pendulum_direct` | `ggswarm_marl` | Fix template leftover |
-| `agent.rollouts` | `16` | `32` | More experience per update |
-| `agent.mini_batches` | `(default)` | `4` or `8` | Prevents memory spikes with larger rollouts |
-| `agent.learning_rate` | `3.0e-04` | `1.0e-04` | Slower, more stable learning for MARL |
-| `agent.entropy_loss_scale` | `0.0` | `0.01` | Encourage exploration in early training |
+Current production values (tuned during Phase 2A):
+
+| Parameter | Value | Rationale |
+| :--- | :--- | :--- |
+| `network.layers` | `[128, 64]` | Larger capacity for multi-agent coordination |
+| `trainer.timesteps` | `300000` | Default cap; `--max_iterations` controls actual run length |
+| `agent.rollouts` | `64` | Large buffer per update (L4 GPU throughput) |
+| `agent.mini_batches` | `8` | Balanced memory/gradient quality |
+| `agent.learning_rate` | `1.0e-04` | Stable learning with KLAdaptiveLR scheduler |
+| `agent.entropy_loss_scale` | `0.0` | No entropy incentive — PD4-PD17 showed non-zero values cause train-eval gap |
+| `state_preprocessor` | `RunningStandardScaler` | Must be restored via `agent.load()` during eval (PD1-PD20 lesson) |
 
 ---
 
@@ -103,11 +108,11 @@ Phase 2 is split into three sequential sub-phases. Each sub-phase has its own
 CLI family, cfg class, and gym task. Advance to the next sub-phase only after
 the current assess gate passes (Rule 20).
 
-| Sub-phase | CLI command | Task ID | Config class | Iterations | Gate |
+| Sub-phase | CLI command | Task ID | Config class | num_envs | Gate |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| A: Hover-Stability | `hover-stability train` | `Template-GGSwarm-Marl-HoverStability-v0` | `GGSwarmMarlHoverStabilityCfg` | 80k | survival_steps > 500, airborne_ratio > 0.9, mean_roll < 15° |
-| B: Formation | `phase2b train --checkpoint <Phase_A/best_agent.pt>` | `Template-GGSwarm-Marl-Formation-v0` | `GGSwarmMarlFormationCfg` | 120k | formation_error < 0.5m, stability metrics maintained |
-| C: Perturbation | future — `# TODO (Phase C)` | TBD | TBD | TBD | TBD |
+| A: Hover-Stability | `hover-stability train` | `Template-GGSwarm-Marl-HoverStability-v0` | `GGSwarmMarlHoverStabilityCfg` | 4096 | airborne_ratio > 0.9, mean_roll < 15° (PASSED) |
+| B: Formation | `phase2b train --checkpoint <Phase_A/best_agent.pt>` | `Template-GGSwarm-Marl-Formation-v0` | `GGSwarmMarlFormationCfg` | 4096 | formation_error < 0.5m, stability maintained |
+| C: Circular Orbit | `phase2c train --checkpoint <Phase_B/best_agent.pt>` | TBD | TBD | 4096 | formation_error < 0.5m while orbiting, stability maintained |
 
 **Phase A note:** `mean_formation_error_m` on the assess scorecard is **not** a Phase 2A pass/fail gate — formation rewards are off; the metric is a rough position/spread proxy only.
 
@@ -115,132 +120,59 @@ the current assess gate passes (Rule 20).
 Per Rule 21, `curriculum_start_step` is set to `0` in `GGSwarmMarlFormationCfg`
 because `common_step_counter` resets to 0 on env re-init regardless of checkpoint.
 
-**Phase B → C:** placeholder only. Do not implement until Phase B assess gate passes (Rule 2).
+**Phase B → C handoff:** pass `best_agent.pt` from the Phase B run via `--checkpoint`.
+Do not implement Phase C until Phase B assess gate passes (Rule 2).
+
+### Phase 2C: Circular Orbit Formation
+
+Phase 2C extends static formation (2B) to dynamic coordination. Drones maintain
+a **horizontal circle formation** (equal angular spacing, same altitude) while the
+entire formation follows a circular orbit path at constant angular velocity.
+
+**Goal positions:** each agent's target is a slot on a circle of radius
+`orbit_radius`, rotating at `orbit_angular_vel` rad/s. Slot `i` is offset by
+`2π·i/N` radians from a shared reference angle that advances with time.
+All slots share the same Z coordinate (level flight).
+
+**What changes from 2B:**
+
+- Position reward target becomes time-varying (moving slot on orbit)
+- Formation reward still uses inter-agent pairwise distance (carried from 2B)
+- New metric: **orbit tracking error** — mean distance from each agent to its
+  moving slot
+- Velocity penalty may need relaxation since agents must sustain forward motion
+
+**Gate criteria:**
+
+- `formation_error < 0.5m` while orbiting (same threshold as 2B)
+- `orbit_tracking_error < 0.5m` (agents follow their slots)
+- Stability metrics maintained (airborne_ratio, orientation)
 
 ---
 
 ## Code Implementation
 
-Here is the core logic needed to execute the riskiest parts of the plan: the PyG to SKRL bridge and the curriculum reward logic.
+### 1. GNN Policy (`skrl_gnn_policy.py`)
 
-### 1. The GNN Policy Wrapper (`skrl_gnn_policy.py`)
+See `source/ggSwarm/ggSwarm/tasks/direct/ggswarm_marl/agents/skrl_gnn_policy.py`.
 
-This handles the critical task of converting the dense 3D adjacency matrix from your Isaac Lab environment into the 2D sparse graph format required by PyTorch Geometric, all while satisfying SKRL's `GaussianMixin` requirement.
+Key design: `GGSwarmGNNPolicy` (GATv2 + `GaussianMixin`) receives
+`extras["adj_matrix"]` via a monkey-patch on MAPPO's `act()` method
+(`patch_mappo_gnn_adj_matrix` in `scripts/ggswarm_utils/sim_helpers.py`).
+The 3D adjacency matrix `[num_envs, num_agents, num_agents]` is flattened
+to a 2D sparse `edge_index` via `adjacency_to_edge_index` in
+`contract_logic.py`, treating each environment as a disconnected subgraph.
 
-```python
-import torch
-import torch.nn as nn
-from skrl.models.torch import Model, GaussianMixin
-from torch_geometric.nn import GATv2Conv
+Constructor params (`hidden_channels`, `num_heads`, `initial_log_std`) are cfg-driven per Rule 14.
 
-class GGSwarmGNNPolicy(GaussianMixin, Model):
-    def __init__(self, observation_space, action_space, device, clip_actions=False,
-                 clip_log_std=True, min_log_std=-20, max_log_std=2, reduction="sum"):
-        
-        Model.__init__(self, observation_space, action_space, device)
-        GaussianMixin.__init__(self, clip_actions, clip_log_std, min_log_std, max_log_std, reduction)
+### 2. Curriculum Reward Logic
 
-        # Node features (observation space per agent)
-        in_channels = observation_space.shape[0] 
-        hidden_channels = 128
-        out_channels = action_space.shape[0] # 4-dim action
+See `source/ggSwarm/ggSwarm/tasks/direct/ggswarm_marl/contract_logic.py` (`compute_marl_rewards`, `compute_curriculum_alpha`).
 
-        # GNN Layers (Limit to 2 heads to prevent over-smoothing)
-        self.conv1 = GATv2Conv(in_channels, hidden_channels // 2, heads=2, concat=True)
-        self.conv2 = GATv2Conv(hidden_channels, hidden_channels, heads=1, concat=False)
-        
-        # Action Head
-        self.action_head = nn.Linear(hidden_channels, out_channels)
-        self.log_std_parameter = nn.Parameter(torch.zeros(out_channels))
-
-    def compute(self, inputs, role):
-        obs = inputs["states"] # Shape: [num_envs * num_agents, obs_dim]
-        
-        # Fetch the adjacency matrix passed from the environment extras
-        # Shape expected: [num_envs, num_agents, num_agents]
-        adj_matrix = inputs.get("extras", {}).get("adj_matrix", None)
-        
-        if adj_matrix is not None:
-            num_envs, num_agents, _ = adj_matrix.shape
-            
-            # Flatten the batched 3D adjacency matrix to a 2D sparse edge_index
-            # Find all non-zero elements (edges)
-            indices = adj_matrix.nonzero(as_tuple=False) # Shape: [num_edges, 3] -> (env_idx, agent_i, agent_j)
-            
-            env_idx = indices[:, 0]
-            
-            # Shift node indices so each environment's graph is disconnected but in the same batch
-            src = indices[:, 1] + (env_idx * num_agents)
-            dst = indices[:, 2] + (env_idx * num_agents)
-            
-            edge_index = torch.stack([src, dst], dim=0) # Shape: [2, num_edges]
-        else:
-            # Fallback if no adj_matrix is provided (e.g., self-loops only)
-            num_nodes = obs.shape[0]
-            edge_index = torch.arange(num_nodes, device=self.device).repeat(2, 1)
-
-        # Forward pass through GNN
-        x = torch.relu(self.conv1(obs, edge_index))
-        x = torch.relu(self.conv2(x, edge_index))
-        
-        # Output actions
-        action_mean = self.action_head(x)
-        
-        return action_mean, self.log_std_parameter, {}
-```
-
-### 2. Curriculum Reward Logic (`drone_swarm_env.py`)
-
-This goes into your environment's reward computation block to ensure the agents learn to hover before they are penalized for formation errors.
-
-```python
-    def _get_rewards(self) -> torch.Tensor:
-        # ... existing state extraction ...
-
-        # 1. Define Curriculum Scale (alpha)
-        # Assuming self.common_step_counter tracks total environment steps
-        start_curriculum = 25000.0
-        end_curriculum = 50000.0
-        
-        alpha = torch.clamp(
-            (self.common_step_counter - start_curriculum) / (end_curriculum - start_curriculum),
-            min=0.0, 
-            max=1.0
-        )
-
-        # 2. Separation Penalty (ALWAYS ON)
-        # Prevents physical clipping regardless of curriculum stage
-        # Assuming inter_agent_distances is pre-calculated
-        collision_mask = inter_agent_distances < (2 * self.drone_radius)
-        separation_penalty = -5.0 * collision_mask.sum(dim=1)
-
-        # 3. Position (Hover) Reward (Fades OUT)
-        # Encourages staying near the global target
-        hover_reward = 1.0 * torch.exp(-dist_to_goal / 0.5) * (1.0 - alpha)
-
-        # 4. Formation Reward (Fades IN)
-        # target_dist is your defined formation spacing
-        spacing_error = torch.abs(inter_agent_distances - self.target_dist)
-        mean_spacing_error = spacing_error.mean(dim=1)
-        formation_reward = 2.0 * torch.exp(-mean_spacing_error / 0.3) * alpha
-
-        # 5. Cohesion Reward (Fades IN)
-        max_neighbor_dist, _ = torch.max(inter_agent_distances, dim=1)
-        cohesion_reward = 0.5 * torch.exp(-max_neighbor_dist / self.connectivity_threshold) * alpha
-
-        # ... compute velocity penalties and alive bonus ...
-
-        total_reward = (
-            separation_penalty + 
-            hover_reward + 
-            formation_reward + 
-            cohesion_reward +
-            alive_bonus +
-            vel_penalties
-        )
-
-        return total_reward
-```
+Phase 2A hover-stability uses `compute_stable_hover_rewards` (tanh position,
+squared velocity, dt-scaled — Isaac Lab style). Phase 2B formation uses
+`compute_marl_rewards` with curriculum `α` that fades formation rewards in
+while maintaining a position reward floor.
 
 ---
 
@@ -248,20 +180,34 @@ This goes into your environment's reward computation block to ensure the agents 
 
 ```powershell
 # Phase A: hover-stability (run on GCE via train_and_push.sh)
-python scripts/run.py hover-stability train --headless --max_iterations 80000
+python scripts/run.py hover-stability train --headless --gnn
 
 # After GCS pull — assess locally (Rule 20):
-python scripts/run.py hover-stability assess --run_dir logs/skrl/ggswarm_marl/<run>
+python scripts/run.py hover-stability assess \
+  --run_dir logs/skrl/ggswarm_marl/<run>
 
 # Phase B: formation resume (run on GCE, pass Phase A checkpoint)
-python scripts/run.py phase2b train --headless --max_iterations 120000 --checkpoint logs/skrl/ggswarm_marl/<phase_a_run>/checkpoints/best_agent.pt
+python scripts/run.py phase2b train --headless --gnn \
+  --checkpoint logs/skrl/ggswarm_marl/<phase_a_run>/checkpoints/best_agent.pt
 
 # After GCS pull — assess locally (Rule 20):
-python scripts/run.py phase2b assess --run_dir logs/skrl/ggswarm_marl/<run>
+python scripts/run.py phase2b assess \
+  --run_dir logs/skrl/ggswarm_marl/<run>
 
-# Eval and play are always local (GCE is training-only — see gce-training-ops rule):
-python scripts/run.py phase2b eval --checkpoint logs/skrl/ggswarm_marl/<run>/checkpoints/best_agent.pt
-python scripts/run.py phase2b play --checkpoint logs/skrl/ggswarm_marl/<run>/checkpoints/best_agent.pt
+# Eval and play are always local (GCE is training-only):
+python scripts/run.py phase2b eval --gnn \
+  --checkpoint logs/skrl/ggswarm_marl/<run>/checkpoints/best_agent.pt
+python scripts/run.py phase2b play --gnn \
+  --checkpoint logs/skrl/ggswarm_marl/<run>/checkpoints/best_agent.pt
+
+# Phase C: circular orbit (run on GCE, pass Phase B checkpoint)
+python scripts/run.py phase2c train --headless --gnn \
+  --checkpoint logs/skrl/ggswarm_marl/<phase_b_run>/checkpoints/best_agent.pt
+
+# After GCS pull — assess locally (Rule 20):
+python scripts/run.py phase2c assess \
+  --run_dir logs/skrl/ggswarm_marl/<run>
+
 tensorboard --logdir logs/skrl/ggswarm_marl
 ```
 

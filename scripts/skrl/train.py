@@ -648,6 +648,14 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # Docs: https://skrl.readthedocs.io/en/latest/api/utils/runner.html
     runner = Runner(env, agent_cfg)
 
+    # Inject adj_matrix from env extras into GNN policy during act().
+    # Must come after Runner (which creates the agent) and before training starts.
+    if args_cli.gnn:
+        from ggswarm_utils.sim_helpers import patch_mappo_gnn_adj_matrix  # noqa: PLC0415
+
+        patch_mappo_gnn_adj_matrix(runner.agent, env)
+        logger.info("Patched MAPPO.act() to inject adj_matrix into GNN policy inputs.")
+
     # Load agent weights if a checkpoint was provided
     if resume_path:
         print(f"[INFO] Loading model checkpoint from: {resume_path}")

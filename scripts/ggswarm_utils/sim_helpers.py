@@ -2,6 +2,7 @@
 
 Eliminates cross-script duplication of:
   - GNN policy configuration (configure_gnn_policy)
+  - GNN adj_matrix pipeline patch (patch_mappo_gnn_adj_matrix)
   - Agent count override (override_agent_count)
   - Action extraction from agent outputs (extract_actions)
   - Eval cfg overrides (configure_eval_cfg)
@@ -143,6 +144,59 @@ def configure_gnn_policy(cfg: dict, runner_cls: type) -> None:
     policy.setdefault("num_heads", 2)
     from ggswarm_utils.checkpoint import inject_gnn_policy  # noqa: PLC0415
     inject_gnn_policy(runner_cls)
+
+
+# ---------------------------------------------------------------------------
+# GNN adj_matrix pipeline patch
+# ---------------------------------------------------------------------------
+
+
+def patch_mappo_gnn_adj_matrix(agent: object, env: object) -> None:
+    """Inject adj_matrix from env._info into GNN policy inputs during act().
+
+    SKRL's MAPPO.act() only passes ``{"states": obs}`` to each policy.
+    This patch reads the adj_matrix from ``env._info`` (populated on every
+    step/reset by ``IsaacLabMultiAgentWrapper``) and injects it as
+    ``{"states": obs, "extras": {"adj_matrix": ...}}`` so
+    ``GGSwarmGNNPolicy`` can build proper GATv2 edges.
+
+    Follows the same monkey-patch pattern as
+    ``patch_mappo_single_agent_shared_states`` in ``train.py``.
+
+    Args:
+        agent: The skrl MAPPO multi-agent object.
+        env:   The skrl-wrapped environment (``IsaacLabMultiAgentWrapper``).
+    """
+    original_act = agent.act  # type: ignore[attr-defined]
+
+    def patched_act(states: object, timestep: int, timesteps: int) -> object:
+        info = getattr(env, "_info", {})
+        adj = info.get("adj_matrix") if isinstance(info, dict) else None
+        if adj is None:
+            return original_act(states, timestep=timestep, timesteps=timesteps)
+
+        extras = {"adj_matrix": adj}
+        saved_acts: dict[str, object] = {}
+        for uid in agent.possible_agents:  # type: ignore[attr-defined]
+            policy = agent.policies[uid]  # type: ignore[attr-defined]
+            saved_acts[uid] = policy.act
+
+            def _wrap(orig_fn: object, ext: dict[str, object]) -> object:
+                def wrapped(inputs: dict[str, object], role: str = "") -> object:
+                    inputs = dict(inputs)
+                    inputs["extras"] = ext
+                    return orig_fn(inputs, role=role)  # type: ignore[operator]
+                return wrapped
+
+            policy.act = _wrap(policy.act, extras)
+
+        try:
+            return original_act(states, timestep=timestep, timesteps=timesteps)
+        finally:
+            for uid in agent.possible_agents:  # type: ignore[attr-defined]
+                agent.policies[uid].act = saved_acts[uid]  # type: ignore[attr-defined]
+
+    agent.act = patched_act  # type: ignore[attr-defined]
 
 
 # ---------------------------------------------------------------------------
