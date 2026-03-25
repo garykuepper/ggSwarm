@@ -75,6 +75,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Use GGSwarmGNNPolicy (GATv2). Default: True.",
     )
     parser.add_argument(
+        "--no_gnn",
+        action="store_true",
+        default=False,
+        help="Disable GNN, use MLP policy.",
+    )
+    parser.add_argument(
         "--no_sync",
         action="store_true",
         default=False,
@@ -320,7 +326,7 @@ def main() -> None:
         collector=collector,
         checkpoint=str(best_ckpt),
         num_episodes=args_cli.num_episodes,
-        gnn=args_cli.gnn,
+        gnn=args_cli.gnn and not args_cli.no_gnn,
         seed=args_cli.seed,
         device=getattr(args_cli, "device", None),
         num_envs=None,

@@ -452,6 +452,21 @@ This document tracks major technical changes and milestone completions for each 
   Also discovered GNN adjacency matrix never reaches policy (Phase 2B blocker, not gap cause).
 - **Next action:** PD19 — match ALL Isaac Lab hyperparams + use MLP (--no_gnn) to isolate variables.
 
+## Phase 2A Run PD19 — 2026-03-25
+
+- **Run dir:** `logs/skrl/ggswarm_marl/2026-03-25_02-40-25_mappo_torch`
+- **Config:** MLP (no GNN), matched Isaac Lab SKRL hyperparams (lr=5e-4, rollouts=24,
+  rewards_shaper_scale=0.01, etc.). But env config NOT matched (different rewards, spawn, etc.).
+- **Convergence:** peak **376.15** @ step **21,000** | final **294.32** @ step **30,000**
+- **Scorecard:** `mean_roll=85.1°` | `ground_hit_rate=0.794` | `airborne_ratio=0.459`
+- **Verdict: FAIL** — worse than PD18 (GNN, 52°). Matching SKRL hyperparams alone didn't help
+  because env reward/spawn params were still different from Isaac Lab. Also, rewards_shaper_scale=0.01
+  with our reward magnitudes (tuned for scale=1.0) made effective gradients 100x weaker.
+- **Lesson:** Must match env config AND training config simultaneously. Changed too many
+  variables at once (MLP + 8 hyperparams) — couldn't isolate cause.
+- **Next action:** PD20 — match ALL 12 env parameters + keep Isaac Lab SKRL config + MLP.
+  Only remaining difference: MAPPO vs PPO.
+
 ## Phase 2A Run PD7 — 2026-03-23
 
 - **Run dir:** `logs/skrl/ggswarm_marl/2026-03-23_03-38-53_mappo_torch`

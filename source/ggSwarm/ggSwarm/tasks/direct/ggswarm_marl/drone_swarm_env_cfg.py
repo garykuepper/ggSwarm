@@ -60,7 +60,7 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     # action[0] = 0.0 -> thrust_val = 0.5 -> total_thrust = weight (hover).
     # thrust_to_weight * 0.5 == 1.0 => nominal hover at neutral collective (Isaac-style).
     # Aligned with Isaac Lab's Isaac-Quadcopter-Direct-v0 reference baseline.
-    thrust_to_weight: float = 2.0
+    thrust_to_weight: float = 1.9  # Match Isaac Lab quadcopter reference exactly
 
     # --- Direct Moment Control (matching Isaac Lab Isaac-Quadcopter-Direct-v0) ---
     # PD16: dropped the PD attitude controller. The RL policy now directly outputs
@@ -231,34 +231,25 @@ class GGSwarmMarlHoverStabilityCfg(GGSwarmMarlEnvCfg):
 
     # Stable-hover reward: tanh distance (dt-scaled), squared vel/ang_vel penalties (dt-scaled),
     # plus low-clearance shaping (see ``compute_stable_hover_rewards``).
-    rew_scale_pos: float = 18.0
-    # PD10: sharpen position discriminator — at sigma=0.25 reward drops to 5% at 0.5m drift
-    # (was 45% at sigma=0.8). Crash-reset strategy yields ~40 vs hover ~180 per episode (4.5x ratio).
-    pos_tanh_sigma: float = 0.25
-    # PD10: 5.5x increase so velocity penalty is visible in TB (still 60x below pos peak at hover).
-    # PD13: reverted to PD10 value. PD11/PD12 reduced these to work around overdamped PD;
-    # with critically-damped gains (kd=0.00173), corrections no longer produce excessive ang_vel.
-    rew_scale_vel: float = -0.3
-    # PD10: 5x increase so angular velocity penalty is visible in TB (was flat across PD1-PD9).
-    rew_scale_ang_vel: float = -0.06
+    # PD20: match Isaac Lab quadcopter reference EXACTLY.
+    # Only difference from reference: MAPPO (multi-agent) vs PPO (single-agent).
+    rew_scale_pos: float = 15.0       # Isaac: distance_to_goal_reward_scale = 15.0
+    pos_tanh_sigma: float = 0.8       # Isaac: hardcoded 0.8 in _get_rewards
+    rew_scale_vel: float = -0.05      # Isaac: lin_vel_reward_scale = -0.05
+    rew_scale_ang_vel: float = -0.01  # Isaac: ang_vel_reward_scale = -0.01
 
-    # Disable unused reward terms (PD controller makes these redundant)
     rew_scale_upright: float = 0.0
     rew_scale_alive: float = 0.0
-    # Dense penalty each step while z < min_height (see compute_stable_hover_rewards).
-    # PD8: -5.0 caused ceiling escape (generous sigma=0.8 let policy drift up without losing
-    # position reward). PD10: re-enabled at -2.0 because tight sigma=0.25 suppresses ceiling
-    # escape — drifting up immediately loses position reward, countering any "flee floor" gradient.
-    rew_scale_terminated: float = -2.0
-    # Penalty per metre below (min_height + low_clearance_margin_m); aligns MDP with scorecard airborne gate.
-    rew_scale_low_clearance: float = -8.0
+    rew_scale_terminated: float = 0.0       # Isaac: no ground penalty term
+    rew_scale_low_clearance: float = 0.0    # Isaac: no low-clearance term
 
-    # Moderate spawn yaw; PD controller recovers from wider perturbations
     spawn_yaw_range: float = 0.3  # ± rad
 
-    # Phase 2A-only: more vertical margin above min_height; goal Z still tracks spawn Z in _reset_idx.
-    spawn_z_min: float = 0.65
-    spawn_z_max: float = 1.65
+    # Match Isaac Lab spawn ranges
+    spawn_z_min: float = 0.5
+    spawn_z_max: float = 1.5
+    max_height: float = 2.0          # Isaac: 2.0 (was 3.0)
+    spawn_dist: float = 2.0          # Isaac: 2.0 (was 0.5)
 
     # PD10: enable action telemetry for full run — thrust_val_mean, moment saturation in TB.
     action_telemetry_max_env_steps: int = 999999
@@ -268,7 +259,7 @@ class GGSwarmMarlHoverStabilityCfg(GGSwarmMarlEnvCfg):
     # 2048 envs * 3 agents = 6144 parallel rollouts (vs Isaac Lab's 4096 single-agent).
     # Should improve gradient diversity and convergence speed.
     scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=4096, env_spacing=5.0, replicate_physics=True
+        num_envs=4096, env_spacing=5.0, replicate_physics=True  # Isaac: 2.5 but we need 5.0 for 3 agents with spawn_dist=2.0
     )
 
 
