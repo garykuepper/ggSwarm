@@ -467,6 +467,51 @@ This document tracks major technical changes and milestone completions for each 
 - **Next action:** PD20 — match ALL 12 env parameters + keep Isaac Lab SKRL config + MLP.
   Only remaining difference: MAPPO vs PPO.
 
+## Phase 2A Run PD20 — 2026-03-25
+
+- **Run dir:** `logs/skrl/ggswarm_marl/2026-03-25_03-23-42_mappo_torch`
+- **Config:** MLP, ALL Isaac Lab params matched (env + SKRL). Only difference: MAPPO vs PPO.
+- **Training:** Converged by 10k, then collapsed after 20k (ground_hit_rate rose to 27%).
+- **Scorecard:** `mean_roll=80.2°` | `ground_hit_rate=0.836` | `airborne_ratio=0.432`
+- **Verdict: FAIL** — gap persists even with everything matched. Led to final investigation.
+
+## ROOT CAUSE FOUND — Train-Eval Gap (2026-03-25)
+
+**Root cause:** `load_policy_from_checkpoint()` in `checkpoint.py` only loaded neural network
+weights — it did NOT restore the `RunningStandardScaler` preprocessor statistics
+(`running_mean`, `running_variance`, `current_count`). During eval, the preprocessor used
+fresh `mean=0, variance=1` instead of training-time statistics. This caused observations to
+be wrongly scaled — e.g. angular velocity dimensions had training variance ~16.4 but were
+normalized by variance=1 during eval, making the policy see values **16x too large**.
+
+**Fix:** Replace `load_policy_from_checkpoint(agent, resume_path)` with
+`agent.load(str(resume_path))` in `eval_runner.py` and `play.py`. SKRL's built-in `load()`
+restores everything: policy weights, value network, preprocessor statistics, optimizer state.
+This is what Isaac Lab's own `play.py` uses (line 208).
+
+**Impact:** This bug affected every eval/assess run from PD1 through PD20. All the config
+changes we tried (PD gains, entropy, noise settings, GNN vs MLP, reward tuning, Isaac Lab
+matching) were irrelevant — the policy was receiving garbage inputs during eval regardless.
+
+## Phase 2A COMPLETE — PD16 Re-Eval (2026-03-25)
+
+- **Run dir:** `logs/skrl/ggswarm_marl/2026-03-24_22-37-14_mappo_torch` (PD16 checkpoint)
+- **Eval fix applied:** `agent.load()` restoring preprocessor statistics
+- **Scorecard** (`best_agent.pt`, 5 episodes, seed 42):
+  - `survival_steps` = **240.8** (WARN, gate 500)
+  - `airborne_ratio` = **0.9999** (PASS)
+  - `ground_hit_rate` = **0.0001** (PASS)
+  - `mean_roll_deg` = **0.08°** (PASS)
+  - `orientation_violation_rate` = **0.0001** (PASS)
+  - `mean_formation_error_m` = **0.47 m** (PASS)
+  - **Overall: WARN** (5/6 PASS, 1 WARN)
+- **Trajectory analysis:**
+  - Altitude: rock-solid hold for 450+ steps
+  - Attitude: flat at 0° roll/pitch (±1° noise)
+  - XY: slow lateral drift ~0.4m over 500 steps due to uncontrolled yaw spin
+  - Yaw control is the main remaining weakness — priority for Phase 2B
+- **Decision: Phase 2A hover-stability COMPLETE.** Advance to Phase 2B (formation hover).
+
 ## Phase 2A Run PD7 — 2026-03-23
 
 - **Run dir:** `logs/skrl/ggswarm_marl/2026-03-23_03-38-53_mappo_torch`

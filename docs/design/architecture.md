@@ -62,19 +62,25 @@ It follows the **Graph Neural Swarm Control (GNSC)** 5-Layer model with a
 5. **MINCO:** EMA action smoother reduces velocity jitter (≥ 20% reduction target).
 6. **SwarmRaft:** On agent loss, the leader recomputes formation slots for surviving agents
    and updates `_desired_pos_w`; target is re-sync within 2.0 s.
-7. **Control:** The PD attitude controller converts attitude commands to body-frame thrust +
-   moments, applied to the main body via a single `permanent_wrench_composer` call.
+7. **Control:** Direct moment control — the policy outputs thrust + 3-axis moments,
+   applied to the main body via a single `permanent_wrench_composer` call.
+   This matches Isaac Lab's `Isaac-Quadcopter-Direct-v0` reference exactly.
 
 **Action contract (Phase 2+):** The RL policy outputs 4-dim actions
-`[thrust_cmd, desired_roll, desired_pitch, desired_yaw_rate]` intended in `[-1, 1]`.
+`[thrust_cmd, moment_x, moment_y, moment_z]` in `[-1, 1]`.
 `GGSwarmMarlEnv._pre_physics_step` **clamps** the stacked tensor to `[-1, 1]` before
-CBF/MINCO and the PD loop, so Gaussian exploration cannot command out-of-range thrust
-or tilt setpoints even when `clip_actions: False` in SKRL YAML.
-An inner-loop PD attitude controller (`attitude_controller.py`) converts these to
-body-frame thrust force and moments each physics step.
-This matches real Crazyflie flight controller architecture (Bitcraze cascaded PID)
-and the OmniDrones deployment pattern. The policy focuses on navigation/coordination;
-raw flight dynamics are handled by the deterministic controller.
+CBF/MINCO, so Gaussian exploration cannot command out-of-range values even when
+`clip_actions: False` in SKRL YAML. Thrust is scaled by `thrust_to_weight * robot_weight`;
+moments are scaled by `moment_scale` (default 0.01 Nm).
+
+> **Historical note (PD1–PD15):** An inner-loop PD attitude controller was used prior to
+> PD16. It introduced a moment saturation clamp that, combined with a checkpoint loading
+> bug (see below), created an apparent train-eval gap. Removed in PD16; direct moment
+> control is simpler and matches the Isaac Lab reference.
+>
+> **Train-eval gap root cause (PD1–PD20):** The eval checkpoint loader
+> (`load_policy_from_checkpoint()`) did not restore the `RunningStandardScaler` preprocessor
+> statistics. Fixed by switching to SKRL's built-in `agent.load()`. See changelog 2026-03-25.
 
 **Training telemetry (`extras["log"]` → TensorBoard):** SKRL’s MAPPO trainer logs
 `infos["log"]` only when each value is a **0-dim `torch.Tensor`** on the training device
@@ -163,7 +169,7 @@ critic receives valid inputs.
 | :--- | :--- |
 | `drone_swarm_env.py` | MARL environment (scene, physics, obs, rewards, resets) |
 | `drone_swarm_env_cfg.py` | Env configs: base `GGSwarmMarlEnvCfg`, Phase A `GGSwarmMarlHoverStabilityCfg`, Phase B `GGSwarmMarlFormationCfg`, Phase 3/4 variants |
-| `attitude_controller.py` | Pure-torch PD attitude controller inner loop (no Isaac imports) |
+| `attitude_controller.py` | Deprecated PD attitude controller (kept for reference; unused since PD16) |
 | `contract_logic.py` | Pure-torch reward logic and adjacency matrix computation |
 | `cbf_safety.py` | **Phase 3** L4: CBF pairwise safety projection |
 | `swarm_raft.py` | **Phase 3** L3: SwarmRaft consensus and formation redistribution |

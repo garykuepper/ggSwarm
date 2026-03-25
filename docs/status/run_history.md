@@ -23,7 +23,7 @@ or relaunching (Rule 23). Full assessment workflow: [`docs/ops/post_train_analys
 | Run 3 | 2026-03-21_21-21-55 | Phase 2A | 1.1 | 0.582 | 0.648 | 75.8° | 0.582 | FAIL |
 | Run A1 | 2026-03-22_00-32-56 | Phase 2A | 1.1 | 0.700 | 0.423 | 59.8° | 0.524 | FAIL |
 
-### Post-Reset Runs (PD attitude controller — current)
+### Post-Reset Runs (PD1–PD15b: PD attitude controller; PD16+: direct moments)
 
 | Run | Timestamp | Phase | survival\_steps | airborne\_ratio | ground\_hit\_rate | mean\_roll\_deg | orientation\_viol | Verdict |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -39,6 +39,15 @@ or relaunching (Rule 23). Full assessment workflow: [`docs/ops/post_train_analys
 | Run PD10 | 2026-03-23_23-36-16 | Phase 2A | 5.2 | 0.736 | 0.373 | 23.9° | 0.455 | FAIL |
 | Run PD11 | 2026-03-24_02-19-01 | Phase 2A | 4.2 | 0.757 | 0.358 | 49.6° | 0.582 | FAIL |
 | Run PD12 | 2026-03-24_04-42-36 | Phase 2A | — | — | — | — | — | aborted |
+| Run PD15b | 2026-03-24_15-13-09 | Phase 2A | 5.0 | 0.737 | 0.353 | 23.6° | 0.305 | FAIL |
+| Run PD16 | 2026-03-24_22-37-14 | Phase 2A | 5.0 | 0.473 | 0.706 | 83.1° | 0.585 | FAIL |
+| Run PD17 | 2026-03-25_00-35-49 | Phase 2A | 5.2 | 0.447 | 0.799 | 97.4° | 0.661 | FAIL |
+| Run PD18 | 2026-03-25_01-32-20 | Phase 2A | 5.2 | 0.762 | 0.323 | 52.2° | 0.617 | FAIL |
+| Run PD19 | 2026-03-25_02-40-25 | Phase 2A | 5.0 | 0.459 | 0.794 | 85.1° | 0.540 | FAIL |
+| Run PD20 | 2026-03-25_03-23-42 | Phase 2A | 4.4 | 0.432 | 0.836 | 80.2° | 0.518 | FAIL |
+| **PD16 re-eval** | 2026-03-24_22-37-14 | Phase 2A | **240.8** | **1.000** | **0.000** | **0.08°** | **0.000** | **WARN** |
+
+> **PD16 re-eval (2026-03-25):** Root cause of the train-eval gap found: `load_policy_from_checkpoint()` did not restore the `RunningStandardScaler` preprocessor statistics. Fix: `agent.load()`. PD16 re-evaluated with fix — **Phase 2A hover-stability effectively solved.** Only WARN is `survival_steps=240.8` (gate 500) due to one late episode wobble.
 
 > **Run PD8 scorecard:** GCE train **92,000** iters; PD8 = `rew_scale_terminated=0.0` (ceiling-escape fix) + `hover_in_place=True` confirmed on VM. **`post_train_assess.py`** (seed **42**, `best_agent.pt`, 5 episodes). **TensorBoard:** `Reward/Total` peak **243** @ **85k**, final **241** @ **92k** (massive vs PD7 ~0.5 — reward structure changed with terminated=0); **`Policy / Standard deviation (drone_0)`** **0.61 → 2.70** (pinned at `max_log_std=1.0` ceiling = e^1 = 2.718); `Info / mean_world_z` **0.64 → 1.14 m** (learning to hover!); `Info / rew_ang_vel` flat **−0.112 → −0.116** (attitude never improves). **Checkpoint ladder** (10k interval, 2 eps): **10k is best** (airborne 0.766, formation 0.675 m); performance **degrades** at later checkpoints as σ explodes — confirms `best_agent.pt` (peak stochastic reward) ≠ best deterministic eval. **Trajectory plots:** shark-fin altitude pattern (~50-step crash-reset cycles, NOT 7-step PD7 saw-tooth); XY drift **1–3 m** (down from 4–8 m in PD7 — `hover_in_place` working); attitude ±50–75° oscillating with crash cycle. **vs PD7:** `airborne_ratio` **0.516→0.732** (+0.22), `ground_hit_rate` **0.712→0.304** (−0.41); `mean_roll_deg` **18.4°→32.2°** (worse — σ explosion), `orientation_violation_rate` **0.191→0.525** (worse). **FAIL** — ceiling escape fixed, hover_in_place working, but σ explosion is new dominant failure. **Next:** `max_log_std: 1.0 → 0.0` (clamp σ ceiling to 1.0).
 
