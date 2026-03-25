@@ -146,6 +146,15 @@ parser.add_argument(
         "(cfg default 0)."
     ),
 )
+parser.add_argument(
+    "--log_subdir",
+    type=str,
+    default=None,
+    help=(
+        "Subdirectory under the experiment log root for phase-based organisation "
+        "(e.g. 'phase2b'). Logs land in logs/skrl/<experiment>/<subdir>/<timestamp>."
+    ),
+)
 # Append AppLauncher-specific CLI arguments
 AppLauncher.add_app_launcher_args(parser)
 # Parse the combined arguments
@@ -581,6 +590,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # Define the base log root and the specific run directory (timestamped)
     log_root_path = os.path.join("logs", "skrl", agent_cfg["agent"]["experiment"]["directory"])
+    if args_cli.log_subdir:
+        log_root_path = os.path.join(log_root_path, args_cli.log_subdir)
     log_root_path = os.path.abspath(log_root_path)
     print(f"[INFO] Logging experiment in directory: {log_root_path}")
 
@@ -648,17 +659,17 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # Docs: https://skrl.readthedocs.io/en/latest/api/utils/runner.html
     runner = Runner(env, agent_cfg)
 
-    # Inject adj_matrix from env extras into GNN policy during act().
+    # Centralized GNN forward: batch all agents, call GNN once with adj_matrix.
     # Must come after Runner (which creates the agent) and before training starts.
     if args_cli.gnn:
         import sys as _sys  # noqa: PLC0415
         _scripts_dir = str(Path(__file__).resolve().parent.parent)
         if _scripts_dir not in _sys.path:
             _sys.path.insert(0, _scripts_dir)
-        from ggswarm_utils.sim_helpers import patch_mappo_gnn_adj_matrix  # noqa: PLC0415
+        from ggswarm_utils.sim_helpers import patch_mappo_gnn_batched_act  # noqa: PLC0415
 
-        patch_mappo_gnn_adj_matrix(runner.agent, env)
-        logger.info("Patched MAPPO.act() to inject adj_matrix into GNN policy inputs.")
+        patch_mappo_gnn_batched_act(runner.agent, env)
+        logger.info("Patched MAPPO for batched GNN forward (centralized act + weight sync).")
 
     # Load agent weights if a checkpoint was provided
     if resume_path:

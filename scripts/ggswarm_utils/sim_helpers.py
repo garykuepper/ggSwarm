@@ -2,7 +2,7 @@
 
 Eliminates cross-script duplication of:
   - GNN policy configuration (configure_gnn_policy)
-  - GNN adj_matrix pipeline patch (patch_mappo_gnn_adj_matrix)
+  - GNN batched act patch (patch_mappo_gnn_batched_act)
   - Agent count override (override_agent_count)
   - Action extraction from agent outputs (extract_actions)
   - Eval cfg overrides (configure_eval_cfg)
@@ -151,52 +151,137 @@ def configure_gnn_policy(cfg: dict, runner_cls: type) -> None:
 # ---------------------------------------------------------------------------
 
 
-def patch_mappo_gnn_adj_matrix(agent: object, env: object) -> None:
-    """Inject adj_matrix from env._info into GNN policy inputs during act().
+def patch_mappo_gnn_batched_act(agent: object, env: object) -> None:
+    """Patch MAPPO for centralized GNN forward: batch all agents, call GNN once.
 
-    SKRL's MAPPO.act() only passes ``{"states": obs}`` to each policy.
-    This patch reads the adj_matrix from ``env._info`` (populated on every
-    step/reset by ``IsaacLabMultiAgentWrapper``) and injects it as
-    ``{"states": obs, "extras": {"adj_matrix": ...}}`` so
-    ``GGSwarmGNNPolicy`` can build proper GATv2 edges.
+    SKRL's MAPPO calls ``policy.act()`` per agent with obs ``[num_envs, obs_dim]``,
+    but the GNN needs ALL agents simultaneously as ``[num_envs * num_agents, obs_dim]``
+    to build the graph from ``adj_matrix``.
 
-    Follows the same monkey-patch pattern as
-    ``patch_mappo_single_agent_shared_states`` in ``train.py``.
+    This patch:
+
+    1. Syncs policy weights across all agent instances (parameter sharing).
+    2. Overrides ``agent.act()`` to batch all agents' preprocessed obs, call ONE
+       policy's ``compute()`` with the full graph, then split + sample per-agent.
+    3. Overrides ``agent._update()`` to sync weights after each gradient step
+       (during ``_update``, policies use self-loop fallback — no adj_matrix in memory).
+
+    Preprocessor safety: ``RunningStandardScaler`` lives on
+    ``agent._state_preprocessor[uid]``, NOT inside ``policy.state_dict()``.
+    Weight sync only touches nn.Module parameters — preprocessor stats are untouched.
 
     Args:
         agent: The skrl MAPPO multi-agent object.
         env:   The skrl-wrapped environment (``IsaacLabMultiAgentWrapper``).
     """
+    import torch  # noqa: PLC0415
+    from torch.distributions import Normal  # noqa: PLC0415
+
+    uids = list(agent.possible_agents)  # type: ignore[attr-defined]
+    num_agents = len(uids)
+    # Use first agent's policy as the canonical GNN for centralized forward.
+    lead_policy = agent.policies[uids[0]]  # type: ignore[attr-defined]
+
+    # --- 1. Initial weight sync: lead → all others ---
+    src_state = lead_policy.state_dict()
+    for uid in uids[1:]:
+        agent.policies[uid].load_state_dict(src_state)  # type: ignore[attr-defined]
+
+    # --- 2. Patched act(): centralized GNN forward ---
     original_act = agent.act  # type: ignore[attr-defined]
 
-    def patched_act(states: object, timestep: int, timesteps: int) -> object:
+    def patched_act(
+        states: dict[str, torch.Tensor],
+        timestep: int,
+        timesteps: int,
+    ) -> tuple[dict, dict, dict]:
         info = getattr(env, "_info", {})
         adj = info.get("adj_matrix") if isinstance(info, dict) else None
         if adj is None:
             return original_act(states, timestep=timestep, timesteps=timesteps)
 
-        extras = {"adj_matrix": adj}
-        saved_acts: dict[str, object] = {}
-        for uid in agent.possible_agents:  # type: ignore[attr-defined]
+        # Preprocess each agent's obs with its own RunningStandardScaler.
+        # shape per uid: [num_envs, obs_dim]
+        preprocessed = [
+            agent._state_preprocessor[uid](states[uid])  # type: ignore[attr-defined]
+            for uid in uids
+        ]
+        # shape: [num_envs, num_agents, obs_dim]
+        stacked = torch.stack(preprocessed, dim=1)
+        # shape: [num_envs * num_agents, obs_dim]  (row-major matches edge_index)
+        batched_obs = stacked.reshape(-1, stacked.shape[-1])
+
+        # Centralized GNN forward (one call for all agents).
+        with torch.autocast(
+            device_type=lead_policy.device.type,  # type: ignore[union-attr]
+            enabled=getattr(agent, "_mixed_precision", False),
+        ):
+            mean_all, log_std, _ = lead_policy.compute(
+                {"states": batched_obs, "extras": {"adj_matrix": adj}}, role="policy"
+            )
+
+        # shape: [num_envs, num_agents, action_dim]
+        mean_3d = mean_all.reshape(-1, num_agents, mean_all.shape[-1])
+
+        # Clamp log_std (shared across all agents — single nn.Parameter).
+        if lead_policy._g_clip_log_std:
+            log_std = torch.clamp(
+                log_std, lead_policy._g_log_std_min, lead_policy._g_log_std_max
+            )
+
+        actions_dict: dict[str, torch.Tensor] = {}
+        log_prob_dict: dict[str, torch.Tensor] = {}
+        outputs_dict: dict[str, dict[str, torch.Tensor]] = {}
+
+        for i, uid in enumerate(uids):
+            # shape: [num_envs, action_dim]
+            agent_mean = mean_3d[:, i, :]
             policy = agent.policies[uid]  # type: ignore[attr-defined]
-            saved_acts[uid] = policy.act
 
-            def _wrap(orig_fn: object, ext: dict[str, object]) -> object:
-                def wrapped(inputs: dict[str, object], role: str = "") -> object:
-                    inputs = dict(inputs)
-                    inputs["extras"] = ext
-                    return orig_fn(inputs, role=role)  # type: ignore[operator]
-                return wrapped
+            dist = Normal(agent_mean, log_std.exp())
+            # Set on each policy so get_entropy() works during _update.
+            policy._g_log_std = log_std
+            policy._g_num_samples = agent_mean.shape[0]
+            policy._g_distribution = dist
 
-            policy.act = _wrap(policy.act, extras)
+            sampled = dist.rsample()
+            if policy._g_clip_actions:
+                sampled = torch.clamp(
+                    sampled,
+                    min=policy._g_clip_actions_min,
+                    max=policy._g_clip_actions_max,
+                )
 
-        try:
-            return original_act(states, timestep=timestep, timesteps=timesteps)
-        finally:
-            for uid in agent.possible_agents:  # type: ignore[attr-defined]
-                agent.policies[uid].act = saved_acts[uid]  # type: ignore[attr-defined]
+            log_prob = dist.log_prob(sampled)
+            if policy._g_reduction is not None:
+                log_prob = policy._g_reduction(log_prob, dim=-1)
+            if log_prob.dim() != sampled.dim():
+                log_prob = log_prob.unsqueeze(-1)
+
+            actions_dict[uid] = sampled
+            log_prob_dict[uid] = log_prob
+            outputs_dict[uid] = {"mean_actions": agent_mean}
+
+        # Store for record_transition (MAPPO reads agent._current_log_prob).
+        agent._current_log_prob = log_prob_dict  # type: ignore[attr-defined]
+
+        return actions_dict, log_prob_dict, outputs_dict
 
     agent.act = patched_act  # type: ignore[attr-defined]
+
+    # --- 3. Patched _update(): sync weights after gradient step ---
+    if hasattr(agent, "_update"):
+        original_update = agent._update  # type: ignore[attr-defined]
+
+        def patched_update(timestep: int, timesteps: int) -> object:
+            result = original_update(timestep, timesteps)
+            # Sync policy weights: lead → all others.
+            src = lead_policy.state_dict()
+            for uid in uids[1:]:
+                agent.policies[uid].load_state_dict(src)  # type: ignore[attr-defined]
+            return result
+
+        agent._update = patched_update  # type: ignore[attr-defined]
 
 
 # ---------------------------------------------------------------------------

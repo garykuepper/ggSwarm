@@ -192,6 +192,7 @@ def build_train_cmd(
     _append_opt(cmd, "--checkpoint", getattr(args, "checkpoint", None))
     _append_opt(cmd, "--early_stop_step", getattr(args, "early_stop_step", None))
     _append_if(cmd, getattr(args, "no_early_stop", False), "--no_early_stop")
+    _append_opt(cmd, "--log_subdir", getattr(args, "log_subdir", None))
     want_gnn = (
         gnn_default or getattr(args, "gnn", False)
     ) and not getattr(args, "no_gnn", False)

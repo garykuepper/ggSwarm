@@ -291,6 +291,7 @@ def _register_standard_family(
     eval_handler,
     eval_default_episodes: int = 5,
     assess_task: str | None = None,
+    log_subdir: str | None = None,
 ) -> None:
     """Register train / play / eval / assess / monitor subcommands for a family."""
     fam = families.add_parser(name, help=help_text)
@@ -301,6 +302,8 @@ def _register_standard_family(
 
     train = cmds.add_parser("train", help=f"Train {name} policy")
     _add_train_args(train)
+    if log_subdir:
+        train.set_defaults(log_subdir=log_subdir)
     train.set_defaults(handler=lambda a, t=_task, g=_gnn: _cmd_train(a, task=t, gnn_default=g))
 
     play = cmds.add_parser("play", help=f"Play {name} policy")
@@ -391,6 +394,7 @@ def _build_parser() -> argparse.ArgumentParser:  # noqa: C901  # grandfathered â
         gnn_default=True,
         log_dir=PHASE2_LOG_DIR,
         eval_handler=lambda a: _cmd_eval(a, phase="2b"),
+        log_subdir="phase2b",
     )
 
     # --- phase3 ---------------------------------------------------------------
