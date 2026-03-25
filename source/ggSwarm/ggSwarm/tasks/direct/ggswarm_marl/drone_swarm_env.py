@@ -387,6 +387,34 @@ class GGSwarmMarlEnv(DirectMARLEnv):
                 params=sh_params,
                 return_terms=True,
             )
+
+            # Hybrid mode: layer formation rewards on top of stable hover base.
+            # Active when formation scale is non-zero (Phase 2B+).
+            if self.cfg.rew_scale_formation != 0.0:
+                from .contract_logic import FormationRewardParams  # noqa: PLC0415
+                from .contract_logic import compute_formation_rewards  # noqa: PLC0415
+
+                form_params = FormationRewardParams(
+                    curriculum_start_step=self.cfg.curriculum_start_step,
+                    curriculum_end_step=self.cfg.curriculum_end_step,
+                    rew_scale_formation=self.cfg.rew_scale_formation,
+                    rew_scale_cohesion=self.cfg.rew_scale_cohesion,
+                    rew_scale_separation=self.cfg.rew_scale_separation,
+                    rew_formation_sigma=self.cfg.rew_formation_sigma,
+                    target_formation_dist=self.cfg.target_formation_dist,
+                    graph_connectivity_radius=self.cfg.graph_connectivity_radius,
+                    min_separation_dist=self.cfg.min_separation_dist,
+                )
+                _, form_terms = compute_formation_rewards(
+                    pos_w=pos_w,
+                    common_step_counter=int(self.common_step_counter),
+                    params=form_params,
+                    return_terms=True,
+                )
+                # Add formation terms to totals and logging dict.
+                for key in ("rew_formation", "rew_cohesion", "rew_separation"):
+                    total_rewards = total_rewards + form_terms[key]
+                    terms_dict[key] = form_terms[key]
         else:
             # shape: [num_envs, num_agents, 3]
             proj_grav_b = self.robot.data.projected_gravity_b.view(

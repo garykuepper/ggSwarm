@@ -279,6 +279,103 @@ def compute_marl_rewards(
 
 
 @dataclass(frozen=True)
+class FormationRewardParams:
+    """Parameters for formation-only rewards (cohesion, separation, spacing).
+
+    Used by ``compute_formation_rewards`` which is added on top of
+    ``compute_stable_hover_rewards`` in hybrid mode (Phase 2B+).
+    """
+
+    curriculum_start_step: int
+    curriculum_end_step: int
+    rew_scale_formation: float
+    rew_scale_cohesion: float
+    rew_scale_separation: float
+    rew_formation_sigma: float
+    target_formation_dist: float
+    graph_connectivity_radius: float
+    min_separation_dist: float
+
+
+def compute_formation_rewards(
+    *,
+    pos_w: torch.Tensor,
+    common_step_counter: int,
+    params: FormationRewardParams,
+    return_terms: bool = False,
+) -> torch.Tensor | tuple[torch.Tensor, dict[str, torch.Tensor]]:
+    """Compute formation/cohesion/separation rewards only (no hover terms).
+
+    Designed to be added on top of ``compute_stable_hover_rewards`` in hybrid
+    mode.  Curriculum alpha gates formation and cohesion; separation is always on.
+
+    Args:
+        pos_w: Drone positions, shape ``[num_envs, num_agents, 3]``.
+        common_step_counter: Current training step for curriculum.
+        params: Formation reward scales and thresholds.
+        return_terms: If True, return ``(total, terms_dict)``.
+
+    Returns:
+        Formation rewards of shape ``[num_envs, num_agents]``.
+    """
+    # shape: [num_envs, num_agents, 3]
+    if pos_w.dim() != 3 or pos_w.shape[-1] != 3:
+        raise ValueError(f"pos_w must be [num_envs, num_agents, 3]; got {tuple(pos_w.shape)}")
+
+    num_envs, num_agents, _ = pos_w.shape
+    if num_agents < 2:
+        raise ValueError("compute_formation_rewards expects num_agents >= 2.")
+
+    alpha = compute_curriculum_alpha(
+        common_step_counter,
+        curriculum_start_step=params.curriculum_start_step,
+        curriculum_end_step=params.curriculum_end_step,
+    )
+
+    # shape: [num_envs, num_agents, num_agents]
+    diff = pos_w.unsqueeze(2) - pos_w.unsqueeze(1)
+    inter_agent_distances = torch.norm(diff, dim=-1)
+    eye = torch.eye(num_agents, device=pos_w.device, dtype=inter_agent_distances.dtype).unsqueeze(0)
+
+    # Formation reward (fades in with alpha)
+    # shape: [num_envs, num_agents]
+    spacing_error = torch.abs(inter_agent_distances - params.target_formation_dist)
+    spacing_error = spacing_error * (1.0 - eye)
+    mean_spacing_error = spacing_error.sum(dim=2) / (num_agents - 1)
+    rew_formation = (
+        torch.exp(-mean_spacing_error / params.rew_formation_sigma)
+        * params.rew_scale_formation
+        * alpha
+    )
+
+    # Cohesion reward (fades in with alpha)
+    # shape: [num_envs, num_agents]
+    max_neighbor_dist, _ = torch.max(inter_agent_distances, dim=2)
+    rew_cohesion = (
+        params.rew_scale_cohesion
+        * torch.exp(-max_neighbor_dist / params.graph_connectivity_radius)
+        * alpha
+    )
+
+    # Separation penalty (always on)
+    # shape: [num_envs, num_agents]
+    collision_mask = (inter_agent_distances < params.min_separation_dist) & (1.0 - eye).bool()
+    rew_separation = params.rew_scale_separation * collision_mask.any(dim=2).float()
+
+    total = rew_formation + rew_cohesion + rew_separation
+
+    if return_terms:
+        terms_dict = {
+            "rew_formation": rew_formation,
+            "rew_cohesion": rew_cohesion,
+            "rew_separation": rew_separation,
+        }
+        return total, terms_dict
+
+    return total
+
+
+@dataclass(frozen=True)
 class HoverRewardParams:
     """Reward parameters for `GGSwarmHoverEnv`."""
 

@@ -285,19 +285,26 @@ class GGSwarmMarlFormationCfg(GGSwarmMarlEnvCfg):
         num_envs=4096, env_spacing=5.0, replicate_physics=True
     )
 
-    # Curriculum active from step 1 (Rule 21 — counter resets to 0 on resume)
-    curriculum_start_step: int = 0
-    curriculum_end_step: int = 10000   # ~123M experiences at 4096 envs; full formation strength
-    curriculum_pos_floor: float = 0.3  # hover signal never drops below 30%
+    # Hybrid rewards: stable hover base (tanh, dt-scaled) + formation on top.
+    # p2b-1 FAILED because compute_marl_rewards has 185x different magnitude vs
+    # compute_stable_hover_rewards. Using the proven Phase 2A reward function as
+    # the base ensures stability; formation terms layer additively via curriculum.
+    use_stable_hover_rewards: bool = True
 
-    # Stability rewards: match Phase 2A success config (PD16 re-eval PASS).
-    # Phase 2A used direct moment control with entropy_loss_scale=0.0.
-    rew_scale_upright: float = 0.0
+    # Stability rewards: exact Phase 2A HoverStability values (PD16 PASS).
+    rew_scale_pos: float = 18.0
+    pos_tanh_sigma: float = 0.25
+    rew_scale_vel: float = -0.3
     rew_scale_ang_vel: float = -0.06
     rew_scale_terminated: float = -2.0
-    rew_scale_alive: float = 0.0
+    rew_scale_low_clearance: float = -8.0
 
-    # Formation rewards re-enabled
+    # Curriculum: formation rewards fade in on top of stable hover base.
+    curriculum_start_step: int = 0
+    curriculum_end_step: int = 10000   # ~123M experiences at 4096 envs; full formation strength
+    curriculum_pos_floor: float = 0.3  # (unused in hybrid — stable hover pos is always on)
+
+    # Formation rewards layered on top of stable hover via hybrid path.
     rew_scale_formation: float = 1.0
     rew_scale_cohesion: float = 0.2
     rew_scale_separation: float = -5.0
