@@ -80,6 +80,38 @@ def validate_eval_checkpoint_path(path: str | Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _restore_state_preprocessors(agent: object, checkpoint: dict) -> None:
+    """Restore RunningStandardScaler statistics from a MAPPO checkpoint.
+
+    MAPPO checkpoints store per-agent state_preprocessor dicts containing
+    running_mean, running_variance, and current_count.  These must be loaded
+    into the agent's preprocessors so eval uses the same input normalization
+    as training.
+    """
+    # MAPPO stores preprocessors in agent._state_preprocessor (dict keyed by uid)
+    preprocessors = getattr(agent, "_state_preprocessor", None)
+    if preprocessors is None:
+        return
+
+    restored = 0
+    for uid, preprocessor in preprocessors.items():
+        if not hasattr(preprocessor, "load_state_dict"):
+            continue
+        # Try per-agent key first (e.g. checkpoint["drone_0"]["state_preprocessor"])
+        sp_state = None
+        if uid in checkpoint and isinstance(checkpoint[uid], dict):
+            sp_state = checkpoint[uid].get("state_preprocessor")
+        if sp_state is not None:
+            try:
+                preprocessor.load_state_dict(sp_state)
+                restored += 1
+            except Exception as e:
+                print(f"[CKPT] WARNING: Could not restore state_preprocessor for {uid}: {e}")
+
+    if restored > 0:
+        print(f"[CKPT] Restored state_preprocessor for {restored} agent(s)")
+
+
 def load_policy_from_checkpoint(agent: object, checkpoint_path: str | Path) -> None:
     """Load a checkpoint's policy weights into an skrl agent.
 
@@ -156,6 +188,13 @@ def load_policy_from_checkpoint(agent: object, checkpoint_path: str | Path) -> N
             raise KeyError(
                 f"Could not find policy in checkpoint. Available keys: {list(checkpoint.keys())}"
             )
+
+    # --- Restore state preprocessor (RunningStandardScaler) ---
+    # Without this, eval uses fresh mean=0/var=1 normalization instead of the
+    # training-time statistics, causing the policy to receive wrongly-scaled
+    # inputs (e.g. angular velocity 16x too large).  This was the root cause
+    # of the train-eval gap across PD1-PD20.
+    _restore_state_preprocessors(agent, checkpoint)
 
 
 # ---------------------------------------------------------------------------

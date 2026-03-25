@@ -343,7 +343,12 @@ def run_eval(
         # ----------------------------------------------------------------
         runner = Runner(env, cfg)
         agent = resolve_agent(runner)
-        load_policy_from_checkpoint(agent, resume_path)
+        # Use SKRL's built-in load() which restores policy weights, value
+        # network, state preprocessors (RunningStandardScaler), and optimizer.
+        # Our old load_policy_from_checkpoint() only loaded policy weights,
+        # leaving the preprocessor at fresh mean=0/var=1 — this was the root
+        # cause of the train-eval gap across PD1-PD20.
+        agent.load(str(resume_path))
         agent.set_running_mode("eval")
 
         # ----------------------------------------------------------------

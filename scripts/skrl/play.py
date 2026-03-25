@@ -361,9 +361,12 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
 
     agent = resolve_agent(runner)
     bcb("Loading checkpoint file")
-    load_policy_from_checkpoint(agent, resume_path)
+    # Use SKRL's built-in load() to restore policy, value, AND preprocessors.
+    # load_policy_from_checkpoint() only loaded policy weights, missing the
+    # RunningStandardScaler statistics — root cause of PD1-PD20 train-eval gap.
+    agent.load(str(resume_path))
     bcb("Checkpoint file loaded; policy loaded successfully.")
-    print("[INFO] Policy loaded successfully (Value function skipped for scalability).")
+    print("[INFO] Policy + preprocessors loaded via agent.load().")
 
     # MAPPO with separate=True creates one agent per drone; we only loaded into agents[0].
     # Broadcast the loaded policy to all agents so drones 1..N use the same trained weights

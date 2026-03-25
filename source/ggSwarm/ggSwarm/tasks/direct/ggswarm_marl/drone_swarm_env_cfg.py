@@ -41,8 +41,8 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
 
     # viewer
     viewer: ViewerCfg = ViewerCfg(
-        eye=(1.2, 1.2, 1.4),  # closer camera for small drones
-        lookat=(0.0, 0.0, 0.9),  # look-at near typical hover/formation altitude
+        eye=(2.5, 2.5, 2.0),  # pulled back to see all 3 agents
+        lookat=(0.0, 0.0, 1.0),
     )
 
     # simulation
@@ -60,7 +60,7 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     # action[0] = 0.0 -> thrust_val = 0.5 -> total_thrust = weight (hover).
     # thrust_to_weight * 0.5 == 1.0 => nominal hover at neutral collective (Isaac-style).
     # Aligned with Isaac Lab's Isaac-Quadcopter-Direct-v0 reference baseline.
-    thrust_to_weight: float = 1.9  # Match Isaac Lab quadcopter reference exactly
+    thrust_to_weight: float = 2.0
 
     # --- Direct Moment Control (matching Isaac Lab Isaac-Quadcopter-Direct-v0) ---
     # PD16: dropped the PD attitude controller. The RL policy now directly outputs
@@ -231,25 +231,20 @@ class GGSwarmMarlHoverStabilityCfg(GGSwarmMarlEnvCfg):
 
     # Stable-hover reward: tanh distance (dt-scaled), squared vel/ang_vel penalties (dt-scaled),
     # plus low-clearance shaping (see ``compute_stable_hover_rewards``).
-    # PD20: match Isaac Lab quadcopter reference EXACTLY.
-    # Only difference from reference: MAPPO (multi-agent) vs PPO (single-agent).
-    rew_scale_pos: float = 15.0       # Isaac: distance_to_goal_reward_scale = 15.0
-    pos_tanh_sigma: float = 0.8       # Isaac: hardcoded 0.8 in _get_rewards
-    rew_scale_vel: float = -0.05      # Isaac: lin_vel_reward_scale = -0.05
-    rew_scale_ang_vel: float = -0.01  # Isaac: ang_vel_reward_scale = -0.01
+    rew_scale_pos: float = 18.0
+    pos_tanh_sigma: float = 0.25
+    rew_scale_vel: float = -0.3
+    rew_scale_ang_vel: float = -0.06
 
     rew_scale_upright: float = 0.0
     rew_scale_alive: float = 0.0
-    rew_scale_terminated: float = 0.0       # Isaac: no ground penalty term
-    rew_scale_low_clearance: float = 0.0    # Isaac: no low-clearance term
+    rew_scale_terminated: float = -2.0
+    rew_scale_low_clearance: float = -8.0
 
     spawn_yaw_range: float = 0.3  # ± rad
 
-    # Match Isaac Lab spawn ranges
-    spawn_z_min: float = 0.5
-    spawn_z_max: float = 1.5
-    max_height: float = 2.0          # Isaac: 2.0 (was 3.0)
-    spawn_dist: float = 2.0          # Isaac: 2.0 (was 0.5)
+    spawn_z_min: float = 0.65
+    spawn_z_max: float = 1.65
 
     # PD10: enable action telemetry for full run — thrust_val_mean, moment saturation in TB.
     action_telemetry_max_env_steps: int = 999999
@@ -259,7 +254,7 @@ class GGSwarmMarlHoverStabilityCfg(GGSwarmMarlEnvCfg):
     # 2048 envs * 3 agents = 6144 parallel rollouts (vs Isaac Lab's 4096 single-agent).
     # Should improve gradient diversity and convergence speed.
     scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=4096, env_spacing=5.0, replicate_physics=True  # Isaac: 2.5 but we need 5.0 for 3 agents with spawn_dist=2.0
+        num_envs=4096, env_spacing=5.0, replicate_physics=True
     )
 
 
