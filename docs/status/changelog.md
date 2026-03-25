@@ -437,6 +437,21 @@ This document tracks major technical changes and milestone completions for each 
 - **Next action:** PD18 — match all Isaac Lab noise settings (`entropy_loss_scale=0.0`,
   `initial_log_std=0.0`, `max_log_std=2.0`), train from scratch (no checkpoint resume).
 
+## Phase 2A Run PD18 — 2026-03-25
+
+- **Run dir:** `logs/skrl/ggswarm_marl/2026-03-25_01-32-20_mappo_torch`
+- **Config:** Direct moments, no PD, `entropy_loss_scale=0.0`, `initial_log_std=0.0`,
+  `max_log_std=2.0` (all matched to Isaac Lab reference). GNN policy, 4096 envs, 30k iterations.
+- **Convergence:** peak reward **508.24** @ step **12,000** | final **417.83** @ step **30,000**
+- **Policy std:** **0.93 → 0.09** (correctly DECREASING — first run to show this)
+- **Scorecard** (`best_agent.pt` @ 12k, 5 episodes):
+  - `mean_roll=52.2°` | `ground_hit_rate=0.323` | `airborne_ratio=0.762`
+  - **Verdict: FAIL** — gap reduced (was 97° in PD17) but not closed
+- **Analysis:** Side-by-side config comparison found 8 more hyperparameter differences
+  with Isaac Lab reference (learning_rate, rollouts, layers, rewards_shaper_scale, etc.).
+  Also discovered GNN adjacency matrix never reaches policy (Phase 2B blocker, not gap cause).
+- **Next action:** PD19 — match ALL Isaac Lab hyperparams + use MLP (--no_gnn) to isolate variables.
+
 ## Phase 2A Run PD7 — 2026-03-23
 
 - **Run dir:** `logs/skrl/ggswarm_marl/2026-03-23_03-38-53_mappo_torch`
