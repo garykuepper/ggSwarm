@@ -15,11 +15,12 @@ models:
     clip_actions: False
     clip_log_std: True
     min_log_std: -20.0
-    # Caps train-time sampling for GaussianMixin (MLP and GNN). PD8 showed σ pinned at e^1=2.7
-    # (drone_0/1 hit ceiling); 0.0 → σ_max=1.0, prevents train/eval gap from exploration blowout.
-    max_log_std: 0.0
+    # Match Isaac Lab quadcopter reference (skrl_ppo_cfg.yaml). Allow wide exploration
+    # early; without entropy bonus the optimizer naturally drives σ down.
+    max_log_std: 2.0
     # MLP: initial diagonal log-std. GNN: passed to GGSwarmGNNPolicy (train.py logs active GNN widths).
-    initial_log_std: -0.5
+    # Isaac Lab uses 0.0 (σ=1.0) for aggressive early exploration.
+    initial_log_std: 0.0
     # NOTE: GNN-only keys ``hidden_channels`` and ``num_heads`` are NOT listed here — train.py injects
     # defaults when ``--gnn`` so the MLP gaussian_model instantiator never sees unknown kwargs.
     network:  # NOTE: this entire block is deleted at runtime when --gnn is active; GNN builds its own arch
@@ -71,8 +72,11 @@ agent:
   ratio_clip: 0.2
   value_clip: 0.2
   clip_predicted_values: True
-  # Slightly lower than 0.01 to offset wide policies after long hover-stability runs (Phase 2A PD4).
-  entropy_loss_scale: 0.008
+  # Match Isaac Lab quadcopter reference: 0.0 means no entropy incentive. The policy
+  # naturally drives σ toward zero, producing a deterministic control law whose mean
+  # is a valid eval action. Non-zero values (PD4–PD17) caused the train-eval gap by
+  # incentivizing noise-dependent control strategies.
+  entropy_loss_scale: 0.0
   value_loss_scale: 2.0
   kl_threshold: 0.0
   rewards_shaper_scale: 1.0

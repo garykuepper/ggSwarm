@@ -420,6 +420,23 @@ This document tracks major technical changes and milestone completions for each 
 - **Next action:** PD17 — remove `write_data_to_sim()` (one-line fix), resume from PD16 checkpoint,
   4096 envs, 30k iterations.
 
+## Phase 2A Run PD17 — 2026-03-25
+
+- **Run dir:** `logs/skrl/ggswarm_marl/2026-03-25_00-35-49_mappo_torch`
+- **Config:** Direct moments (no PD), removed `write_data_to_sim()` from `_apply_action()`.
+  Resumed from PD16 checkpoint. 4096 envs, 30k iterations.
+- **Convergence:** peak reward **497.47** @ step **7,000** | final **401.56** @ step **30,000**
+- **Training:** Perfect — `ground_hit_rate=0.0008`, `mean_dist_to_goal=0.005m`, `thrust=0.500`
+- **Scorecard:** `mean_roll=97.4°` | `ground_hit_rate=0.799` | `airborne_ratio=0.447`
+- **Verdict: FAIL** — train-eval gap persists. `write_data_to_sim()` was NOT the root cause.
+- **True root cause identified:** `entropy_loss_scale=0.008` in `skrl_mappo_cfg.yaml`.
+  Isaac Lab's reference quadcopter uses `entropy_loss_scale=0.0`. The entropy bonus
+  incentivizes the optimizer to keep policy noise high (std went UP 0.33→0.44 during PD17).
+  The policy mean becomes biased — optimized for `E[reward(mean+noise)]` not `reward(mean)`.
+  During deterministic eval, the mean alone produces invalid control commands.
+- **Next action:** PD18 — match all Isaac Lab noise settings (`entropy_loss_scale=0.0`,
+  `initial_log_std=0.0`, `max_log_std=2.0`), train from scratch (no checkpoint resume).
+
 ## Phase 2A Run PD7 — 2026-03-23
 
 - **Run dir:** `logs/skrl/ggswarm_marl/2026-03-23_03-38-53_mappo_torch`
