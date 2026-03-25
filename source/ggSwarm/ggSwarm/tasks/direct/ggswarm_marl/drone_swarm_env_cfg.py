@@ -41,8 +41,9 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
 
     # viewer
     viewer: ViewerCfg = ViewerCfg(
-        eye=(2.5, 2.5, 2.0),  # pulled back to see all 3 agents
+        eye=(2.0, 2.0, 2.0),  # pulled back to see all 3 agents
         lookat=(0.0, 0.0, 1.0),
+        resolution=(1920, 1080),
     )
 
     # simulation
