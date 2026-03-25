@@ -40,6 +40,13 @@ All rules below are MANDATORY unless marked SHOULD.
 - **GCE is for training only.** eval / play / assess / tensorboard / git must run locally.
 - Do NOT suggest running eval, play, assess, or analysis scripts via `gcloud compute ssh --command`.
 
+## Video Recording (MANDATORY)
+
+- Always pass `--video_prefix <run_label>` when recording video (e.g. `--video_prefix p2b-3`).
+- The run label must match the label used in `docs/status/run_history.md` for traceability.
+- Example: `python scripts/run.py phase2b play --video --video_prefix p2b-3 --checkpoint <path>`
+- Output filename: `p2b-3__best_agent-episode-0.mp4` (1080p, H.264 NVENC).
+
 ---
 
 ## Architecture + Interfaces (MANDATORY)
