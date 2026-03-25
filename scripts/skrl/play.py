@@ -66,6 +66,12 @@ parser.add_argument(
     help="Extra ffmpeg params as a single string, e.g. \"-cq 18 -rc vbr\".",
 )
 parser.add_argument(
+    "--video_prefix",
+    type=str,
+    default=None,
+    help="Prefix for video filename, e.g. 'p2b-3'. Prepended to the auto-generated name.",
+)
+parser.add_argument(
     "--max_steps",
     type=int,
     default=None,
@@ -278,11 +284,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
     # wrap for video recording
     if args_cli.video:
         checkpoint_stem = os.path.splitext(os.path.basename(resume_path))[0]
-        # Extract a short phase tag from the task name for video filenames.
-        # e.g. "Template-GGSwarm-Marl-Formation-v0" → "Formation"
-        task_parts = args_cli.task.split("-")
-        phase_tag = task_parts[-2] if len(task_parts) >= 2 else args_cli.task
-        raw_video_prefix = f"{phase_tag}__{run_name}__{checkpoint_stem}"
+        if args_cli.video_prefix:
+            raw_video_prefix = f"{args_cli.video_prefix}__{checkpoint_stem}"
+        else:
+            raw_video_prefix = f"{run_name}__{checkpoint_stem}"
         safe_video_prefix = "".join(
             ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in raw_video_prefix
         )

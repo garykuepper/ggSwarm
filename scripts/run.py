@@ -183,6 +183,8 @@ def _add_play_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--video_bitrate", type=str, default=None)
     p.add_argument("--video_preset", type=str, default=None)
     p.add_argument("--video_ffmpeg_params", type=str, default=None)
+    p.add_argument("--video_prefix", type=str, default=None,
+                   help="Prefix for video filename, e.g. 'p2b-3'.")
     p.add_argument("--hover_debug", action="store_true", default=False)
     p.add_argument(
         "--gnn",

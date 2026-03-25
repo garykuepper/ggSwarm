@@ -242,6 +242,7 @@ def build_play_cmd(
     _append_opt(cmd, "--video_bitrate", getattr(args, "video_bitrate", None))
     _append_opt(cmd, "--video_preset", getattr(args, "video_preset", None))
     _append_opt(cmd, "--video_ffmpeg_params", getattr(args, "video_ffmpeg_params", None))
+    _append_opt(cmd, "--video_prefix", getattr(args, "video_prefix", None))
 
     rendering_mode = getattr(args, "rendering_mode", None)
     if getattr(args, "video", False) and rendering_mode is None:
