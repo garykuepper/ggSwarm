@@ -145,6 +145,64 @@ def plot_attitude(
     return out
 
 
+def plot_inter_drone_distance(
+    pos_steps: list[torch.Tensor],
+    ep: int,
+    out_dir: Path,
+    target_dist: float = 0.20,
+    min_separation: float = 0.10,
+) -> Path:
+    """Pairwise inter-drone distances vs episode step for env 0.
+
+    Shows formation convergence and collision avoidance over time.
+
+    Returns the path to the saved PNG.
+    """
+    plt = _ensure_mpl()
+
+    # pos_steps[t] shape: [num_envs, num_agents, 3]; take env 0
+    pos = torch.stack([s[0] for s in pos_steps])  # [T, num_agents, 3]
+    T, A, _ = pos.shape
+
+    if A < 2:
+        # Single agent — no pairwise distances to plot
+        out = out_dir / f"distance_trace_ep{ep}.png"
+        fig, ax = plt.subplots(figsize=(13, 4))
+        ax.text(0.5, 0.5, "Single agent — no pairwise distances", transform=ax.transAxes, ha="center")
+        fig.savefig(out, dpi=130)
+        plt.close(fig)
+        return out
+
+    steps = list(range(T))
+    colors = ["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple", "tab:brown"]
+    fig, ax = plt.subplots(figsize=(13, 4))
+
+    pair_idx = 0
+    for i in range(A):
+        for j in range(i + 1, A):
+            dist = torch.norm(pos[:, i] - pos[:, j], dim=-1)  # [T]
+            ax.plot(
+                steps, dist.numpy(),
+                color=colors[pair_idx % len(colors)],
+                linewidth=1.1,
+                label=f"drone_{i}\u2194drone_{j}",
+            )
+            pair_idx += 1
+
+    ax.axhline(target_dist, color="green", linestyle="--", linewidth=1.0, label=f"target {target_dist}m")
+    ax.axhline(min_separation, color="red", linestyle="--", linewidth=1.0, label=f"min sep {min_separation}m")
+    ax.set_xlabel("Episode step")
+    ax.set_ylabel("Distance (m)")
+    ax.legend(loc="upper right", fontsize=8)
+    ax.set_title(f"Inter-drone distance - Episode {ep}  ({T} steps, {A} agents)")
+
+    out = out_dir / f"distance_trace_ep{ep}.png"
+    fig.tight_layout()
+    fig.savefig(out, dpi=130)
+    plt.close(fig)
+    return out
+
+
 def generate_all_trajectory_plots(
     collector: object,
     out_dir: Path,
@@ -180,6 +238,7 @@ def generate_all_trajectory_plots(
             spawn_z_max=spawn_z_max,
         ))
         created.append(plot_xy(traj_steps, ep, out_dir))
+        created.append(plot_inter_drone_distance(traj_steps, ep, out_dir))
 
         roll_steps = collector.roll_traj.get(ep, [])
         pitch_steps = collector.pitch_traj.get(ep, [])

@@ -115,10 +115,11 @@ class Phase2Collector:
         altitude_std, _ = compute_altitude_metrics(pos_w, base_env._desired_pos_w)  # type: ignore[attr-defined]
 
         self._episode_step_count += 1
-        if (
-            float(ground_hit_rate.item()) > 0.0
-            and self._first_ground_hit_step is None
-        ):
+        # Survival metric: only check env 0 (the eval env), not the full batch.
+        # The batch-wide ground_hit_rate includes 4096 envs — any spawn-time dip
+        # in any of 12,288 agents would trigger a false early survival cutoff.
+        env0_ground_hit = (current_altitude[0] < float(base_env.cfg.min_height)).any()  # type: ignore[attr-defined]
+        if env0_ground_hit and self._first_ground_hit_step is None:
             self._first_ground_hit_step = self._episode_step_count
 
         self._stats.update(

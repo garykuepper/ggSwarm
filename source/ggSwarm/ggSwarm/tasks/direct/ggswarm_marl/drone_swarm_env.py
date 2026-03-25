@@ -415,6 +415,18 @@ class GGSwarmMarlEnv(DirectMARLEnv):
                 for key in ("rew_formation", "rew_cohesion", "rew_separation"):
                     total_rewards = total_rewards + form_terms[key]
                     terms_dict[key] = form_terms[key]
+
+            # Upright reward: incentivize level flight (not in stable hover base).
+            # proj_grav_b[:, :, 2] is -1.0 when level, +1.0 when inverted.
+            if self.cfg.rew_scale_upright != 0.0:
+                # shape: [num_envs, num_agents, 3]
+                proj_grav_b = self.robot.data.projected_gravity_b.view(
+                    self.num_envs, self.cfg.num_agents, 3
+                )
+                # shape: [num_envs, num_agents]
+                rew_upright = self.cfg.rew_scale_upright * (-proj_grav_b[:, :, 2])
+                total_rewards = total_rewards + rew_upright
+                terms_dict["rew_upright"] = rew_upright
         else:
             # shape: [num_envs, num_agents, 3]
             proj_grav_b = self.robot.data.projected_gravity_b.view(

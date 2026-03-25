@@ -774,3 +774,32 @@ matching) were irrelevant — the policy was receiving garbage inputs during eva
 - **Vs Run PD3:** Clear win on **`ground_hit_rate`** and **`airborne_ratio`**; small regression on roll/orientation violation.
 - **Decision: FAIL** — do not advance to Phase 2B.
 - **Next action:** TensorBoard review (`summarize_tb_scalars.py`); consider bounded **`rew_scale_pos`** or **`rew_scale_ang_vel`** nudge, or PD **`kp_att` / `max_moment`** only if TB shows attitude-dominated failure; log any cfg change before next GCE run.
+
+## Phase 2B: Formation Training
+
+- [2026-03-25] **Phase 2B infrastructure:**
+  - Fixed GNN adj\_matrix pipeline: `patch_mappo_gnn_batched_act` batches all agents'
+    obs into `[num_envs * num_agents, obs_dim]`, calls GNN once with full graph,
+    splits per-agent. Syncs policy weights after `_update()`.
+  - Added `--log_subdir` for phase-based log organisation (`phase2b/` subfolder).
+  - Removed deprecated `gce_train_launch.ps1`; updated CLAUDE.md GCE rules.
+
+- [2026-03-25] **Run p2b-1** (30k iters, 4096 envs, GNN, checkpoint PD16):
+  - Used `compute_marl_rewards` (Gaussian, no dt-scaling) with Phase 2A reward scales.
+  - **FAIL:** `survival_steps=4.2`, `mean_roll=27.3°`, drones tumbling.
+  - Root cause: 185x reward magnitude mismatch between `compute_marl_rewards` and
+    `compute_stable_hover_rewards`. Phase 2A scales are invalid for the Gaussian function.
+  - Decision: FAIL — switch to hybrid reward approach.
+
+- [2026-03-25] **Run p2b-2** (30k iters, 4096 envs, GNN, checkpoint PD16):
+  - Hybrid rewards: `compute_stable_hover_rewards` base (Phase 2A scales) +
+    `compute_formation_rewards` on top via curriculum alpha.
+  - **Scorecard** (`best_agent.pt`, 5 episodes, seed 42):
+    - `survival_steps=4.4` | `airborne_ratio=0.911` | `ground_hit_rate=0.002`
+    - `mean_roll_deg=3.1°` | `orientation_violation_rate=0.004`
+    - `mean_formation_error_m=0.471`
+  - **Verdict: FAIL** — `survival_steps` gate not met (4.4 vs >500).
+    But 5/6 gates pass. Stability massively improved vs p2b-1 (roll 27°→3.1°,
+    ground\_hit 7.3%→0.2%). Late-episode crash at ~step 450 causes low survival.
+  - **Next action:** investigate survival\_steps metric — drones hover stably for 450+
+    steps then crash at episode end. May be truncation/boundary issue.

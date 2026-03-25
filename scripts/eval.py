@@ -116,7 +116,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--video_codec",
         type=str,
         default=None,
-        help="FFmpeg codec (default with --video: hevc_nvenc, with CPU fallback).",
+        help="FFmpeg codec (default with --video: h264_nvenc, with CPU fallback).",
     )
     parser.add_argument(
         "--video_bitrate",

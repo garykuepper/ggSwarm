@@ -108,7 +108,7 @@ def _wrap_env_for_eval_recording(
         run_name:       Training run / experiment name segment.
         log_dir:        Run directory (parent of ``checkpoints/``).
         video_length:   Number of steps to record from episode start.
-        video_codec:    Preferred ffmpeg codec (default ``hevc_nvenc`` with CPU fallback).
+        video_codec:    Preferred ffmpeg codec (default ``h264_nvenc`` with CPU fallback).
         video_bitrate:  Optional ffmpeg bitrate (e.g. ``8M``).
         video_preset:   Optional ffmpeg preset.
         video_ffmpeg_params: Optional extra ffmpeg args as one string (shell-split).
@@ -125,11 +125,11 @@ def _wrap_env_for_eval_recording(
     safe_video_prefix = "".join(
         ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in raw_video_prefix
     )
-    preferred_codec = video_codec or "hevc_nvenc"
+    preferred_codec = video_codec or "h264_nvenc"
     ffmpeg_params = (
         shlex.split(video_ffmpeg_params) if video_ffmpeg_params else None
     )
-    if ffmpeg_params is None and preferred_codec == "hevc_nvenc":
+    if ffmpeg_params is None and preferred_codec == "h264_nvenc":
         ffmpeg_params = [
             "-rc",
             "vbr",
@@ -214,7 +214,7 @@ def run_eval(
         extra_cfg_fn:   Optional callable(cfg) applied before Runner is built.
         video:          If True, record rgb_array clip under run_dir/videos/eval.
         video_length:   Steps to record from global step 0 (default 200).
-        video_codec:    Preferred ffmpeg codec (default hevc_nvenc with fallback).
+        video_codec:    Preferred ffmpeg codec (default h264_nvenc with fallback).
         video_bitrate:  Optional ffmpeg bitrate (e.g. ``8M``).
         video_preset:   Optional ffmpeg preset.
         video_ffmpeg_params: Extra ffmpeg args as one string (shell-split).

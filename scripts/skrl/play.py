@@ -45,7 +45,7 @@ parser.add_argument(
     "--video_codec",
     type=str,
     default=None,
-    help="FFmpeg video codec (default with --video: hevc_nvenc, with CPU fallback).",
+    help="FFmpeg video codec (default with --video: h264_nvenc, with CPU fallback).",
 )
 parser.add_argument(
     "--video_bitrate",
@@ -282,14 +282,14 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
         safe_video_prefix = "".join(
             ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in raw_video_prefix
         )
-        preferred_codec = args_cli.video_codec or "hevc_nvenc"
+        preferred_codec = args_cli.video_codec or "h264_nvenc"
         ffmpeg_params = (
             shlex.split(args_cli.video_ffmpeg_params)
             if args_cli.video_ffmpeg_params
             else None
         )
-        if ffmpeg_params is None and preferred_codec == "hevc_nvenc":
-            # Quality-oriented NVENC defaults: constant-quality style HEVC encode.
+        if ffmpeg_params is None and preferred_codec == "h264_nvenc":
+            # Quality-oriented NVENC defaults: constant-quality style H.264 encode.
             ffmpeg_params = [
                 "-rc",
                 "vbr",

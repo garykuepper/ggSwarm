@@ -298,6 +298,9 @@ class GGSwarmMarlFormationCfg(GGSwarmMarlEnvCfg):
     rew_scale_ang_vel: float = -0.06
     rew_scale_terminated: float = -2.0
     rew_scale_low_clearance: float = -8.0
+    # Upright reward: incentivize level flight via hybrid path (not in stable hover base).
+    # p2b-2 showed 3.1° roll (good but can improve) and weak yaw control.
+    rew_scale_upright: float = 0.5
 
     # Curriculum: formation rewards fade in on top of stable hover base.
     curriculum_start_step: int = 0
