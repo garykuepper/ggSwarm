@@ -651,6 +651,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # Inject adj_matrix from env extras into GNN policy during act().
     # Must come after Runner (which creates the agent) and before training starts.
     if args_cli.gnn:
+        import sys as _sys  # noqa: PLC0415
+        _scripts_dir = str(Path(__file__).resolve().parent.parent)
+        if _scripts_dir not in _sys.path:
+            _sys.path.insert(0, _scripts_dir)
         from ggswarm_utils.sim_helpers import patch_mappo_gnn_adj_matrix  # noqa: PLC0415
 
         patch_mappo_gnn_adj_matrix(runner.agent, env)
