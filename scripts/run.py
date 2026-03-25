@@ -201,7 +201,7 @@ def _add_eval_video_args(p: argparse.ArgumentParser) -> None:
         default=False,
         help="Record eval clip under run_dir/videos/eval (eval) or run_dir (assess).",
     )
-    p.add_argument("--video_length", type=int, default=200)
+    p.add_argument("--video_length", type=int, default=500)
     p.add_argument(
         "--rendering_mode",
         type=str,
