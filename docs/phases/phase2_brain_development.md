@@ -39,7 +39,7 @@ Phase 2 is split into three sequential sub-phases. Each sub-phase has its own CL
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | 2A: Hover-Stability | `hover-stability` | `Template-GGSwarm-Marl-HoverStability-v0` | `GGSwarmMarlHoverStabilityCfg` | airborne_ratio > 0.9, mean_roll < 15 deg | **PASSED** |
 | 2B: Formation | `phase2b` | `Template-GGSwarm-Marl-Formation-v0` | `GGSwarmMarlFormationCfg` | formation_error < 0.5 m, stability maintained | **PASSED** (p2b-3) |
-| 2C: Circular Orbit | `phase2c` | TBD | TBD | formation_error < 0.5 m while orbiting | In progress |
+| 2C: Perturbation | `phase2c` | `Template-GGSwarm-Marl-Perturbation-v0` | `GGSwarmMarlPerturbationCfg` | formation maintained under random pushes | In progress |
 
 ### 2A: Hover-Stability (PASSED)
 
@@ -61,30 +61,23 @@ Resume from Phase 2A checkpoint. Hybrid reward: `compute_stable_hover_rewards` b
 
 **Runs:** p2b-1 (FAIL -- 185x reward magnitude mismatch), p2b-2 (FAIL -- 5/6 gates pass, survival_steps FAIL), **p2b-3 (ALL PASS)**.
 
-### 2C: Circular Orbit (in progress)
+### 2C: Perturbation Robustness (in progress)
 
-Extend static formation (2B) to dynamic coordination. Drones maintain a
-horizontal circle formation (equal angular spacing, same altitude) while
-the entire formation follows a circular orbit path at constant angular
-velocity.
+Validate that the Phase 2B formation policy recovers from sudden disturbances.
+Random impulse pushes are applied to individual drones during formation hover.
+Circular orbit formation moves to Phase 3D.
 
-**Goal positions:** Each agent's target is a slot on a circle of radius
-`orbit_radius`, rotating at `orbit_angular_vel` rad/s. Slot i is offset by
-`2*pi*i/N` radians from a shared reference angle that advances with time.
-All slots share the same Z coordinate (level flight).
+**Mechanism:** Every 75 steps (~1.5s), a 1.0 N random force impulse (horizontal
+bias 0.8) is applied to one random drone per env via Isaac Lab's
+`instantaneous_wrench_composer` in global frame. The impulse resets after one step.
 
-**What changes from 2B:**
-
-- Position reward target becomes time-varying (moving slot on orbit)
-- Formation reward still uses inter-agent pairwise distance (carried from 2B)
-- New metric: orbit tracking error (mean distance from each agent to its moving slot)
-- Velocity penalty may need relaxation since agents must sustain forward motion
+**Key config:** `push_enabled = True`, inherits all hybrid rewards from Phase 2B.
 
 **Gate criteria:**
 
-- `formation_error < 0.5 m` while orbiting (same threshold as 2B)
-- `orbit_tracking_error < 0.5 m` (agents follow their slots)
-- Stability metrics maintained (airborne_ratio, orientation)
+- `formation_error < 0.5 m` maintained under perturbation
+- `survival_steps = 500` (no crashes from pushes)
+- `mean_roll_deg < 15 deg`, `airborne_ratio > 0.9`
 
 ---
 
@@ -256,7 +249,7 @@ velocity penalty was to not fly at all.
 
 - Yaw control is the main remaining weakness from Phase 2A (slow lateral drift ~0.4 m over 500 steps due to uncontrolled yaw spin)
 - `agent.load()` must always be used for checkpoint loading in eval/play (never manual weight loading)
-- Phase 2C orbit tracking will need velocity penalty relaxation since agents must sustain forward motion
+- Circular orbit formation moved to Phase 3D (too ambitious for Phase 2C given timeline)
 
 ---
 
