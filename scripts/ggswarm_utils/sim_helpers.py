@@ -305,19 +305,118 @@ def patch_mappo_gnn_batched_act(agent: object, env: object) -> None:
 
     agent.act = patched_act  # type: ignore[attr-defined]
 
-    # --- 3. Patched _update(): sync weights after gradient step ---
-    # NOTE: adj_matrix is stored in memory (step 1b) but NOT injected during
-    # _update() because the per-agent training loop has the same shape mismatch
-    # as the original act() — policy.act() receives [mini_batch, obs_dim] for one
-    # agent but adj_matrix references num_agents nodes. A full centralized _update
-    # (batching all agents' sampled states) is needed for true graph gradients
-    # during training. This is a Phase 3 stretch goal. For now, _update uses
-    # self-loop fallback — GNN layers still train but without graph-edge gradients.
+    # --- 3. Patched _update(): centralized GNN forward during training ---
+    # MAPPO._update() calls policy.act({"states": sampled_states, "taken_actions": ...})
+    # per agent. We wrap each policy's act() to do a centralized GNN forward:
+    # collect all agents' sampled states at the same memory indices, batch them,
+    # call GNN compute() with full graph + adj_matrix, split back per-agent.
     if hasattr(agent, "_update"):
         original_update = agent._update  # type: ignore[attr-defined]
 
+        # Cache for centralized forward during _update mini-batch loop.
+        # MAPPO calls policy.act() for each uid in sequence within the same
+        # mini-batch. The first agent triggers the centralized forward and
+        # caches results; subsequent agents read from cache.
+        _update_cache: dict[str, object] = {}
+
         def patched_update(timestep: int, timesteps: int) -> object:
-            result = original_update(timestep, timesteps)
+            # Wrap each policy's act() to do centralized GNN forward.
+            saved_acts: dict[str, object] = {}
+            for uid in uids:
+                policy = agent.policies[uid]  # type: ignore[attr-defined]
+                saved_acts[uid] = policy.act
+
+            def _make_update_act(uid_idx: int, orig_fn: object) -> object:
+                def wrapped(inputs: dict, role: str = "") -> object:
+                    taken_actions = inputs.get("taken_actions")
+                    if taken_actions is None:
+                        # Not a training call — use original
+                        return orig_fn(inputs, role=role)  # type: ignore[operator]
+
+                    sampled_states = inputs["states"]
+                    batch_size = sampled_states.shape[0]
+
+                    # Check cache — if first agent in this mini-batch, do centralized forward
+                    cache_key = f"{batch_size}_{id(sampled_states)}"
+                    if uid_idx == 0 or _update_cache.get("key") != cache_key:
+                        # Collect all agents' preprocessed states at same shape
+                        # Each agent's states are already preprocessed by MAPPO's loop
+                        all_states = [sampled_states]  # agent 0's states
+                        for other_idx in range(1, num_agents):
+                            other_uid = uids[other_idx]
+                            other_mem = agent.memories[other_uid]  # type: ignore[attr-defined]
+                            # Get the full states tensor and use same batch slice
+                            other_all = other_mem.get_tensor_by_name("states", keepdim=False)
+                            # Use last batch_size entries (matches current mini-batch)
+                            other_states = other_all[-batch_size:]
+                            # Preprocess with that agent's scaler
+                            other_states = agent._state_preprocessor[other_uid](  # type: ignore[attr-defined]
+                                other_states, train=False
+                            )
+                            all_states.append(other_states)
+
+                        # Get adj_matrix from memory
+                        adj_mem = agent.memories[uids[0]]  # type: ignore[attr-defined]
+                        try:
+                            flat_adj = adj_mem.get_tensor_by_name("adj_matrix", keepdim=False)
+                            adj_batch = flat_adj[-batch_size:]
+                            adj_3d = adj_batch.reshape(-1, num_agents, num_agents)
+                        except (KeyError, RuntimeError):
+                            adj_3d = None
+
+                        # Stack: [batch, num_agents, obs_dim] → [batch * num_agents, obs_dim]
+                        stacked = torch.stack(all_states, dim=1)
+                        batched_obs = stacked.reshape(-1, stacked.shape[-1])
+
+                        # Centralized GNN forward
+                        extras = {"adj_matrix": adj_3d} if adj_3d is not None else {}
+                        mean_all, log_std_all, _ = lead_policy.compute(
+                            {"states": batched_obs, "extras": extras}, role="policy"
+                        )
+
+                        # Split per-agent: [batch, num_agents, action_dim]
+                        mean_3d = mean_all.reshape(-1, num_agents, mean_all.shape[-1])
+
+                        _update_cache["key"] = cache_key
+                        _update_cache["means"] = mean_3d
+                        _update_cache["log_std"] = log_std_all
+
+                    # Get this agent's mean from cache
+                    agent_mean = _update_cache["means"][:, uid_idx, :]  # type: ignore[index]
+                    log_std = _update_cache["log_std"]
+
+                    # Replicate GaussianMixin.act() logic for training (with taken_actions)
+                    policy = agent.policies[uids[uid_idx]]  # type: ignore[attr-defined]
+                    if policy._g_clip_log_std:
+                        log_std = torch.clamp(log_std, policy._g_log_std_min, policy._g_log_std_max)
+
+                    from torch.distributions import Normal  # noqa: PLC0415
+                    dist = Normal(agent_mean, log_std.exp())
+                    policy._g_log_std = log_std
+                    policy._g_num_samples = agent_mean.shape[0]
+                    policy._g_distribution = dist
+
+                    # Compute log_prob of taken_actions (training mode)
+                    log_prob = dist.log_prob(taken_actions)
+                    if policy._g_reduction is not None:
+                        log_prob = policy._g_reduction(log_prob, dim=-1)
+                    if log_prob.dim() != taken_actions.dim():
+                        log_prob = log_prob.unsqueeze(-1)
+
+                    return taken_actions, log_prob, {"mean_actions": agent_mean}
+
+                return wrapped
+
+            for i, uid in enumerate(uids):
+                agent.policies[uid].act = _make_update_act(i, saved_acts[uid])  # type: ignore[attr-defined]
+
+            try:
+                result = original_update(timestep, timesteps)
+            finally:
+                for uid in uids:
+                    agent.policies[uid].act = saved_acts[uid]  # type: ignore[attr-defined]
+                _update_cache.clear()
+
             # Sync policy weights: lead → all others.
             src = lead_policy.state_dict()
             for uid in uids[1:]:
