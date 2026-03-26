@@ -345,6 +345,7 @@ def build_assess_cmd(
         "--num_episodes", str(getattr(args, "num_episodes", 5) or 5),
         "--headless",
     ]
+    _append_opt(cmd, "--run_label", getattr(args, "run_label", None))
     if getattr(args, "no_sync", False):
         cmd.append("--no_sync")
     if getattr(args, "trajectories", False):

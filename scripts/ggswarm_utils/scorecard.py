@@ -295,6 +295,7 @@ def write_report(
     task: str,
     num_episodes: int,
     checkpoint_name: str,
+    run_label: str | None = None,
     tb_diagnostics: list[dict] | None = None,
     trajectory_dir: Path | None = None,
     training_progression: dict[str, list[dict[str, float | int]]] | None = None,
@@ -309,6 +310,7 @@ def write_report(
         task:                  Gym task ID used for evaluation.
         num_episodes:          Number of evaluation episodes run.
         checkpoint_name:       Filename of the evaluated checkpoint.
+        run_label:             Optional run label (e.g. 'p2b-3') for the report header.
         tb_diagnostics:        List of dicts from extract_scalar_summary() (optional).
         trajectory_dir:        Path to trajectory plot directory (optional).
         training_progression:  Dict from extract_training_progression() (optional).
@@ -325,10 +327,12 @@ def write_report(
     collapse = convergence.get("entropy_collapse_step")
     collapse_str = f"{collapse:,}" if collapse else "Not detected"
 
+    title = f"# Assessment Report: {run_label}" if run_label else f"# Assessment Report: {run_name}"
     lines: list[str] = [
-        f"# Assessment Report: {run_name}",
+        title,
         "",
         f"Generated: {now}  ",
+        f"Run: `{run_label or run_name}`  ",
         f"Task: `{task}`  ",
         f"Checkpoint: `{checkpoint_name}`  ",
         f"Episodes: {num_episodes}",

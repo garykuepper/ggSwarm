@@ -81,6 +81,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Disable GNN, use MLP policy.",
     )
     parser.add_argument(
+        "--run_label",
+        type=str,
+        default=None,
+        help="Run label for the report header (e.g. 'p2b-3').",
+    )
+    parser.add_argument(
         "--no_sync",
         action="store_true",
         default=False,
@@ -386,6 +392,7 @@ def main() -> None:
         task=args_cli.task,
         num_episodes=args_cli.num_episodes,
         checkpoint_name=best_ckpt.name,
+        run_label=getattr(args_cli, "run_label", None),
         tb_diagnostics=tb_diagnostics,
         trajectory_dir=trajectory_dir,
         training_progression=training_progression,

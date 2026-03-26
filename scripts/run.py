@@ -246,6 +246,8 @@ def _add_assess_args(p: argparse.ArgumentParser) -> None:
         required=True,
         help="Path to training run directory (logs/skrl/ggswarm_marl/<timestamp>)",
     )
+    p.add_argument("--run_label", type=str, default=None,
+                   help="Run label for the assess report header (e.g. 'p2b-3').")
     p.add_argument("--num_episodes", type=int, default=5)
     p.add_argument(
         "--no_sync",
