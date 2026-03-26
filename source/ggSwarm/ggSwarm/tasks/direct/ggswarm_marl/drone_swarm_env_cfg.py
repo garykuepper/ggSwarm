@@ -353,11 +353,11 @@ class GGSwarmMarlPerturbationCfg(GGSwarmMarlFormationCfg):
     rew_scale_upright: float = 1.0      # 0.5 → 1.0: stronger level-flight incentive
     rew_scale_ang_vel: float = -0.15    # -0.06 → -0.15: penalize spinning harder
 
-    # Tighter precision: position within half a body-length, formation moderate.
-    # Drone is 0.092m (~0.1m). Previous sigmas were 2-3 body-lengths — too loose.
-    pos_tanh_sigma: float = 0.05        # 0.25 → 0.05: half a body-length precision
-    rew_formation_sigma: float = 0.15   # 0.3 → 0.15: ~1.5 body-lengths
-    rew_scale_formation: float = 2.0    # 1.0 → 2.0: stronger formation signal
+    # p2c-6a isolation test: revert sigmas to p2c-4 values (proven stable).
+    # Centralized _update stays active — testing if graph gradients alone cause NaN.
+    # p2c-5 NaN diverged with pos_tanh_sigma=0.05 + centralized _update combined.
+    # Inherits from FormationCfg: pos_tanh_sigma=0.25, rew_formation_sigma=0.3,
+    # rew_scale_formation=1.0
 
 
 @configclass
