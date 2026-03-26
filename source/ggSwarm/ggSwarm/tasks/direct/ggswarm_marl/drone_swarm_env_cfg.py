@@ -154,7 +154,7 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     # push_interval_steps. Tests formation recovery under sudden disturbances.
     push_enabled: bool = False
     push_interval_steps: int = 75        # steps between pushes (~1.5s at 0.02s/step)
-    push_force_magnitude: float = 1.0    # Newtons
+    push_force_magnitude: float = 0.025   # Newtons (~10% of drone weight 0.265N)
     push_horizontal_bias: float = 0.8    # fraction of force in XY plane (0=isotropic, 1=horizontal)
 
     # --- Phase 3: CBF Safety Shield (L4) ---
