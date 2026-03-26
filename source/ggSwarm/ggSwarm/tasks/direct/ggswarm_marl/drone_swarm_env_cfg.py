@@ -327,20 +327,31 @@ class GGSwarmMarlFormationCfg(GGSwarmMarlEnvCfg):
 
 @configclass
 class GGSwarmMarlPerturbationCfg(GGSwarmMarlFormationCfg):
-    """Phase 2C perturbation testing: random pushes on formation hover.
+    """Phase 2C formation refinement: tighter stability and yaw control.
 
     Inherits all hybrid reward + formation config from Phase 2B.
-    Enables random impulse pushes to test formation recovery under disturbance.
+    Increases stability rewards (upright, ang_vel) to reduce roll/pitch drift
+    and yaw spinning observed in p2b-3.
+
+    Originally planned as perturbation testing, but scope-cut: the p2b-3 policy
+    is fragile to even gentle pushes (0.025N). Perturbation robustness deferred
+    to after Phase 3A (CBF safety shield).
 
     Use task id ``Template-GGSwarm-Marl-Perturbation-v0``.
 
     Workflow:
     1. Resume from Phase 2B checkpoint: ``phase2c train --checkpoint <PhaseB>/best_agent.pt``
     2. Assess with ``phase2c assess --run_dir <run>``.
-    3. Advance to Phase 3 when formation maintained under perturbation.
+    3. Advance to Phase 3 when stability and formation metrics tighten.
     """
 
-    push_enabled: bool = True
+    # Pushes disabled — scope-cut after p2c-1/p2c-3 showed policy fragility.
+    push_enabled: bool = False
+
+    # Tighter stability: increase upright reward and angular velocity penalty.
+    # p2b-3 had mean_roll 3.9° (ok) but yaw spinning visible in video.
+    rew_scale_upright: float = 1.0      # 0.5 → 1.0: stronger level-flight incentive
+    rew_scale_ang_vel: float = -0.15    # -0.06 → -0.15: penalize spinning harder
 
 
 @configclass
