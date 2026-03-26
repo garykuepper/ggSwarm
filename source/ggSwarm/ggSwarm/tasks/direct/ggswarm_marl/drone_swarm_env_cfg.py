@@ -355,11 +355,14 @@ class GGSwarmMarlPerturbationCfg(GGSwarmMarlFormationCfg):
     rew_scale_ang_vel: float = -0.15    # -0.06 → -0.15: penalize spinning harder
 
     # Altitude matching: penalize Z-spread across agents (same flight level).
-    rew_scale_altitude_match: float = 1.0
+    # p2c-7: 1.0 was too strong — dragged drones to lowest one's altitude.
+    rew_scale_altitude_match: float = 0.2
 
-    # Formation sigmas: moderate tightening from base (0.3 → 0.15).
+    # Formation rewards: must be weaker than dt-scaled position reward (0.36/step).
+    # p2c-7: formation=2.0 was 8x stronger than position → drones sacrificed altitude.
     rew_formation_sigma: float = 0.15   # ~1.5 body-lengths
-    rew_scale_formation: float = 2.0    # stronger formation signal
+    rew_scale_formation: float = 0.1    # gentle formation incentive
+    rew_scale_cohesion: float = 0.05    # light neighbor pull
 
 
 @configclass
