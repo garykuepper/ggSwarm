@@ -498,7 +498,7 @@ def patch_mappo_gnn_batched_act(agent: object, env: object) -> None:
                 # Learning rate scheduling (KL-adaptive for lead agent).
                 sched = agent.schedulers.get(lead_uid)  # type: ignore[attr-defined]
                 if sched is not None:
-                    from skrl.utils.scheduler import KLAdaptiveLR  # noqa: PLC0415
+                    from skrl.resources.schedulers.torch import KLAdaptiveLR  # noqa: PLC0415
                     if isinstance(sched, KLAdaptiveLR):
                         kl = torch.tensor(kl_divergences, device=lead_policy.device).mean()
                         sched.step(kl.item())
