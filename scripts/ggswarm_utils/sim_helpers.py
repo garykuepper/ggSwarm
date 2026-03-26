@@ -190,21 +190,23 @@ def patch_mappo_gnn_batched_act(agent: object, env: object) -> None:
         agent.policies[uid].load_state_dict(src_state)  # type: ignore[attr-defined]
 
     # --- 1b. GNN gradient fix: store adj_matrix in SKRL memory ---
-    # Create adj_matrix tensor in each agent's memory so it's available during _update.
+    # Create adj_matrix tensor in lead agent's memory only.
     # Flattened to 1D for SKRL memory compat (reshape back during _update).
     adj_flat_size = num_agents * num_agents
-    for uid in uids:
-        memory = agent.memories[uid]  # type: ignore[attr-defined]
-        memory.create_tensor(
-            name="adj_matrix",
-            size=adj_flat_size,
-            dtype=torch.float32,
-        )
-    # NOTE: Do NOT add "adj_matrix" to _tensors_names — MAPPO's _update unpacks
-    # sample_all() by position (expects exactly 7 tensors). Instead, we fetch
-    # adj_matrix directly from memory via get_tensor_by_name() in the _update patch.
+    lead_mem = agent.memories[uids[0]]  # type: ignore[attr-defined]
+    lead_mem.create_tensor(
+        name="adj_matrix",
+        size=adj_flat_size,
+        dtype=torch.float32,
+    )
+    # SKRL initializes new float tensors with NaN (base.py line 182-184).
+    # Zero-fill so unfilled entries default to "no edges" instead of NaN.
+    lead_mem.tensors["adj_matrix"].zero_()
 
-    # Patch record_transition to store adj_matrix from infos into memory.
+    # Patch record_transition to store adj_matrix at the correct memory index.
+    # IMPORTANT: do NOT call add_samples() separately — that double-increments
+    # memory_index (base.py line 239). Instead, write directly to the tensor
+    # at the index original_record just used.
     original_record = agent.record_transition  # type: ignore[attr-defined]
 
     def patched_record(
@@ -218,8 +220,11 @@ def patch_mappo_gnn_batched_act(agent: object, env: object) -> None:
         if adj is not None:
             # shape: [num_envs, num_agents, num_agents] → [num_envs, num_agents*num_agents]
             flat_adj = adj.reshape(adj.shape[0], -1)
-            for uid in uids:
-                agent.memories[uid].add_samples(adj_matrix=flat_adj)  # type: ignore[attr-defined]
+            # Write at the index original_record just used (memory_index was
+            # already incremented, so go back 1).
+            mem = agent.memories[uids[0]]  # type: ignore[attr-defined]
+            prev_idx = (mem.memory_index - 1) % mem.memory_size
+            mem.tensors["adj_matrix"][prev_idx].copy_(flat_adj)
 
     agent.record_transition = patched_record  # type: ignore[attr-defined]
 
@@ -308,21 +313,22 @@ def patch_mappo_gnn_batched_act(agent: object, env: object) -> None:
     # --- 3. Patched _update(): centralized GNN forward during training ---
     # Strategy: wrap lead policy's act() to do centralized forward with graph.
     # Only the lead agent (uid[0]) processes the PPO update — other agents are
-    # skipped. Weights are synced afterward. This avoids the "backward through
-    # graph twice" problem (shared computation graph across agents).
+    # skipped. Weights are synced afterward.
     #
-    # The lead agent's mini-batch uses ALL agents' states (batched) with
-    # adj_matrix for the GNN forward, so attention weights get real graph
-    # gradients. PPO loss, value loss, and entropy use the lead agent's own
-    # memory (agent 0's experiences), which is representative under parameter
-    # sharing.
+    # Key fix (p2c-6b): use counter-based indexing to fetch other agents' states
+    # from the SAME contiguous memory slice as the lead agent's mini-batch.
+    # SKRL's sample_all() returns contiguous slices [i*B:(i+1)*B] from tensors_view.
     if hasattr(agent, "_update"):
         original_update = agent._update  # type: ignore[attr-defined]
+        _batch_idx = [0]  # tracks which mini-batch slice we're on
 
         def patched_update(timestep: int, timesteps: int) -> object:
-            # Wrap lead policy's act() for centralized GNN forward.
             lead_uid = uids[0]
             lead_saved_act = agent.policies[lead_uid].act  # type: ignore[attr-defined]
+            _batch_idx[0] = 0  # reset at start of each _update
+
+            # Get mini_batches count for the lead agent.
+            mini_batches = agent._mini_batches[lead_uid]  # type: ignore[attr-defined]
 
             def _centralized_act(inputs: dict, role: str = "") -> object:
                 taken_actions = inputs.get("taken_actions")
@@ -332,40 +338,38 @@ def patch_mappo_gnn_batched_act(agent: object, env: object) -> None:
                 sampled_states = inputs["states"]
                 batch_size = sampled_states.shape[0]
 
-                # Collect all agents' states for centralized GNN forward.
-                all_states = [sampled_states]  # lead agent's preprocessed states
+                # Compute the memory slice matching this mini-batch.
+                # sample_all() returns contiguous slices: [i*B : (i+1)*B]
+                start = _batch_idx[0] * batch_size
+                end = start + batch_size
+
+                # Fetch other agents' states from the SAME memory slice (aligned timesteps).
+                all_states = [sampled_states]  # lead agent, already preprocessed by MAPPO
                 for other_idx in range(1, num_agents):
                     other_uid = uids[other_idx]
-                    other_mem = agent.memories[other_uid]  # type: ignore[attr-defined]
-                    other_all = other_mem.get_tensor_by_name("states", keepdim=False)
-                    other_states = other_all[-batch_size:]
-                    other_states = agent._state_preprocessor[other_uid](  # type: ignore[attr-defined]
-                        other_states, train=False
+                    other_view = agent.memories[other_uid].tensors_view["states"]  # type: ignore[attr-defined]
+                    raw_states = other_view[start:end]
+                    preprocessed = agent._state_preprocessor[other_uid](  # type: ignore[attr-defined]
+                        raw_states, train=False
                     )
-                    all_states.append(other_states)
+                    all_states.append(preprocessed)
 
-                # Get adj_matrix from memory
-                try:
-                    flat_adj = agent.memories[lead_uid].get_tensor_by_name(  # type: ignore[attr-defined]
-                        "adj_matrix", keepdim=False
-                    )
-                    adj_batch = flat_adj[-batch_size:]
-                    adj_3d = adj_batch.reshape(-1, num_agents, num_agents)
-                except (KeyError, RuntimeError):
-                    adj_3d = None
+                # Get adj_matrix from the SAME memory slice (lead memory only).
+                lead_adj_view = agent.memories[lead_uid].tensors_view["adj_matrix"]  # type: ignore[attr-defined]
+                adj_flat = lead_adj_view[start:end]
+                adj_3d = adj_flat.reshape(-1, num_agents, num_agents)
 
                 # Stack: [batch, num_agents, obs_dim] → [batch * num_agents, obs_dim]
                 stacked = torch.stack(all_states, dim=1)
                 batched_obs = stacked.reshape(-1, stacked.shape[-1])
 
                 # Centralized GNN forward (WITH gradients — single backward)
-                extras = {"adj_matrix": adj_3d} if adj_3d is not None else {}
+                extras = {"adj_matrix": adj_3d}
                 mean_all, log_std, _ = lead_policy.compute(
                     {"states": batched_obs, "extras": extras}, role="policy"
                 )
 
                 # Extract lead agent's mean (index 0)
-                # shape: [batch, num_agents, action_dim]
                 mean_3d = mean_all.reshape(-1, num_agents, mean_all.shape[-1])
                 agent_mean = mean_3d[:, 0, :]
 
@@ -385,10 +389,12 @@ def patch_mappo_gnn_batched_act(agent: object, env: object) -> None:
                 if log_prob.dim() != taken_actions.dim():
                     log_prob = log_prob.unsqueeze(-1)
 
+                # Advance counter (cycles 0..M-1 within each epoch, auto-wraps)
+                _batch_idx[0] = (_batch_idx[0] + 1) % mini_batches
+
                 return taken_actions, log_prob, {"mean_actions": agent_mean}
 
             # Only run _update for the lead agent — skip others.
-            # Temporarily replace possible_agents to contain only lead uid.
             original_agents = agent.possible_agents  # type: ignore[attr-defined]
             agent.possible_agents = [lead_uid]  # type: ignore[attr-defined]
             agent.policies[lead_uid].act = _centralized_act  # type: ignore[attr-defined]
@@ -398,6 +404,14 @@ def patch_mappo_gnn_batched_act(agent: object, env: object) -> None:
             finally:
                 agent.possible_agents = original_agents  # type: ignore[attr-defined]
                 agent.policies[lead_uid].act = lead_saved_act  # type: ignore[attr-defined]
+
+            # NaN guard: fail fast if training diverged.
+            for p in lead_policy.parameters():
+                if torch.isnan(p).any():
+                    raise RuntimeError(
+                        "NaN detected in GNN policy parameters after _update. "
+                        "Training diverged — check reward scales or graph alignment."
+                    )
 
             # Sync policy weights: lead → all others.
             src = lead_policy.state_dict()
