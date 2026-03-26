@@ -305,52 +305,19 @@ def patch_mappo_gnn_batched_act(agent: object, env: object) -> None:
 
     agent.act = patched_act  # type: ignore[attr-defined]
 
-    # --- 3. Patched _update(): inject adj_matrix + sync weights ---
+    # --- 3. Patched _update(): sync weights after gradient step ---
+    # NOTE: adj_matrix is stored in memory (step 1b) but NOT injected during
+    # _update() because the per-agent training loop has the same shape mismatch
+    # as the original act() — policy.act() receives [mini_batch, obs_dim] for one
+    # agent but adj_matrix references num_agents nodes. A full centralized _update
+    # (batching all agents' sampled states) is needed for true graph gradients
+    # during training. This is a Phase 3 stretch goal. For now, _update uses
+    # self-loop fallback — GNN layers still train but without graph-edge gradients.
     if hasattr(agent, "_update"):
         original_update = agent._update  # type: ignore[attr-defined]
 
         def patched_update(timestep: int, timesteps: int) -> object:
-            # During _update, MAPPO calls policy.act({"states": ..., "taken_actions": ...})
-            # per agent. Wrap each policy's act() to inject the sampled adj_matrix from
-            # memory so the GNN gets graph structure during gradient computation.
-            saved_acts: dict[str, object] = {}
-            for uid in uids:
-                policy = agent.policies[uid]  # type: ignore[attr-defined]
-                saved_acts[uid] = policy.act
-
-                def _make_wrapped(orig_fn: object) -> object:
-                    def wrapped(inputs: dict, role: str = "") -> object:
-                        # Check if adj_matrix was sampled and attached by the memory loop.
-                        # During _update, the sample loop in MAPPO unpacks tensors by
-                        # position from _tensors_names. adj_matrix is the last one.
-                        # We can't easily intercept the unpacking, so instead we read
-                        # the latest adj_matrix from memory directly.
-                        mem = agent.memories[uid]  # type: ignore[attr-defined]
-                        try:
-                            flat_adj = mem.get_tensor_by_name("adj_matrix", keepdim=False)
-                            if flat_adj is not None and flat_adj.numel() > 0:
-                                # Reshape from [total_samples, num_agents*num_agents]
-                                # to [total_samples, num_agents, num_agents] for current batch
-                                batch_size = inputs["states"].shape[0]
-                                # Use last batch_size entries (most recent rollout data)
-                                adj_batch = flat_adj[-batch_size:]
-                                adj_3d = adj_batch.reshape(-1, num_agents, num_agents)
-                                inputs = dict(inputs)
-                                inputs["extras"] = {"adj_matrix": adj_3d}
-                        except (KeyError, RuntimeError):
-                            pass  # Fallback to self-loops if memory not populated yet
-                        return orig_fn(inputs, role=role)  # type: ignore[operator]
-                    return wrapped
-
-                policy.act = _make_wrapped(policy.act)
-
-            try:
-                result = original_update(timestep, timesteps)
-            finally:
-                # Restore original act methods.
-                for uid in uids:
-                    agent.policies[uid].act = saved_acts[uid]  # type: ignore[attr-defined]
-
+            result = original_update(timestep, timesteps)
             # Sync policy weights: lead → all others.
             src = lead_policy.state_dict()
             for uid in uids[1:]:
