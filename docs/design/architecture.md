@@ -2,190 +2,106 @@
 
 ## 1. Overview
 
-ggSwarm is a decentralized formation control framework for large-scale Unmanned
-Aerial Vehicle (UAV) swarms, built on the NVIDIA Isaac Lab simulation platform.
-It follows the **Graph Neural Swarm Control (GNSC)** 5-Layer model with a
-**Centralized Training, Decentralized Execution (CTDE)** workflow.
+ggSwarm is a decentralized formation control framework for UAV swarms, built on
+NVIDIA Isaac Lab. It follows the **Graph Neural Swarm Control (GNSC)** 5-Layer model
+with **Centralized Training, Decentralized Execution (CTDE)**.
 
-## 2. GNSC 5-Layer Model Mapping
+## 2. GNSC 5-Layer Model
 
-| Layer | Responsibility | Implementation Component | Phase |
-| :--- | :--- | :--- | :--- |
-| **L1: Local Sensing** | LiDAR/IMU data collection | `GGSwarmMarlEnv` perception buffers (12-dim obs) | ✅ Phase 1 |
-| **L2: GNN Messaging** | Spatial awareness / GNN | Distance-based adjacency matrix → GATv2 policy | ✅ Phase 2 |
-| **L3: Consensus** | Formation alignment + fault recovery | `SwarmRaft` — heartbeat, leader election, redistribution | ✅ Phase 3 |
-| **L4: Safety Shield** | Collision avoidance | Control Barrier Functions (CBF) — `cbf_safety.py` | ✅ Phase 3 |
-| **L5: Execution** | Trajectory following + smoothing | Thrust/moment force application + MINCO EMA smoother | ✅ Phase 3 |
+```mermaid
+graph TD
+    L1[L1: Local Sensing<br/>12-dim obs per agent] --> L2[L2: GATv2 GNN<br/>Message Passing]
+    L2 --> Actions[Raw Actions<br/>thrust + 3-axis moments]
+    Actions --> L4[L4: CBF Safety<br/>Collision Avoidance]
+    L4 --> L5a[L5: MINCO<br/>Trajectory Smoother]
+    L5a --> L5b[L5: Force Control<br/>Thrust Mapping]
+    L3[L3: SwarmRaft<br/>Consensus] -.->|updates goals| L1
+    Adj[Adjacency Matrix<br/>distance-based graph] -.-> L2
+```
+
+| Layer | Responsibility | Implementation |
+| :--- | :--- | :--- |
+| **L1: Local Sensing** | Per-agent state observation | `drone_swarm_env.py` — 12-dim obs (lin_vel, ang_vel, gravity, rel_pos_to_goal) |
+| **L2: GNN Messaging** | Graph-based coordination | `skrl_gnn_policy.py` — GATv2Conv via PyTorch Geometric |
+| **L3: Consensus** | Formation alignment + fault recovery | `swarm_raft.py` — heartbeat, leader election, slot redistribution |
+| **L4: Safety Shield** | Collision avoidance | `cbf_safety.py` — pairwise Control Barrier Functions |
+| **L5: Execution** | Trajectory smoothing + force control | `minco_trajectory.py` (EMA) + `drone_swarm_env.py` (thrust mapping) |
 
 ## 3. Data Flow
 
-### Phase 2 (baseline)
+```mermaid
+graph LR
+    subgraph Perception
+        Obs[12/14-dim obs<br/>per agent] --> AdjMat[Adjacency Matrix<br/>distance threshold 2.0m]
+    end
 
-```
-┌─────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────┐
-│  L1: Sensing │───▶│ L2: Adjacency│───▶│ L2: GATv2    │───▶│ L5: Force│
-│  12-dim obs  │    │  Matrix      │    │  Policy      │    │  Control │
-│  per agent   │    │  [N×N]       │    │  (MAPPO/PPO) │    │  4-dim   │
-└─────────────┘    └──────────────┘    └──────────────┘    └──────────┘
-```
+    subgraph Policy
+        AdjMat --> GNN[GATv2 GNN<br/>shared weights]
+        Obs --> GNN
+        GNN --> RawAct[Raw Actions<br/>4-dim per agent]
+    end
 
-### Phase 3 (full GNSC stack)
+    subgraph "Post-Policy Filters"
+        RawAct --> CBF[L4: CBF Safety]
+        CBF --> MINCO[L5: MINCO Smoother]
+        MINCO --> FC[L5: Force Control<br/>thrust + moments]
+    end
 
-```
-┌──────────────┐   ┌──────────────┐   ┌──────────────┐
-│  L1: Sensing  │──▶│ L2: GATv2    │──▶│ raw actions  │
-│  12/14-dim    │   │  Policy      │   │  [N×4]       │
-└──────────────┘   └──────────────┘   └──────┬───────┘
-        ▲                                     │
-        │                              ┌──────▼───────┐
-        │                              │ L4: CBF      │
-        │                              │  cbf_safety  │
-        │                              └──────┬───────┘
-        │                                     │ safe actions
-        │                              ┌──────▼───────┐
-        │                              │ L5: MINCO    │
-        │                              │  EMA Smoother│
-        │                              └──────┬───────┘
-        │                                     │ smooth actions
-┌───────┴──────┐                      ┌──────▼───────┐
-│ L3: SwarmRaft│                      │ L5: Force    │
-│  swarm_raft  │──▶ _desired_pos_w    │  Control     │
-└──────────────┘                      └──────────────┘
+    subgraph "Goal Management"
+        Raft[L3: SwarmRaft] -.->|updates _desired_pos_w| Obs
+    end
 ```
 
-1. **Perception:** Each agent gathers local state (lin_vel, ang_vel, gravity, rel_pos_to_goal).
-   With `raft_enabled=True`, two consensus dims are appended (is_leader, num_alive_frac → 14-dim).
-2. **Adjacency:** A distance-based graph (threshold 2.0m) defines message-passing edges.
-3. **Policy:** GATv2 processes graph-structured state to output raw control actions.
-4. **CBF:** Pairwise Control Barrier Functions project unsafe actions onto the safe half-space,
-   guaranteeing zero inter-agent collisions when active.
-5. **MINCO:** EMA action smoother reduces velocity jitter (≥ 20% reduction target).
-6. **SwarmRaft:** On agent loss, the leader recomputes formation slots for surviving agents
-   and updates `_desired_pos_w`; target is re-sync within 2.0 s.
-7. **Control:** Direct moment control — the policy outputs thrust + 3-axis moments,
-   applied to the main body via a single `permanent_wrench_composer` call.
-   This matches Isaac Lab's `Isaac-Quadcopter-Direct-v0` reference exactly.
+**Action contract:** The RL policy outputs `[thrust_cmd, moment_x, moment_y, moment_z]`
+in `[-1, 1]`. Thrust is scaled by `thrust_to_weight * robot_weight`; moments by
+`moment_scale` (0.01 Nm). Applied via `permanent_wrench_composer` — matches Isaac Lab's
+`Isaac-Quadcopter-Direct-v0` reference.
 
-**Action contract (Phase 2+):** The RL policy outputs 4-dim actions
-`[thrust_cmd, moment_x, moment_y, moment_z]` in `[-1, 1]`.
-`GGSwarmMarlEnv._pre_physics_step` **clamps** the stacked tensor to `[-1, 1]` before
-CBF/MINCO, so Gaussian exploration cannot command out-of-range values even when
-`clip_actions: False` in SKRL YAML. Thrust is scaled by `thrust_to_weight * robot_weight`;
-moments are scaled by `moment_scale` (default 0.01 Nm).
+## 4. Code Structure
 
-> **Historical note (PD1–PD15):** An inner-loop PD attitude controller was used prior to
-> PD16. It introduced a moment saturation clamp that, combined with a checkpoint loading
-> bug (see below), created an apparent train-eval gap. Removed in PD16; direct moment
-> control is simpler and matches the Isaac Lab reference.
->
-> **Train-eval gap root cause (PD1–PD20):** The eval checkpoint loader
-> (`load_policy_from_checkpoint()`) did not restore the `RunningStandardScaler` preprocessor
-> statistics. Fixed by switching to SKRL's built-in `agent.load()`. See changelog 2026-03-25.
-
-**Training telemetry (`extras["log"]` → TensorBoard):** SKRL’s MAPPO trainer logs
-`infos["log"]` only when each value is a **0-dim `torch.Tensor`** on the training device
-(`isinstance(v, torch.Tensor)` and `v.numel() == 1`). Python `float`s are **not** logged.
-Populate per-step diagnostics as tensor scalars — e.g. `terms_dict["rew_pos"].mean()` — so
-they appear as **`Info / rew_pos`**, **`Info / rew_vel`**, **`Info / rew_ang_vel`**,
-**`Info / rew_low_clearance`**, **`Info / rew_terminated`**, **`Info / mean_world_z`**,
-**`Info / low_clearance_frac`**, **`Info / curriculum_alpha`**, plus optional action telemetry
-and CBF rates when enabled.
-
-**Previous action contract (Runs 1–A1, now retired):** Policy output raw torques
-(`moment_scale * action[1:4]`). This required the policy to simultaneously learn
-flight dynamics and navigation, which proved unlearnable in 4 consecutive failed runs.
-
-**Phase 2 prerequisite baseline:** `GGS-Hover-v0` trains a single drone to hold
-its spawn pose before multi-agent formation tuning. This task keeps the same
-observation/action interfaces but disables formation objectives.
-
-**Phase 2 sub-phases:** Phase 2 is split into Phase A (hover-stability, formation OFF,
-`Template-GGSwarm-Marl-HoverStability-v0`) and Phase B (formation resume,
-`Template-GGSwarm-Marl-Formation-v0`). Both use the same 12-dim obs space and
-GATv2 policy — reward path differs: Phase 2A sets `use_stable_hover_rewards=True`
-(`compute_stable_hover_rewards` in `contract_logic.py`: tanh position, squared velocity,
-`step_dt`-scaled, plus optional low-clearance). Phase B uses `compute_marl_rewards`
-(Gaussian position, L2 velocity norms, curriculum/formation terms).
-Phase 2A adds optional **low-clearance shaping** (`rew_scale_low_clearance`, `low_clearance_margin_m` in cfg) so training
-penalizes time spent below the same altitude band used in eval (`min_height + margin`).
-Optional **`rew_scale_terminated`** (hover-stability cfg) adds a **dense** penalty each step while `z < min_height`
-(see `compute_stable_hover_rewards` in `contract_logic.py`).
-
-**Phase 2A goal semantics (`hover_in_place`):** `GGSwarmMarlEnvCfg` defines **`hover_in_place: bool`**
-(default **`False`**). Phase 2A (`GGSwarmMarlHoverStabilityCfg`) sets **`hover_in_place=True`**.
-On reset, the env first assigns **formation-circle XY slots** and **Z = spawn Z** (historical layout);
-when **`hover_in_place`** is **True**, **`desired_pos_w[:, :, :2]`** is overwritten with **spawn XY**, so
-**`desired_pos_w` equals the full 3D spawn pose** per agent. The observation term **`rel_pos_to_goal`**
-(body-frame vector to **`_desired_pos_w`**) and stable-hover **`dist_to_goal`** then encode **hold
-position at spawn**, not navigation to lateral slot offsets. Phase 2B (`GGSwarmMarlFormationCfg`) keeps
-the default **`False`** so XY goals remain formation slots for coordination training.
-
-Phase B resumes the Phase A `best_agent.pt` checkpoint via `--checkpoint`.
-Phase C (perturbation) is a future placeholder — see `GGSwarmMarlFormationCfg`.
-
-**Phase 3 backward compatibility:** All Phase 3 features are `False` by default in
-`GGSwarmMarlEnvCfg`. The `Template-GGSwarm-Marl-Direct-v0` task (Phase 2) is
-unchanged. Use `Template-GGSwarm-Marl-Phase3-v0` (or override config flags) to
-enable Phase 3 features.
-
-## 4. Platform & Training Pipeline
-
-### Robot: Bitcraze Crazyflie 2.x
-
-| Spec | Value |
-| :--- | :--- |
-| Dimensions (WxHxD) | 92 x 92 x 29 mm (motor-to-motor) |
-| Mass (sim) | ~0.027 kg (from `CRAZYFLIE_CFG` URDF) |
-| `drone_radius` (cfg) | 0.05 m (approximate collision envelope) |
-
-Reward and spacing parameters are calibrated to this physical scale:
-
-| Parameter | Value | In body-widths (~9 cm) |
-| :--- | :--- | :--- |
-| `pos_tanh_sigma` | 0.25 m | ~2.7x |
-| `target_formation_dist` | 0.20 m | ~2.2x |
-| `min_separation_dist` | 0.10 m | ~1.1x |
-| `spawn_dist` | 0.50 m | ~5.4x |
-| `graph_connectivity_radius` | 2.00 m | ~21.7x |
-
-### Training Stack
-
-| Component | Technology |
-| :--- | :--- |
-| Framework | NVIDIA Isaac Lab 2.3 / Isaac Sim 5.1 |
-| RL Library | SKRL (MAPPO agent) |
-| Policy | GATv2Conv (PyTorch Geometric) |
-| Optimizer | PPO with KL-adaptive learning rate |
-| Compute | Local RTX 3070 (dev) / Cloud GPU (heavy training) |
-
-Single-agent MARL with MAPPO (e.g. `GGS-Hover-v0`): SKRL's sequential trainer uses a
-code path that does not populate `infos['shared_states']`; `scripts/skrl/train.py`
-injects them from `DirectMARLEnv.state()` when `num_agents == 1` so the centralized
-critic receives valid inputs.
-
-## 5. Key Files
+### Environment Files
 
 | File | Purpose |
 | :--- | :--- |
 | `drone_swarm_env.py` | MARL environment (scene, physics, obs, rewards, resets) |
-| `drone_swarm_env_cfg.py` | Env configs: base `GGSwarmMarlEnvCfg`, Phase A `GGSwarmMarlHoverStabilityCfg`, Phase B `GGSwarmMarlFormationCfg`, Phase 3/4 variants |
-| `attitude_controller.py` | Deprecated PD attitude controller (kept for reference; unused since PD16) |
-| `contract_logic.py` | Pure-torch reward logic and adjacency matrix computation |
-| `cbf_safety.py` | **Phase 3** L4: CBF pairwise safety projection |
-| `swarm_raft.py` | **Phase 3** L3: SwarmRaft consensus and formation redistribution |
-| `minco_trajectory.py` | **Phase 3** L5: EMA trajectory smoother |
-| `drone_hover_env.py` | Hover-only baseline env (`GGS-Hover-v0`) with spawn-hold reward |
-| `drone_hover_env_cfg.py` | Hover config (single-agent + ground-hit penalty params) |
+| `drone_swarm_env_cfg.py` | Config classes: base, HoverStability, Formation, Perturbation, Phase3/4 |
+| `contract_logic.py` | Pure-torch reward computation, adjacency matrix, curriculum alpha |
+| `cbf_safety.py` | L4: CBF pairwise safety projection |
+| `swarm_raft.py` | L3: SwarmRaft consensus and formation redistribution |
+| `minco_trajectory.py` | L5: EMA trajectory smoother |
+
+### Policy Files
+
+| File | Purpose |
+| :--- | :--- |
+| `agents/skrl_gnn_policy.py` | GATv2 GNN policy (PyTorch Geometric + SKRL GaussianMixin) |
 | `agents/skrl_mappo_cfg.yaml` | SKRL MAPPO hyperparameters |
-| `agents/skrl_mappo_hover_cfg.yaml` | SKRL MAPPO hyperparameters for hover baseline |
-| `agents/skrl_gnn_policy.py` | GATv2 GNN policy wrapper (PyG bridge) |
+
+### Scripts
+
+| File | Purpose |
+| :--- | :--- |
+| `scripts/run.py` | Unified CLI: hover, phase2b, phase2c, phase3, debug |
 | `scripts/skrl/train.py` | Training entry point |
-| `scripts/skrl/play.py` | Evaluation / playback entry point |
-| `scripts/eval_hover.py` | Hover baseline metrics and pass/fail evaluation |
-| `scripts/eval_phase2.py` | Phase 2 formation metrics evaluation |
-| `scripts/eval_phase3.py` | **Phase 3** CBF / SwarmRaft / MINCO evaluation (O1–O3) |
-| `scripts/run.py` | Unified helper CLI: hover, hover-stability (A), phase2b (B), phase2, phase3, phase4, phase5, debug |
+| `scripts/skrl/play.py` | Evaluation / playback / video recording |
+| `scripts/ggswarm_utils/sim_helpers.py` | GNN batched act patch, phase registry |
+
+## 5. Platform
+
+| Component | Technology |
+| :--- | :--- |
+| Simulation | NVIDIA Isaac Lab 2.3 / Isaac Sim 5.1 |
+| RL Library | SKRL (MAPPO multi-agent) |
+| Policy | GATv2Conv (PyTorch Geometric) |
+| Optimizer | PPO with KL-adaptive learning rate |
+| Robot | Bitcraze Crazyflie 2.x (~0.027 kg, 92mm motor-to-motor) |
 
 ---
 
-*Note: This document is maintained as a project rule. All structural changes must be reflected here.*
+## See Also
+
+- [Phase 1: Foundation](../phases/phase1_foundation.md)
+- [Phase 2: Brain Development](../phases/phase2_brain_development.md)
+- [Phase 3: Muscle Refinement](../phases/phase3_muscle_refinement.md)
+- [Tensor Shape Contracts](tensor_contracts.md)
+- [Proposal](../project/proposal.md)

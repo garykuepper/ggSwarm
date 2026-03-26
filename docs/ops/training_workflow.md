@@ -519,7 +519,7 @@ Before committing to a long run, verify:
 ## References
 
 - **Architecture:** [`docs/design/architecture.md`](../../docs/design/architecture.md)
-- **Phase 2 Goals:** [`docs/design/phase2_brain_development.md`](../../docs/design/phase2_brain_development.md)
+- **Phase 2 Goals:** [`docs/phases/phase2_brain_development.md`](../phases/phase2_brain_development.md)
 - **Evaluation Script:** [`scripts/eval_phase2.py`](../../scripts/eval_phase2.py)
 - **Checkpoint Analyzer:** [`scripts/analyze_checkpoints.py`](../../scripts/analyze_checkpoints.py)
 - **Environment Config:** [`source/ggSwarm/ggSwarm/tasks/direct/ggswarm_marl/drone_swarm_env_cfg.py`](../../source/ggSwarm/ggSwarm/tasks/direct/ggswarm_marl/drone_swarm_env_cfg.py)

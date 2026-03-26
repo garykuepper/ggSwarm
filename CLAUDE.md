@@ -100,7 +100,7 @@ Before long runs, verify:
 | Document | Update trigger |
 | :--- | :--- |
 | `docs/status/changelog.md` | Every reward change, phase transition, or major bug fix |
-| `docs/status/weekly_updates.md` | Weekly snapshot (preferred Mondays) |
+| `docs/status/weekly_updates.md` | Weekly snapshot (Tuesdays) |
 | `docs/design/architecture.md` | Any change to env I/O contracts or layer boundaries |
 
 ## Markdown Hygiene (MANDATORY)
@@ -146,7 +146,7 @@ Gary makes all scope-cut calls. The assistant **must not propose extending any d
 
 Before declaring any phase complete:
 
-1. All phase objectives (P{N}.x) in `docs/design/phase{N}_*.md` have a recorded pass/fail result in `docs/status/changelog.md`.
+1. All phase objectives (P{N}.x) in `docs/phases/phase{N}_*.md` have a recorded pass/fail result in `docs/status/changelog.md`.
 2. Any failed objective has either a scope-cut decision logged or a targeted fix scoped within remaining calendar time.
 3. `docs/status/weekly_updates.md` current-week snapshot reflects the new phase start date.
 4. No open `# TODO (Phase N)` placeholders remain in files that belong to completed phases.
