@@ -71,9 +71,14 @@ _build
 **/logs/skrl/**/videos/
 **/logs/skrl/**/params/
 **/logs/skrl/**/trajectories/
+**/logs/skrl/**/*.json
+**/logs/skrl/**/*.csv
 **/recordings/*
 # Allow assess reports to be committed (summary record per run)
 !**/logs/skrl/**/assess_report.md
+
+# Local log archives
+logs/archive/
 
 # Pre-Trained Checkpoints
 /.pretrained_checkpoints/
