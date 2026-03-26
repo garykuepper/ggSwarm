@@ -163,8 +163,10 @@ def patch_mappo_gnn_batched_act(agent: object, env: object) -> None:
     1. Syncs policy weights across all agent instances (parameter sharing).
     2. Overrides ``agent.act()`` to batch all agents' preprocessed obs, call ONE
        policy's ``compute()`` with the full graph, then split + sample per-agent.
-    3. Overrides ``agent._update()`` to sync weights after each gradient step
-       (during ``_update``, policies use self-loop fallback — no adj_matrix in memory).
+    3. Stores ``adj_matrix`` in SKRL memory during ``record_transition`` so it's
+       available during training (GNN gradient fix).
+    4. Overrides ``agent._update()`` to inject stored adj_matrix into each policy's
+       ``act()`` during gradient computation, then sync weights afterward.
 
     Preprocessor safety: ``RunningStandardScaler`` lives on
     ``agent._state_preprocessor[uid]``, NOT inside ``policy.state_dict()``.
@@ -186,6 +188,42 @@ def patch_mappo_gnn_batched_act(agent: object, env: object) -> None:
     src_state = lead_policy.state_dict()
     for uid in uids[1:]:
         agent.policies[uid].load_state_dict(src_state)  # type: ignore[attr-defined]
+
+    # --- 1b. GNN gradient fix: store adj_matrix in SKRL memory ---
+    # Create adj_matrix tensor in each agent's memory so it's available during _update.
+    # Flattened to 1D for SKRL memory compat (reshape back during _update).
+    adj_flat_size = num_agents * num_agents
+    for uid in uids:
+        memory = agent.memories[uid]  # type: ignore[attr-defined]
+        memory.create_tensor(
+            name="adj_matrix",
+            size=adj_flat_size,
+            dtype=torch.float32,
+        )
+    # Add to tensor names so sample_all() includes it.
+    if hasattr(agent, "_tensors_names"):
+        current = list(agent._tensors_names)  # type: ignore[attr-defined]
+        if "adj_matrix" not in current:
+            agent._tensors_names = tuple(current + ["adj_matrix"])  # type: ignore[attr-defined]
+
+    # Patch record_transition to store adj_matrix from infos into memory.
+    original_record = agent.record_transition  # type: ignore[attr-defined]
+
+    def patched_record(
+        states: object, actions: object, rewards: object,
+        next_states: object, terminated: object, truncated: object,
+        infos: dict, timestep: int, timesteps: int,
+    ) -> None:
+        original_record(states, actions, rewards, next_states,
+                        terminated, truncated, infos, timestep, timesteps)
+        adj = infos.get("adj_matrix") if isinstance(infos, dict) else None
+        if adj is not None:
+            # shape: [num_envs, num_agents, num_agents] → [num_envs, num_agents*num_agents]
+            flat_adj = adj.reshape(adj.shape[0], -1)
+            for uid in uids:
+                agent.memories[uid].add_samples(adj_matrix=flat_adj)  # type: ignore[attr-defined]
+
+    agent.record_transition = patched_record  # type: ignore[attr-defined]
 
     # --- 2. Patched act(): centralized GNN forward ---
     original_act = agent.act  # type: ignore[attr-defined]
@@ -269,12 +307,52 @@ def patch_mappo_gnn_batched_act(agent: object, env: object) -> None:
 
     agent.act = patched_act  # type: ignore[attr-defined]
 
-    # --- 3. Patched _update(): sync weights after gradient step ---
+    # --- 3. Patched _update(): inject adj_matrix + sync weights ---
     if hasattr(agent, "_update"):
         original_update = agent._update  # type: ignore[attr-defined]
 
         def patched_update(timestep: int, timesteps: int) -> object:
-            result = original_update(timestep, timesteps)
+            # During _update, MAPPO calls policy.act({"states": ..., "taken_actions": ...})
+            # per agent. Wrap each policy's act() to inject the sampled adj_matrix from
+            # memory so the GNN gets graph structure during gradient computation.
+            saved_acts: dict[str, object] = {}
+            for uid in uids:
+                policy = agent.policies[uid]  # type: ignore[attr-defined]
+                saved_acts[uid] = policy.act
+
+                def _make_wrapped(orig_fn: object) -> object:
+                    def wrapped(inputs: dict, role: str = "") -> object:
+                        # Check if adj_matrix was sampled and attached by the memory loop.
+                        # During _update, the sample loop in MAPPO unpacks tensors by
+                        # position from _tensors_names. adj_matrix is the last one.
+                        # We can't easily intercept the unpacking, so instead we read
+                        # the latest adj_matrix from memory directly.
+                        mem = agent.memories[uid]  # type: ignore[attr-defined]
+                        try:
+                            flat_adj = mem.get_tensor_by_name("adj_matrix", keepdim=False)
+                            if flat_adj is not None and flat_adj.numel() > 0:
+                                # Reshape from [total_samples, num_agents*num_agents]
+                                # to [total_samples, num_agents, num_agents] for current batch
+                                batch_size = inputs["states"].shape[0]
+                                # Use last batch_size entries (most recent rollout data)
+                                adj_batch = flat_adj[-batch_size:]
+                                adj_3d = adj_batch.reshape(-1, num_agents, num_agents)
+                                inputs = dict(inputs)
+                                inputs["extras"] = {"adj_matrix": adj_3d}
+                        except (KeyError, RuntimeError):
+                            pass  # Fallback to self-loops if memory not populated yet
+                        return orig_fn(inputs, role=role)  # type: ignore[operator]
+                    return wrapped
+
+                policy.act = _make_wrapped(policy.act)
+
+            try:
+                result = original_update(timestep, timesteps)
+            finally:
+                # Restore original act methods.
+                for uid in uids:
+                    agent.policies[uid].act = saved_acts[uid]  # type: ignore[attr-defined]
+
             # Sync policy weights: lead → all others.
             src = lead_policy.state_dict()
             for uid in uids[1:]:
