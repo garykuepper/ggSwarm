@@ -200,11 +200,9 @@ def patch_mappo_gnn_batched_act(agent: object, env: object) -> None:
             size=adj_flat_size,
             dtype=torch.float32,
         )
-    # Add to tensor names so sample_all() includes it.
-    if hasattr(agent, "_tensors_names"):
-        current = list(agent._tensors_names)  # type: ignore[attr-defined]
-        if "adj_matrix" not in current:
-            agent._tensors_names = tuple(current + ["adj_matrix"])  # type: ignore[attr-defined]
+    # NOTE: Do NOT add "adj_matrix" to _tensors_names — MAPPO's _update unpacks
+    # sample_all() by position (expects exactly 7 tensors). Instead, we fetch
+    # adj_matrix directly from memory via get_tensor_by_name() in the _update patch.
 
     # Patch record_transition to store adj_matrix from infos into memory.
     original_record = agent.record_transition  # type: ignore[attr-defined]
