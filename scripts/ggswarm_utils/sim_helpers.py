@@ -310,100 +310,213 @@ def patch_mappo_gnn_batched_act(agent: object, env: object) -> None:
 
     agent.act = patched_act  # type: ignore[attr-defined]
 
-    # --- 3. Patched _update(): centralized GNN forward during training ---
-    # Strategy: wrap lead policy's act() to do centralized forward with graph.
-    # Only the lead agent (uid[0]) processes the PPO update — other agents are
-    # skipped. Weights are synced afterward.
+    # --- 3. Custom centralized PPO _update ---
+    # Replaces MAPPO's per-agent _update loop with a centralized training step
+    # where ALL agents' losses flow through ONE GNN forward pass.
     #
-    # Key fix (p2c-6b): use counter-based indexing to fetch other agents' states
-    # from the SAME contiguous memory slice as the lead agent's mini-batch.
-    # SKRL's sample_all() returns contiguous slices [i*B:(i+1)*B] from tensors_view.
+    # Why: MAPPO processes agents independently during _update. The lead-only
+    # approach (p2c-6b) used all agents' states but only agent 0's loss, creating
+    # biased gradients that destabilized training. This custom loop computes
+    # per-agent PPO losses from all agents and sums them before backward().
     if hasattr(agent, "_update"):
+        import itertools  # noqa: PLC0415
+        import torch.nn as nn  # noqa: PLC0415
+        import torch.nn.functional as F  # noqa: PLC0415
+        from torch.distributions import Normal  # noqa: PLC0415
+
         original_update = agent._update  # type: ignore[attr-defined]
-        _batch_idx = [0]  # tracks which mini-batch slice we're on
+        lead_uid = uids[0]
+        lead_value = agent.values[lead_uid]  # type: ignore[attr-defined]
+
+        def _compute_gae(
+            rewards: torch.Tensor, dones: torch.Tensor,
+            values: torch.Tensor, last_values: torch.Tensor,
+            discount: float, lam: float,
+        ) -> tuple[torch.Tensor, torch.Tensor]:
+            advantage = 0
+            advantages = torch.zeros_like(rewards)
+            not_dones = dones.logical_not()
+            for i in reversed(range(rewards.shape[0])):
+                nv = values[i + 1] if i < rewards.shape[0] - 1 else last_values
+                advantage = rewards[i] - values[i] + discount * not_dones[i] * (nv + lam * advantage)
+                advantages[i] = advantage
+            returns = advantages + values
+            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+            return returns, advantages
 
         def patched_update(timestep: int, timesteps: int) -> object:
-            lead_uid = uids[0]
-            lead_saved_act = agent.policies[lead_uid].act  # type: ignore[attr-defined]
-            _batch_idx[0] = 0  # reset at start of each _update
-
-            # Get mini_batches count for the lead agent.
-            mini_batches = agent._mini_batches[lead_uid]  # type: ignore[attr-defined]
-
-            def _centralized_act(inputs: dict, role: str = "") -> object:
-                taken_actions = inputs.get("taken_actions")
-                if taken_actions is None:
-                    return lead_saved_act(inputs, role=role)
-
-                sampled_states = inputs["states"]
-                batch_size = sampled_states.shape[0]
-
-                # Compute the memory slice matching this mini-batch.
-                # sample_all() returns contiguous slices: [i*B : (i+1)*B]
-                start = _batch_idx[0] * batch_size
-                end = start + batch_size
-
-                # Fetch other agents' states from the SAME memory slice (aligned timesteps).
-                all_states = [sampled_states]  # lead agent, already preprocessed by MAPPO
-                for other_idx in range(1, num_agents):
-                    other_uid = uids[other_idx]
-                    other_view = agent.memories[other_uid].tensors_view["states"]  # type: ignore[attr-defined]
-                    raw_states = other_view[start:end]
-                    preprocessed = agent._state_preprocessor[other_uid](  # type: ignore[attr-defined]
-                        raw_states, train=False
+            # --- Phase 1: GAE computation (per-agent, same as MAPPO) ---
+            for uid in uids:
+                value = agent.values[uid]  # type: ignore[attr-defined]
+                memory = agent.memories[uid]  # type: ignore[attr-defined]
+                with torch.no_grad(), torch.autocast(device_type=lead_policy.device.type, enabled=getattr(agent, "_mixed_precision", False)):
+                    value.train(False)
+                    last_vals, _, _ = value.act(
+                        {"states": agent._shared_state_preprocessor[uid](agent._current_shared_next_states.float())},  # type: ignore[attr-defined]
+                        role="value",
                     )
-                    all_states.append(preprocessed)
+                    value.train(True)
+                last_vals = agent._value_preprocessor[uid](last_vals, inverse=True)  # type: ignore[attr-defined]
 
-                # Get adj_matrix from the SAME memory slice (lead memory only).
-                lead_adj_view = agent.memories[lead_uid].tensors_view["adj_matrix"]  # type: ignore[attr-defined]
-                adj_flat = lead_adj_view[start:end]
-                adj_3d = adj_flat.reshape(-1, num_agents, num_agents)
-
-                # Stack: [batch, num_agents, obs_dim] → [batch * num_agents, obs_dim]
-                stacked = torch.stack(all_states, dim=1)
-                batched_obs = stacked.reshape(-1, stacked.shape[-1])
-
-                # Centralized GNN forward (WITH gradients — single backward)
-                extras = {"adj_matrix": adj_3d}
-                mean_all, log_std, _ = lead_policy.compute(
-                    {"states": batched_obs, "extras": extras}, role="policy"
+                vals = memory.get_tensor_by_name("values")
+                rets, advs = _compute_gae(
+                    rewards=memory.get_tensor_by_name("rewards"),
+                    dones=memory.get_tensor_by_name("terminated") | memory.get_tensor_by_name("truncated"),
+                    values=vals, last_values=last_vals,
+                    discount=agent._discount_factor[uid],  # type: ignore[attr-defined]
+                    lam=agent._lambda[uid],  # type: ignore[attr-defined]
                 )
+                memory.set_tensor_by_name("values", agent._value_preprocessor[uid](vals, train=True))  # type: ignore[attr-defined]
+                memory.set_tensor_by_name("returns", agent._value_preprocessor[uid](rets, train=True))  # type: ignore[attr-defined]
+                memory.set_tensor_by_name("advantages", advs)
 
-                # Extract lead agent's mean (index 0)
-                mean_3d = mean_all.reshape(-1, num_agents, mean_all.shape[-1])
-                agent_mean = mean_3d[:, 0, :]
+            # --- Phase 2: Custom centralized mini-batch training ---
+            lead_mem = agent.memories[lead_uid]  # type: ignore[attr-defined]
+            total_samples = lead_mem.memory_size * lead_mem.num_envs
+            mini_batches = agent._mini_batches[lead_uid]  # type: ignore[attr-defined]
+            batch_size = total_samples // mini_batches
+            learning_epochs = agent._learning_epochs[lead_uid]  # type: ignore[attr-defined]
+            ratio_clip = agent._ratio_clip[lead_uid]  # type: ignore[attr-defined]
+            entropy_scale = agent._entropy_loss_scale[lead_uid]  # type: ignore[attr-defined]
+            value_loss_scale = agent._value_loss_scale[lead_uid]  # type: ignore[attr-defined]
+            grad_clip = agent._grad_norm_clip[lead_uid]  # type: ignore[attr-defined]
+            optimizer = agent.optimizers[lead_uid]  # type: ignore[attr-defined]
+            scaler = agent.scaler  # type: ignore[attr-defined]
+            clip_predicted = agent._clip_predicted_values  # type: ignore[attr-defined]
+            value_clip = agent._value_clip[lead_uid]  # type: ignore[attr-defined]
 
-                # GaussianMixin.act() logic for training
-                if lead_policy._g_clip_log_std:
-                    log_std = torch.clamp(log_std, lead_policy._g_log_std_min, lead_policy._g_log_std_max)
+            cumulative_policy_loss = 0.0
+            cumulative_entropy_loss = 0.0
+            cumulative_value_loss = 0.0
 
-                from torch.distributions import Normal  # noqa: PLC0415
-                dist = Normal(agent_mean, log_std.exp())
-                lead_policy._g_log_std = log_std
-                lead_policy._g_num_samples = agent_mean.shape[0]
-                lead_policy._g_distribution = dist
+            for epoch in range(learning_epochs):
+                kl_divergences: list[torch.Tensor] = []
 
-                log_prob = dist.log_prob(taken_actions)
-                if lead_policy._g_reduction is not None:
-                    log_prob = lead_policy._g_reduction(log_prob, dim=-1)
-                if log_prob.dim() != taken_actions.dim():
-                    log_prob = log_prob.unsqueeze(-1)
+                for mb in range(mini_batches):
+                    start = mb * batch_size
+                    end = start + batch_size
 
-                # Advance counter (cycles 0..M-1 within each epoch, auto-wraps)
-                _batch_idx[0] = (_batch_idx[0] + 1) % mini_batches
+                    with torch.autocast(device_type=lead_policy.device.type, enabled=getattr(agent, "_mixed_precision", False)):
+                        # 1. Gather all agents' data from aligned memory slices.
+                        all_states = []
+                        all_actions = []
+                        all_old_log_probs = []
+                        all_advantages = []
+                        for i, uid in enumerate(uids):
+                            mem = agent.memories[uid]  # type: ignore[attr-defined]
+                            st = mem.tensors_view["states"][start:end]
+                            st = agent._state_preprocessor[uid](st, train=(epoch == 0 and i == 0))  # type: ignore[attr-defined]
+                            all_states.append(st)
+                            all_actions.append(mem.tensors_view["actions"][start:end])
+                            all_old_log_probs.append(mem.tensors_view["log_prob"][start:end])
+                            all_advantages.append(mem.tensors_view["advantages"][start:end])
 
-                return taken_actions, log_prob, {"mean_actions": agent_mean}
+                        # Value data from lead agent.
+                        shared_st = lead_mem.tensors_view["shared_states"][start:end]
+                        shared_st = agent._shared_state_preprocessor[lead_uid](shared_st, train=(epoch == 0))  # type: ignore[attr-defined]
+                        sampled_values = lead_mem.tensors_view["values"][start:end]
+                        sampled_returns = lead_mem.tensors_view["returns"][start:end]
 
-            # Only run _update for the lead agent — skip others.
-            original_agents = agent.possible_agents  # type: ignore[attr-defined]
-            agent.possible_agents = [lead_uid]  # type: ignore[attr-defined]
-            agent.policies[lead_uid].act = _centralized_act  # type: ignore[attr-defined]
+                        # 2. Centralized GNN forward.
+                        stacked = torch.stack(all_states, dim=1)  # [batch, num_agents, obs_dim]
+                        batched_obs = stacked.reshape(-1, stacked.shape[-1])
+                        adj_flat = lead_mem.tensors_view["adj_matrix"][start:end]
+                        adj_3d = adj_flat.reshape(-1, num_agents, num_agents)
 
-            try:
-                result = original_update(timestep, timesteps)
-            finally:
-                agent.possible_agents = original_agents  # type: ignore[attr-defined]
-                agent.policies[lead_uid].act = lead_saved_act  # type: ignore[attr-defined]
+                        mean_all, log_std, _ = lead_policy.compute(
+                            {"states": batched_obs, "extras": {"adj_matrix": adj_3d}},
+                            role="policy",
+                        )
+                        mean_3d = mean_all.reshape(-1, num_agents, mean_all.shape[-1])
+
+                        if lead_policy._g_clip_log_std:
+                            log_std = torch.clamp(log_std, lead_policy._g_log_std_min, lead_policy._g_log_std_max)
+                        std = log_std.exp()
+
+                        # 3. Per-agent PPO loss (ALL agents contribute).
+                        total_policy_loss = torch.tensor(0.0, device=lead_policy.device)
+                        total_entropy = torch.tensor(0.0, device=lead_policy.device)
+
+                        for i, uid in enumerate(uids):
+                            agent_mean = mean_3d[:, i, :]
+                            dist = Normal(agent_mean, std)
+                            new_lp = dist.log_prob(all_actions[i])
+                            if lead_policy._g_reduction is not None:
+                                new_lp = lead_policy._g_reduction(new_lp, dim=-1)
+                            if new_lp.dim() != all_actions[i].dim():
+                                new_lp = new_lp.unsqueeze(-1)
+
+                            ratio = torch.exp(new_lp - all_old_log_probs[i])
+                            surr = all_advantages[i] * ratio
+                            surr_clip = all_advantages[i] * torch.clip(ratio, 1.0 - ratio_clip, 1.0 + ratio_clip)
+                            total_policy_loss += -torch.min(surr, surr_clip).mean()
+
+                            if entropy_scale:
+                                total_entropy += -entropy_scale * dist.entropy().mean()
+
+                            # KL for first agent (representative, used for LR scheduling)
+                            if i == 0:
+                                with torch.no_grad():
+                                    kl_ratio = new_lp - all_old_log_probs[i]
+                                    kl_divergences.append(((torch.exp(kl_ratio) - 1) - kl_ratio).mean())
+
+                        total_policy_loss = total_policy_loss / num_agents
+
+                        # Set distribution on lead policy for logging (stddev tracking).
+                        lead_policy._g_distribution = Normal(mean_3d[:, 0, :], std)
+
+                        # 4. Value loss (lead agent's value network + shared states).
+                        predicted_values, _, _ = lead_value.act({"states": shared_st}, role="value")
+                        if clip_predicted:
+                            predicted_values = sampled_values + torch.clip(
+                                predicted_values - sampled_values, min=-value_clip, max=value_clip
+                            )
+                        value_loss = value_loss_scale * F.mse_loss(sampled_returns, predicted_values)
+
+                    # 5. Single backward + optimizer step.
+                    optimizer.zero_grad()
+                    total_loss = total_policy_loss + total_entropy + value_loss
+                    scaler.scale(total_loss).backward()
+
+                    if grad_clip > 0:
+                        scaler.unscale_(optimizer)
+                        if lead_policy is lead_value:
+                            nn.utils.clip_grad_norm_(lead_policy.parameters(), grad_clip)
+                        else:
+                            nn.utils.clip_grad_norm_(
+                                itertools.chain(lead_policy.parameters(), lead_value.parameters()), grad_clip
+                            )
+
+                    scaler.step(optimizer)
+                    scaler.update()
+
+                    cumulative_policy_loss += total_policy_loss.item()
+                    cumulative_value_loss += value_loss.item()
+                    if entropy_scale:
+                        cumulative_entropy_loss += total_entropy.item()
+
+                # Learning rate scheduling (KL-adaptive for lead agent).
+                sched = agent.schedulers.get(lead_uid)  # type: ignore[attr-defined]
+                if sched is not None:
+                    from skrl.utils.scheduler import KLAdaptiveLR  # noqa: PLC0415
+                    if isinstance(sched, KLAdaptiveLR):
+                        kl = torch.tensor(kl_divergences, device=lead_policy.device).mean()
+                        sched.step(kl.item())
+                    else:
+                        sched.step()
+
+            # Record data for TensorBoard (same keys MAPPO uses).
+            denom = learning_epochs * mini_batches
+            agent.track_data(f"Loss / Policy loss ({lead_uid})", cumulative_policy_loss / denom)  # type: ignore[attr-defined]
+            agent.track_data(f"Loss / Value loss ({lead_uid})", cumulative_value_loss / denom)  # type: ignore[attr-defined]
+            if entropy_scale:
+                agent.track_data(f"Loss / Entropy loss ({lead_uid})", cumulative_entropy_loss / denom)  # type: ignore[attr-defined]
+            agent.track_data(  # type: ignore[attr-defined]
+                f"Policy / Standard deviation ({lead_uid})",
+                lead_policy.distribution(role="policy").stddev.mean().item(),
+            )
+            if sched is not None:
+                agent.track_data(f"Learning / Learning rate ({lead_uid})", sched.get_last_lr()[0])  # type: ignore[attr-defined]
 
             # NaN guard: fail fast if training diverged.
             for p in lead_policy.parameters():
@@ -417,7 +530,6 @@ def patch_mappo_gnn_batched_act(agent: object, env: object) -> None:
             src = lead_policy.state_dict()
             for uid in uids[1:]:
                 agent.policies[uid].load_state_dict(src)  # type: ignore[attr-defined]
-            return result
 
         agent._update = patched_update  # type: ignore[attr-defined]
 

@@ -121,6 +121,7 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     rew_scale_formation: float = 1.0
     rew_scale_cohesion: float = 0.2
     rew_scale_separation: float = -5.0
+    rew_scale_altitude_match: float = 0.0  # disabled by default; Phase 2C enables
 
     # reward sigmas
     rew_pos_sigma = 0.5
@@ -353,11 +354,12 @@ class GGSwarmMarlPerturbationCfg(GGSwarmMarlFormationCfg):
     rew_scale_upright: float = 1.0      # 0.5 → 1.0: stronger level-flight incentive
     rew_scale_ang_vel: float = -0.15    # -0.06 → -0.15: penalize spinning harder
 
-    # p2c-6a isolation test: revert sigmas to p2c-4 values (proven stable).
-    # Centralized _update stays active — testing if graph gradients alone cause NaN.
-    # p2c-5 NaN diverged with pos_tanh_sigma=0.05 + centralized _update combined.
-    # Inherits from FormationCfg: pos_tanh_sigma=0.25, rew_formation_sigma=0.3,
-    # rew_scale_formation=1.0
+    # Altitude matching: penalize Z-spread across agents (same flight level).
+    rew_scale_altitude_match: float = 1.0
+
+    # Formation sigmas: moderate tightening from base (0.3 → 0.15).
+    rew_formation_sigma: float = 0.15   # ~1.5 body-lengths
+    rew_scale_formation: float = 2.0    # stronger formation signal
 
 
 @configclass

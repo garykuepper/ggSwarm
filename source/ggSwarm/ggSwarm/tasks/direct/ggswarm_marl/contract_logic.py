@@ -291,6 +291,7 @@ class FormationRewardParams:
     rew_scale_formation: float
     rew_scale_cohesion: float
     rew_scale_separation: float
+    rew_scale_altitude_match: float
     rew_formation_sigma: float
     target_formation_dist: float
     graph_connectivity_radius: float
@@ -362,13 +363,20 @@ def compute_formation_rewards(
     collision_mask = (inter_agent_distances < params.min_separation_dist) & (1.0 - eye).bool()
     rew_separation = params.rew_scale_separation * collision_mask.any(dim=2).float()
 
-    total = rew_formation + rew_cohesion + rew_separation
+    # Altitude matching: penalize Z-spread so drones converge to same flight level.
+    # shape: [num_envs, num_agents]
+    mean_z = pos_w[:, :, 2].mean(dim=1, keepdim=True)  # [num_envs, 1]
+    z_error = (pos_w[:, :, 2] - mean_z).abs()
+    rew_altitude_match = -params.rew_scale_altitude_match * z_error * alpha
+
+    total = rew_formation + rew_cohesion + rew_separation + rew_altitude_match
 
     if return_terms:
         terms_dict = {
             "rew_formation": rew_formation,
             "rew_cohesion": rew_cohesion,
             "rew_separation": rew_separation,
+            "rew_altitude_match": rew_altitude_match,
         }
         return total, terms_dict
 

@@ -451,6 +451,7 @@ class GGSwarmMarlEnv(DirectMARLEnv):
                     rew_scale_formation=self.cfg.rew_scale_formation,
                     rew_scale_cohesion=self.cfg.rew_scale_cohesion,
                     rew_scale_separation=self.cfg.rew_scale_separation,
+                    rew_scale_altitude_match=self.cfg.rew_scale_altitude_match,
                     rew_formation_sigma=self.cfg.rew_formation_sigma,
                     target_formation_dist=self.cfg.target_formation_dist,
                     graph_connectivity_radius=self.cfg.graph_connectivity_radius,
@@ -463,7 +464,7 @@ class GGSwarmMarlEnv(DirectMARLEnv):
                     return_terms=True,
                 )
                 # Add formation terms to totals and logging dict.
-                for key in ("rew_formation", "rew_cohesion", "rew_separation"):
+                for key in ("rew_formation", "rew_cohesion", "rew_separation", "rew_altitude_match"):
                     total_rewards = total_rewards + form_terms[key]
                     terms_dict[key] = form_terms[key]
 
