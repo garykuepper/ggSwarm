@@ -40,7 +40,7 @@ from isaaclab.app import AppLauncher
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Play a checkpoint of an RL agent from skrl.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
-parser.add_argument("--video_length", type=int, default=1000, help="Length of the recorded video (in steps). 500 = 10s at step_dt=0.02.")
+parser.add_argument("--video_length", type=int, default=2000, help="Length of the recorded video (in steps). 500 = 10s at step_dt=0.02.")
 parser.add_argument(
     "--video_codec",
     type=str,

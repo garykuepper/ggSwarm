@@ -64,10 +64,10 @@ PHASE_REGISTRY: dict[str, PhaseConfig] = {
         description="Phase 2B formation (resume from Phase 2A checkpoint)",
     ),
     "2c": PhaseConfig(
-        task="Template-GGSwarm-Marl-Direct-v0",
+        task="Template-GGSwarm-Marl-Perturbation-v0",
         gnn_default=True,
         collector_cls="ggswarm_utils.phases.phase2.Phase2Collector",
-        description="Phase 2C perturbation (TODO: placeholder, uses Phase 2 task)",
+        description="Phase 2C perturbation (random pushes on formation hover)",
     ),
     "3": PhaseConfig(
         task="Template-GGSwarm-Marl-Phase3-v0",

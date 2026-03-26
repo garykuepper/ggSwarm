@@ -64,6 +64,18 @@ gym.register(
     },
 )
 
+# Phase 2C: perturbation robustness testing with random impulse pushes.
+# Inherits all formation + hybrid rewards from Phase 2B; enables push_enabled=True.
+gym.register(
+    id="Template-GGSwarm-Marl-Perturbation-v0",
+    entry_point=f"{__name__}.drone_swarm_env:GGSwarmMarlEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.drone_swarm_env_cfg:GGSwarmMarlPerturbationCfg",
+        "skrl_mappo_cfg_entry_point": f"{agents.__name__}:skrl_mappo_cfg.yaml",
+    },
+)
+
 # Phase 3 task: 14-dim obs (12 base + is_leader + num_alive_frac).
 # Uses the same env class but with raft_enabled=True in cfg overrides.
 # Phase 2 task (Template-GGSwarm-Marl-Direct-v0) is unchanged.

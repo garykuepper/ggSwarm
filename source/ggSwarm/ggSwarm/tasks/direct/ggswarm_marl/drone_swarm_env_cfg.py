@@ -41,7 +41,7 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
 
     # viewer
     viewer: ViewerCfg = ViewerCfg(
-        eye=(2.0, 2.0, 2.0),  # pulled back to see all 3 agents
+        eye=(1.5, 1.5, 1.5),  # pulled back to see all 3 agents
         lookat=(0.0, 0.0, 1.0),
         resolution=(1920, 1080),
     )
@@ -148,6 +148,14 @@ class GGSwarmMarlEnvCfg(DirectMARLEnvCfg):
     curriculum_start_step: int = 80000
     curriculum_end_step: int = 250000
     curriculum_pos_floor: float = 0.4
+
+    # --- Phase 2C: Random impulse pushes for robustness testing ---
+    # When enabled, a random force impulse is applied to one drone per env every
+    # push_interval_steps. Tests formation recovery under sudden disturbances.
+    push_enabled: bool = False
+    push_interval_steps: int = 75        # steps between pushes (~1.5s at 0.02s/step)
+    push_force_magnitude: float = 1.0    # Newtons
+    push_horizontal_bias: float = 0.8    # fraction of force in XY plane (0=isotropic, 1=horizontal)
 
     # --- Phase 3: CBF Safety Shield (L4) ---
     # All False by default so Phase 2 train/play is unaffected.
@@ -315,6 +323,24 @@ class GGSwarmMarlFormationCfg(GGSwarmMarlEnvCfg):
 
     # Keep wider spawn yaw from Phase A so policy handles diverse attitudes
     spawn_yaw_range: float = 0.3  # ± rad
+
+
+@configclass
+class GGSwarmMarlPerturbationCfg(GGSwarmMarlFormationCfg):
+    """Phase 2C perturbation testing: random pushes on formation hover.
+
+    Inherits all hybrid reward + formation config from Phase 2B.
+    Enables random impulse pushes to test formation recovery under disturbance.
+
+    Use task id ``Template-GGSwarm-Marl-Perturbation-v0``.
+
+    Workflow:
+    1. Resume from Phase 2B checkpoint: ``phase2c train --checkpoint <PhaseB>/best_agent.pt``
+    2. Assess with ``phase2c assess --run_dir <run>``.
+    3. Advance to Phase 3 when formation maintained under perturbation.
+    """
+
+    push_enabled: bool = True
 
 
 @configclass

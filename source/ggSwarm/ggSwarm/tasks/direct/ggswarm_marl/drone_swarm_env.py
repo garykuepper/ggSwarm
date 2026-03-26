@@ -82,6 +82,20 @@ class GGSwarmMarlEnv(DirectMARLEnv):
         self._moment = torch.zeros(num_instances, 1, 3, device=self.device)  # pre-allocated; reused every step
         self._pending_action_telemetry: dict[str, torch.Tensor] = {}
 
+        # --- Phase 2C: Random push disturbance buffer (gated by cfg.push_enabled) ---
+        # pre-allocated; reused every step
+        self._push_force = torch.zeros(num_instances, 1, 3, device=self.device)
+        if self.cfg.push_enabled:
+            # Local RNG for deterministic push sequences (Rule 17: no global RNG in env methods)
+            self._push_rng = torch.Generator(device=self.device)
+            self._push_rng.manual_seed(self.cfg.seed + 9999)
+            logger.info(
+                "Push disturbance enabled | interval=%d steps | magnitude=%.2f N | horizontal_bias=%.1f",
+                self.cfg.push_interval_steps,
+                self.cfg.push_force_magnitude,
+                self.cfg.push_horizontal_bias,
+            )
+
         # --- Phase 3: SwarmRaft Consensus (L3, gated by cfg.raft_enabled) ---
         if self.cfg.raft_enabled:
             raft_params = SwarmRaftParams(
@@ -285,6 +299,43 @@ class GGSwarmMarlEnv(DirectMARLEnv):
             forces=self._thrust,
             torques=self._moment,
         )
+
+        # --- Phase 2C: Random push disturbance (gated by cfg.push_enabled) ---
+        if self.cfg.push_enabled:
+            step = int(self.common_step_counter)
+            if step > 0 and step % self.cfg.push_interval_steps == 0:
+                # Zero out previous push (reuse buffer — Rule 13)
+                self._push_force.zero_()
+                # Pick one random agent per env
+                # shape: [num_envs]
+                agent_idx = torch.randint(
+                    0, self.cfg.num_agents, (self.num_envs,),
+                    device=self.device, generator=self._push_rng,
+                )
+                # Flat instance index: env_i * num_agents + agent_idx
+                # shape: [num_envs]
+                instance_idx = (
+                    torch.arange(self.num_envs, device=self.device) * self.cfg.num_agents
+                    + agent_idx
+                )
+                # Random direction with horizontal bias
+                # shape: [num_envs, 3]
+                direction = torch.randn(
+                    self.num_envs, 3, device=self.device, generator=self._push_rng,
+                )
+                direction[:, 2] *= (1.0 - self.cfg.push_horizontal_bias)
+                direction = direction / direction.norm(dim=-1, keepdim=True).clamp(min=1e-6)
+                # Scatter force into the selected instances
+                # shape: [num_envs, 1, 3]
+                force = (direction * self.cfg.push_force_magnitude).unsqueeze(1)
+                self._push_force[instance_idx] = force
+            # Apply via instantaneous composer (global frame, resets after step)
+            self.robot.instantaneous_wrench_composer.add_forces_and_torques(
+                body_ids=self._body_indices,
+                forces=self._push_force,
+                is_global=True,
+            )
+
         # Do NOT call self.robot.write_data_to_sim() here — the DirectRLEnv
         # base class handles it at the correct simulation boundary.  Calling it
         # here caused a double-write that corrupted physics integration and

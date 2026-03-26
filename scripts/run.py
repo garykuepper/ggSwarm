@@ -18,6 +18,7 @@ HOVER_TASK = PHASE_REGISTRY["hover"].task
 PHASE2_TASK = PHASE_REGISTRY["2"].task
 HOVER_STABILITY_TASK = PHASE_REGISTRY["2a"].task
 PHASE2B_TASK = PHASE_REGISTRY["2b"].task
+PHASE2C_TASK = PHASE_REGISTRY["2c"].task
 PHASE3_TASK = PHASE_REGISTRY["3"].task
 PHASE4_TASK = PHASE_REGISTRY["4"].task
 
@@ -397,6 +398,17 @@ def _build_parser() -> argparse.ArgumentParser:  # noqa: C901  # grandfathered â
         log_dir=PHASE2_LOG_DIR,
         eval_handler=lambda a: _cmd_eval(a, phase="2b"),
         log_subdir="phase2b",
+    )
+
+    _register_standard_family(
+        families,
+        name="phase2c",
+        help_text="Phase 2C perturbation testing (random pushes on formation hover)",
+        task=PHASE2C_TASK,
+        gnn_default=True,
+        log_dir=PHASE2_LOG_DIR,
+        eval_handler=lambda a: _cmd_eval(a, phase="2c"),
+        log_subdir="phase2c",
     )
 
     # --- phase3 ---------------------------------------------------------------
