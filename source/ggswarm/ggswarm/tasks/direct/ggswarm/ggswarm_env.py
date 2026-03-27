@@ -164,12 +164,10 @@ class GgswarmEnv(DirectRLEnv):
         # Draw altitude lines (first swarm group)
         if self._debug_draw is not None:
             self._debug_draw.clear_lines()
-            colors = [
-                (0.12, 0.47, 0.71, 0.9),  # tab:blue
-                (1.0, 0.50, 0.05, 0.9),   # tab:orange
-                (0.17, 0.63, 0.17, 0.9),   # tab:green
-            ]
-            A = min(self.cfg.num_agents, len(colors), self.num_envs)
+            import colorsys  # noqa: PLC0415
+
+            A = min(self.cfg.num_agents, self.num_envs)
+            colors = [(*colorsys.hsv_to_rgb(i / A, 0.9, 0.9), 0.9) for i in range(A)]
             for i in range(A):
                 pos = self._robot.data.root_pos_w[i].cpu().tolist()
                 self._debug_draw.draw_lines(
