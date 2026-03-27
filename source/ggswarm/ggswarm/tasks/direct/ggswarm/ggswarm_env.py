@@ -180,19 +180,20 @@ class GgswarmEnv(DirectRLEnv):
         return {"policy": obs}
 
     def _expand_obs_with_neighbors(self, obs: torch.Tensor) -> torch.Tensor:
-        """Append relative neighbor positions to each drone's observation.
+        """Append K-nearest neighbor relative positions to each drone's obs.
 
-        Groups consecutive envs into swarms of num_agents. Each drone gets
-        (num_agents-1) * 3 extra dims: relative XYZ to each neighbor.
+        Uses fixed K=num_neighbors regardless of swarm size, enabling
+        train-with-3 / deploy-with-N scalability.
 
         Args:
             obs: shape [num_envs, 12]
 
         Returns:
-            shape [num_envs, 12 + (num_agents-1)*3]
+            shape [num_envs, 12 + num_neighbors*3]
         """
         N = self.num_envs
         A = self.cfg.num_agents
+        K = min(self.cfg.num_neighbors, A - 1)  # can't have more neighbors than agents-1
         G = self._num_groups
         # Subtract env origins to get local positions (removes env_spacing offset)
         pos_local = self._robot.data.root_pos_w - self._terrain.env_origins  # shape: [N, 3]
@@ -200,18 +201,26 @@ class GgswarmEnv(DirectRLEnv):
         # Reshape to [num_groups, num_agents, 3]
         pos_grouped = pos_local.reshape(G, A, 3)
 
-        # For each drone, compute relative positions to all neighbors
         rel_parts = []
         for i in range(A):
-            neighbors = []
-            for j in range(A):
-                if i == j:
-                    continue
-                rel = pos_grouped[:, j, :] - pos_grouped[:, i, :]  # [G, 3]
-                neighbors.append(rel)
-            rel_parts.append(torch.cat(neighbors, dim=-1))  # [G, (A-1)*3]
+            # Compute distances from drone i to all others in group
+            # shape: [G, A, 3] - [G, 1, 3] -> [G, A, 3] -> norm -> [G, A]
+            diff = pos_grouped - pos_grouped[:, i:i+1, :]  # [G, A, 3]
+            dists = torch.linalg.norm(diff, dim=2)  # [G, A]
+            dists[:, i] = float("inf")  # exclude self
 
-        # Stack and flatten: [G, A, (A-1)*3] -> [N, (A-1)*3]
+            # Find K nearest indices
+            _, nearest_idx = torch.topk(dists, K, dim=1, largest=False)  # [G, K]
+
+            # Gather relative positions of K nearest
+            neighbors = []
+            for k in range(K):
+                idx = nearest_idx[:, k]  # [G]
+                rel = pos_grouped[torch.arange(G, device=self.device), idx] - pos_grouped[:, i]  # [G, 3]
+                neighbors.append(rel)
+            rel_parts.append(torch.cat(neighbors, dim=-1))  # [G, K*3]
+
+        # Stack and flatten: [G, A, K*3] -> [N, K*3]
         rel_all = torch.stack(rel_parts, dim=1).reshape(N, -1)
 
         return torch.cat([obs, rel_all], dim=-1)

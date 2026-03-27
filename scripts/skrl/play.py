@@ -193,7 +193,7 @@ def main(
     # Apply num_agents and expand observation space for formation
     env_cfg.num_agents = args_cli.num_agents
     if args_cli.num_agents > 1:
-        env_cfg.observation_space = 12 + (args_cli.num_agents - 1) * 3
+        env_cfg.observation_space = 12 + env_cfg.num_neighbors * 3
         env_cfg.scene.env_spacing = 0.01  # drones visually in same space
         env_cfg.collective_resets = False  # no group teleport during play
         env_cfg.formation_centroid = (0.0, 0.0, 1.0)  # hover over origin during play
