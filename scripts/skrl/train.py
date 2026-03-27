@@ -41,6 +41,10 @@ parser.add_argument(
     "--num_agents", type=int, default=1,
     help="Drones per swarm group. >1 enables SwarmWrapper for formation training.",
 )
+parser.add_argument(
+    "--policy", type=str, default="mlp", choices=["mlp", "gnn"],
+    help="Policy architecture: mlp (default) or gnn (GATv2).",
+)
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument(
     "--agent",
@@ -304,6 +308,77 @@ def main(
 
     # Initialize the skrl Runner to manage the training loop
     # Docs: https://skrl.readthedocs.io/en/latest/api/utils/runner.html
+    if args_cli.policy == "gnn":
+        # GNN policy: manually create agent with custom GATv2 model
+        from skrl.agents.torch.ppo import PPO, PPO_DEFAULT_CONFIG
+        from skrl.memories.torch import RandomMemory
+        from skrl.resources.preprocessors.torch import RunningStandardScaler
+        from skrl.trainers.torch import SequentialTrainer
+
+        from ggswarm.gnn_policy import GgswarmGNNPolicy
+
+        memory = RandomMemory(memory_size=agent_cfg["agent"]["rollouts"], num_envs=env.num_envs, device=env.device)
+
+        gnn_model = GgswarmGNNPolicy(
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            device=env.device,
+            num_neighbors=env_cfg.num_neighbors,
+        )
+        models = {"policy": gnn_model, "value": gnn_model}
+
+        ppo_cfg = PPO_DEFAULT_CONFIG.copy()
+        ppo_cfg.update({
+            "rollouts": agent_cfg["agent"]["rollouts"],
+            "learning_epochs": agent_cfg["agent"]["learning_epochs"],
+            "mini_batches": agent_cfg["agent"]["mini_batches"],
+            "discount_factor": agent_cfg["agent"]["discount_factor"],
+            "lambda": agent_cfg["agent"]["lambda"],
+            "learning_rate": agent_cfg["agent"]["learning_rate"],
+            "grad_norm_clip": agent_cfg["agent"]["grad_norm_clip"],
+            "ratio_clip": agent_cfg["agent"]["ratio_clip"],
+            "value_clip": agent_cfg["agent"]["value_clip"],
+            "clip_predicted_values": agent_cfg["agent"]["clip_predicted_values"],
+            "entropy_loss_scale": agent_cfg["agent"]["entropy_loss_scale"],
+            "value_loss_scale": agent_cfg["agent"]["value_loss_scale"],
+            "rewards_shaper_scale": agent_cfg["agent"]["rewards_shaper_scale"],
+            "state_preprocessor": RunningStandardScaler,
+            "state_preprocessor_kwargs": {"size": env.observation_space, "device": env.device},
+            "value_preprocessor": RunningStandardScaler,
+            "value_preprocessor_kwargs": {"size": 1, "device": env.device},
+            "experiment": {
+                "directory": log_root_path,
+                "experiment_name": log_dir,
+                "write_interval": "auto",
+                "checkpoint_interval": "auto",
+            },
+        })
+
+        agent = PPO(
+            models=models,
+            memory=memory,
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            device=env.device,
+            cfg=ppo_cfg,
+        )
+
+        trainer = SequentialTrainer(
+            env=env,
+            agents=agent,
+            cfg={"timesteps": agent_cfg["trainer"]["timesteps"], "close_environment_at_exit": False},
+        )
+
+        if resume_path:
+            print(f"[INFO] Loading model checkpoint from: {resume_path}")
+            agent.load(resume_path)
+
+        print("[INFO] Using GATv2 GNN policy")
+        trainer.train()
+        print(f"Training time: {round(time.time() - start_time, 2)} seconds")
+        env.close()
+        return
+
     runner = Runner(env, agent_cfg)
 
     # Load agent weights if a checkpoint was provided

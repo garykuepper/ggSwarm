@@ -68,6 +68,7 @@ class GgswarmEnv(DirectRLEnv):
 
         # Pre-allocate action tensors (reused every step)
         self._actions = torch.zeros(N, 4, device=device)
+        self._smoothed_actions = torch.zeros(N, 4, device=device)
         self._thrust = torch.zeros(N, 1, 3, device=device)
         self._moment = torch.zeros(N, 1, 3, device=device)
         self._desired_pos_w = torch.zeros(N, 3, device=device)
@@ -128,10 +129,19 @@ class GgswarmEnv(DirectRLEnv):
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         self._actions = actions.clamp(-1.0, 1.0)
+
+        # EMA smoothing (Phase 3)
+        if self.cfg.smoothing_enabled:
+            a = self.cfg.smoothing_alpha
+            self._smoothed_actions = a * self._actions + (1 - a) * self._smoothed_actions
+            act = self._smoothed_actions
+        else:
+            act = self._actions
+
         self._thrust[:, 0, 2] = (
-            self.cfg.thrust_to_weight * self._robot_weight * (self._actions[:, 0] + 1.0) / 2.0
+            self.cfg.thrust_to_weight * self._robot_weight * (act[:, 0] + 1.0) / 2.0
         )
-        self._moment[:, 0, :] = self.cfg.moment_scale * self._actions[:, 1:]
+        self._moment[:, 0, :] = self.cfg.moment_scale * act[:, 1:]
 
     def _apply_action(self) -> None:
         self._robot.permanent_wrench_composer.set_forces_and_torques(
@@ -368,6 +378,7 @@ class GgswarmEnv(DirectRLEnv):
                 )
 
         self._actions[env_ids] = 0.0
+        self._smoothed_actions[env_ids] = 0.0
 
         # Sample new goal positions
         if self.cfg.num_agents > 1 and self._formation_offsets is not None:

@@ -104,3 +104,7 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     formation_curriculum_end = 5000   # full formation by ~208 iterations
     collective_resets = True          # if any drone in group dies, all reset
     formation_centroid = None         # fixed centroid (x,y,z) or None for random
+
+    # action smoothing (Phase 3 — EMA)
+    smoothing_enabled = True          # EMA on policy actions
+    smoothing_alpha = 0.3             # 0=full smooth, 1=no smooth
