@@ -125,7 +125,7 @@ class GgswarmEnv(DirectRLEnv):
         distance_to_goal = torch.linalg.norm(
             self._desired_pos_w - self._robot.data.root_pos_w, dim=1
         )
-        distance_to_goal_mapped = 1 - torch.tanh(distance_to_goal / 0.8)
+        distance_to_goal_mapped = 1 - torch.tanh(distance_to_goal / self.cfg.distance_to_goal_sigma)
 
         rewards = {
             "lin_vel": self.cfg.lin_vel_reward_scale * lin_vel * self.step_dt,

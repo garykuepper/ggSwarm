@@ -81,7 +81,8 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     # spawn offsets — computed dynamically as circle of radius 0.3m
     spawn_radius = 0.3  # meters, distance from env center to each drone
 
-    # reward scales — match Isaac Lab quadcopter reference exactly
-    lin_vel_reward_scale = -0.05
+    # reward scales
+    lin_vel_reward_scale = -0.15
     ang_vel_reward_scale = -0.01
     distance_to_goal_reward_scale = 15.0
+    distance_to_goal_sigma = 0.3  # tanh sharpness (lower = tighter position hold)
