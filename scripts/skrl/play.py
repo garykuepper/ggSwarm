@@ -18,16 +18,45 @@ import sys
 from isaaclab.app import AppLauncher
 
 # add argparse arguments
-parser = argparse.ArgumentParser(description="Play a checkpoint of an RL agent from skrl.")
-parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
-parser.add_argument("--video_length", type=int, default=500, help="Length of the recorded video (in steps).")
-parser.add_argument("--video_prefix", type=str, default="ggswarm", help="Filename prefix for video (e.g. p2b-3).")
-parser.add_argument("--play_length", type=int, default=1000, help="Number of steps to play (default: infinite).")
-parser.add_argument("--trajectories", action="store_true", default=True, help="Record and plot drone trajectories.")
-parser.add_argument(
-    "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
+parser = argparse.ArgumentParser(
+    description="Play a checkpoint of an RL agent from skrl."
 )
-parser.add_argument("--num_envs", type=int, default=1, help="Number of environments to simulate.")
+parser.add_argument(
+    "--video", action="store_true", default=False, help="Record videos during training."
+)
+parser.add_argument(
+    "--video_length",
+    type=int,
+    default=300,
+    help="Length of the recorded video (in steps).",
+)
+parser.add_argument(
+    "--video_prefix",
+    type=str,
+    default="ggswarm",
+    help="Filename prefix for video (e.g. p2b-3).",
+)
+parser.add_argument(
+    "--play_length",
+    type=int,
+    default=400,
+    help="Number of steps to play (default: 500 = 1 episode).",
+)
+parser.add_argument(
+    "--trajectories",
+    action="store_true",
+    default=True,
+    help="Record and plot drone trajectories.",
+)
+parser.add_argument(
+    "--disable_fabric",
+    action="store_true",
+    default=False,
+    help="Disable fabric and use USD I/O operations.",
+)
+parser.add_argument(
+    "--num_envs", type=int, default=1, help="Number of environments to simulate."
+)
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument(
     "--agent",
@@ -38,8 +67,12 @@ parser.add_argument(
         "--algorithm is used to determine the default agent configuration entry point."
     ),
 )
-parser.add_argument("--checkpoint", type=str, default=None, help="Path to model checkpoint.")
-parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
+parser.add_argument(
+    "--checkpoint", type=str, default=None, help="Path to model checkpoint."
+)
+parser.add_argument(
+    "--seed", type=int, default=None, help="Seed used for the environment"
+)
 parser.add_argument(
     "--use_pretrained_checkpoint",
     action="store_true",
@@ -59,7 +92,12 @@ parser.add_argument(
     choices=["AMP", "PPO", "IPPO", "MAPPO"],
     help="The RL algorithm used for training the skrl agent.",
 )
-parser.add_argument("--real-time", action="store_true", default=False, help="Run in real-time, if possible.")
+parser.add_argument(
+    "--real-time",
+    action="store_true",
+    default=False,
+    help="Run in real-time, if possible.",
+)
 
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
@@ -120,22 +158,33 @@ import ggswarm.tasks  # noqa: F401
 # config shortcuts
 if args_cli.agent is None:
     algorithm = args_cli.algorithm.lower()
-    agent_cfg_entry_point = "skrl_cfg_entry_point" if algorithm in ["ppo"] else f"skrl_{algorithm}_cfg_entry_point"
+    agent_cfg_entry_point = (
+        "skrl_cfg_entry_point"
+        if algorithm in ["ppo"]
+        else f"skrl_{algorithm}_cfg_entry_point"
+    )
 else:
     agent_cfg_entry_point = args_cli.agent
     algorithm = agent_cfg_entry_point.split("_cfg")[0].split("skrl_")[-1].lower()
 
 
 @hydra_task_config(args_cli.task, agent_cfg_entry_point)
-def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, experiment_cfg: dict):
+def main(
+    env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg,
+    experiment_cfg: dict,
+):
     """Play with skrl agent."""
     # grab task name for checkpoint path
     task_name = args_cli.task.split(":")[-1]
     train_task_name = task_name.replace("-Play", "")
 
     # override configurations with non-hydra CLI arguments
-    env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
-    env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
+    env_cfg.scene.num_envs = (
+        args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
+    )
+    env_cfg.sim.device = (
+        args_cli.device if args_cli.device is not None else env_cfg.sim.device
+    )
 
     # configure the ML framework into the global skrl variable
     if args_cli.ml_framework.startswith("jax"):
@@ -147,24 +196,32 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
 
     # set the agent and environment seed from command line
     # note: certain randomization occur in the environment initialization so we set the seed here
-    experiment_cfg["seed"] = args_cli.seed if args_cli.seed is not None else experiment_cfg["seed"]
+    experiment_cfg["seed"] = (
+        args_cli.seed if args_cli.seed is not None else experiment_cfg["seed"]
+    )
     env_cfg.seed = experiment_cfg["seed"]
 
     # specify directory for logging experiments (load checkpoint)
-    log_root_path = os.path.join("logs", "skrl", experiment_cfg["agent"]["experiment"]["directory"])
+    log_root_path = os.path.join(
+        "logs", "skrl", experiment_cfg["agent"]["experiment"]["directory"]
+    )
     log_root_path = os.path.abspath(log_root_path)
     print(f"[INFO] Loading experiment from directory: {log_root_path}")
     # get checkpoint path
     if args_cli.use_pretrained_checkpoint:
         resume_path = get_published_pretrained_checkpoint("skrl", train_task_name)
         if not resume_path:
-            print("[INFO] Unfortunately a pre-trained checkpoint is currently unavailable for this task.")
+            print(
+                "[INFO] Unfortunately a pre-trained checkpoint is currently unavailable for this task."
+            )
             return
     elif args_cli.checkpoint:
         resume_path = os.path.abspath(args_cli.checkpoint)
     else:
         resume_path = get_checkpoint_path(
-            log_root_path, run_dir=f".*_{algorithm}_{args_cli.ml_framework}", other_dirs=["checkpoints"]
+            log_root_path,
+            run_dir=f".*_{algorithm}_{args_cli.ml_framework}",
+            other_dirs=["checkpoints"],
         )
     log_dir = os.path.dirname(os.path.dirname(resume_path))
 
@@ -172,7 +229,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
     env_cfg.log_dir = log_dir
 
     # create isaac environment
-    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
+    env = gym.make(
+        args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None
+    )
 
     # convert to single-agent instance if required by the RL algorithm
     if isinstance(env.unwrapped, DirectMARLEnv) and algorithm in ["ppo"]:
@@ -195,16 +254,24 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
             video_length=args_cli.video_length,
             name_prefix=args_cli.video_prefix,
         )
-        print(f"[INFO] Recording video to {video_folder} (NVENC H.264, {args_cli.video_length} steps)")
+        print(
+            f"[INFO] Recording video to {video_folder} (NVENC H.264, {args_cli.video_length} steps)"
+        )
 
     # wrap around environment for skrl
-    env = SkrlVecEnvWrapper(env, ml_framework=args_cli.ml_framework)  # same as: `wrap_env(env, wrapper="auto")`
+    env = SkrlVecEnvWrapper(
+        env, ml_framework=args_cli.ml_framework
+    )  # same as: `wrap_env(env, wrapper="auto")`
 
     # configure and instantiate the skrl runner
     # https://skrl.readthedocs.io/en/latest/api/utils/runner.html
     experiment_cfg["trainer"]["close_environment_at_exit"] = False
-    experiment_cfg["agent"]["experiment"]["write_interval"] = 0  # don't log to TensorBoard
-    experiment_cfg["agent"]["experiment"]["checkpoint_interval"] = 0  # don't generate checkpoints
+    experiment_cfg["agent"]["experiment"][
+        "write_interval"
+    ] = 0  # don't log to TensorBoard
+    experiment_cfg["agent"]["experiment"][
+        "checkpoint_interval"
+    ] = 0  # don't generate checkpoints
     runner = Runner(env, experiment_cfg)
 
     print(f"[INFO] Loading model checkpoint from: {resume_path}")
@@ -229,7 +296,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
             outputs = runner.agent.act(obs, timestep=0, timesteps=0)
             # - multi-agent (deterministic) actions
             if hasattr(env, "possible_agents"):
-                actions = {a: outputs[-1][a].get("mean_actions", outputs[0][a]) for a in env.possible_agents}
+                actions = {
+                    a: outputs[-1][a].get("mean_actions", outputs[0][a])
+                    for a in env.possible_agents
+                }
             # - single-agent (deterministic) actions
             else:
                 actions = outputs[-1].get("mean_actions", outputs[0])
@@ -261,9 +331,12 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
         euler_fn = None
         try:
             from isaaclab.utils.math import euler_xyz_from_quat
+
             euler_fn = euler_xyz_from_quat
         except ImportError:
-            print("[WARN] euler_xyz_from_quat not available; attitude subplot will be empty.")
+            print(
+                "[WARN] euler_xyz_from_quat not available; attitude subplot will be empty."
+            )
 
         from ggswarm.viz.trajectory_plots import generate_trajectory_plots
 

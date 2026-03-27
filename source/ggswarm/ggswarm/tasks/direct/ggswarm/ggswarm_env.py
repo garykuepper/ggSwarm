@@ -36,7 +36,9 @@ class GgswarmEnv(DirectRLEnv):
         # Body ID, mass, weight
         self._body_id = self._robot.find_bodies("body")[0]
         self._robot_mass = self._robot.root_physx_view.get_masses()[0].sum()
-        self._gravity_magnitude = torch.tensor(self.sim.cfg.gravity, device=self.device).norm()
+        self._gravity_magnitude = torch.tensor(
+            self.sim.cfg.gravity, device=self.device
+        ).norm()
         self._robot_weight = (self._robot_mass * self._gravity_magnitude).item()
 
         # Episode logging
@@ -48,6 +50,7 @@ class GgswarmEnv(DirectRLEnv):
         # Debug draw for altitude line
         try:
             from isaacsim.util.debug_draw import _debug_draw  # noqa: PLC0415
+
             self._debug_draw = _debug_draw.acquire_debug_draw_interface()
         except Exception:
             self._debug_draw = None
@@ -61,10 +64,10 @@ class GgswarmEnv(DirectRLEnv):
         from pxr import UsdShade  # noqa: PLC0415
 
         stage = omni.usd.get_context().get_stage()
-        mat_path = "/World/envs/env_0/Robot/body/Looks/DroneMat"
+        mat_path = "/World/envs/env_0/Drone_0/body/Looks/DroneMat"
         mat_cfg = sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.85, 0.0))
         sim_utils.spawn_preview_surface(mat_path, mat_cfg)
-        body_prim = stage.GetPrimAtPath("/World/envs/env_0/Robot/body")
+        body_prim = stage.GetPrimAtPath("/World/envs/env_0/Drone_0/body")
         mat_prim = stage.GetPrimAtPath(mat_path)
         if body_prim.IsValid() and mat_prim.IsValid():
             UsdShade.MaterialBindingAPI.Apply(body_prim)
@@ -86,7 +89,10 @@ class GgswarmEnv(DirectRLEnv):
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         self._actions = actions.clamp(-1.0, 1.0)
         self._thrust[:, 0, 2] = (
-            self.cfg.thrust_to_weight * self._robot_weight * (self._actions[:, 0] + 1.0) / 2.0
+            self.cfg.thrust_to_weight
+            * self._robot_weight
+            * (self._actions[:, 0] + 1.0)
+            / 2.0
         )
         self._moment[:, 0, :] = self.cfg.moment_scale * self._actions[:, 1:]
 
@@ -99,22 +105,29 @@ class GgswarmEnv(DirectRLEnv):
 
     def _get_observations(self) -> dict:
         desired_pos_b, _ = subtract_frame_transforms(
-            self._robot.data.root_pos_w, self._robot.data.root_quat_w, self._desired_pos_w
+            self._robot.data.root_pos_w,
+            self._robot.data.root_quat_w,
+            self._desired_pos_w,
         )
-        obs = torch.cat([
-            self._robot.data.root_lin_vel_b,
-            self._robot.data.root_ang_vel_b,
-            self._robot.data.projected_gravity_b,
-            desired_pos_b,
-        ], dim=-1)
+        obs = torch.cat(
+            [
+                self._robot.data.root_lin_vel_b,
+                self._robot.data.root_ang_vel_b,
+                self._robot.data.projected_gravity_b,
+                desired_pos_b,
+            ],
+            dim=-1,
+        )
 
         # Draw altitude line (env 0 only)
         if self._debug_draw is not None:
             self._debug_draw.clear_lines()
             pos = self._robot.data.root_pos_w[0].cpu().tolist()
             self._debug_draw.draw_lines(
-                [pos], [[pos[0], pos[1], 0.0]],
-                [(0.12, 0.47, 0.71, 0.9)], [1.0],
+                [pos],
+                [[pos[0], pos[1], 0.0]],
+                [(0.12, 0.47, 0.71, 0.9)],
+                [1.0],
             )
 
         return {"policy": obs}
@@ -125,12 +138,16 @@ class GgswarmEnv(DirectRLEnv):
         distance_to_goal = torch.linalg.norm(
             self._desired_pos_w - self._robot.data.root_pos_w, dim=1
         )
-        distance_to_goal_mapped = 1 - torch.tanh(distance_to_goal / self.cfg.distance_to_goal_sigma)
+        distance_to_goal_mapped = 1 - torch.tanh(
+            distance_to_goal / self.cfg.distance_to_goal_sigma
+        )
 
         rewards = {
             "lin_vel": self.cfg.lin_vel_reward_scale * lin_vel * self.step_dt,
             "ang_vel": self.cfg.ang_vel_reward_scale * ang_vel * self.step_dt,
-            "distance_to_goal": self.cfg.distance_to_goal_reward_scale * distance_to_goal_mapped * self.step_dt,
+            "distance_to_goal": self.cfg.distance_to_goal_reward_scale
+            * distance_to_goal_mapped
+            * self.step_dt,
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
 
@@ -164,8 +181,12 @@ class GgswarmEnv(DirectRLEnv):
         self.extras["log"] = dict()
         self.extras["log"].update(extras)
         extras = dict()
-        extras["Episode_Termination/died"] = torch.count_nonzero(self.reset_terminated[env_ids]).item()
-        extras["Episode_Termination/time_out"] = torch.count_nonzero(self.reset_time_outs[env_ids]).item()
+        extras["Episode_Termination/died"] = torch.count_nonzero(
+            self.reset_terminated[env_ids]
+        ).item()
+        extras["Episode_Termination/time_out"] = torch.count_nonzero(
+            self.reset_time_outs[env_ids]
+        ).item()
         extras["Metrics/final_distance_to_goal"] = final_distance_to_goal.item()
         self.extras["log"].update(extras)
 
@@ -173,7 +194,9 @@ class GgswarmEnv(DirectRLEnv):
         super()._reset_idx(env_ids)
         if len(env_ids) == self.num_envs:
             # Spread out resets to avoid training spikes
-            self.episode_length_buf = torch.randint_like(self.episode_length_buf, high=int(self.max_episode_length))
+            self.episode_length_buf = torch.randint_like(
+                self.episode_length_buf, high=int(self.max_episode_length)
+            )
 
         self._actions[env_ids] = 0.0
 

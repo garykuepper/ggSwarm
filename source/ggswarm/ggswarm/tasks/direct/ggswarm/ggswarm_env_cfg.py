@@ -13,12 +13,16 @@ from isaaclab.utils import configclass
 from isaaclab_assets import CRAZYFLIE_CFG  # isort: skip
 
 
-def compute_spawn_offsets(num_agents: int, radius: float, z: float = 0.5) -> list[tuple[float, float, float]]:
+def compute_spawn_offsets(
+    num_agents: int, radius: float, z: float = 0.5
+) -> list[tuple[float, float, float]]:
     """Compute spawn positions arranged in a circle."""
     return [
-        (radius * math.cos(2 * math.pi * i / num_agents),
-         radius * math.sin(2 * math.pi * i / num_agents),
-         z)
+        (
+            radius * math.cos(2 * math.pi * i / num_agents),
+            radius * math.sin(2 * math.pi * i / num_agents),
+            z,
+        )
         for i in range(num_agents)
     ]
 
@@ -31,8 +35,10 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     num_agents = 3
 
     # Single-agent spaces (PPO sees each drone as an independent instance)
-    action_space = 4       # thrust + 3 moments
-    observation_space = 12  # lin_vel_b(3) + ang_vel_b(3) + proj_grav_b(3) + desired_pos_b(3)
+    action_space = 4  # thrust + 3 moments
+    observation_space = (
+        12  # lin_vel_b(3) + ang_vel_b(3) + proj_grav_b(3) + desired_pos_b(3)
+    )
     state_space = 0
 
     # simulation — match Isaac Lab quadcopter reference
@@ -64,7 +70,7 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     # viewer camera
     viewer: ViewerCfg = ViewerCfg(
         eye=(2.0, 2.0, 2.0),
-        lookat=(0.0, 0.0, 0.5),
+        lookat=(0.0, 0.0, 1.0),
         resolution=(1920, 1080),
     )
 
@@ -74,7 +80,9 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     )
 
     # robot — base config, _setup_scene creates one per agent
-    robot: ArticulationCfg = CRAZYFLIE_CFG.replace(prim_path="/World/envs/env_.*/Drone_0")
+    robot: ArticulationCfg = CRAZYFLIE_CFG.replace(
+        prim_path="/World/envs/env_.*/Drone_0"
+    )
     thrust_to_weight = 1.9
     moment_scale = 0.01
 
