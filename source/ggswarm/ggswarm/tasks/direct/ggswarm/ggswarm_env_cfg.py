@@ -95,15 +95,22 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     distance_to_goal_reward_scale = 15.0
     distance_to_goal_sigma = 0.8
 
-    # formation (Phase 2B/2C)
+    # formation (Phase 2B/2C/3)
     num_neighbors = 2                 # K-nearest neighbors in obs (fixed obs size)
-    formation_target_spacing = 0.5    # target inter-drone distance (m)
-    formation_reward_scale = 2.0      # active for formation training
-    formation_reward_sigma = 0.3      # tanh sharpness
+    formation_mode = "cloud"          # "polygon" (rigid slots) or "cloud" (boids-like)
+    formation_target_spacing = 0.5    # target inter-drone distance (m) — polygon mode
+    formation_reward_scale = 2.0      # formation reward scale — polygon mode
+    formation_reward_sigma = 0.3      # tanh sharpness — polygon mode
     formation_curriculum_start = 0    # immediate ramp
     formation_curriculum_end = 5000   # full formation by ~208 iterations
     collective_resets = True          # if any drone in group dies, all reset
     formation_centroid = None         # fixed centroid (x,y,z) or None for random
+
+    # cloud formation (Phase 3)
+    cloud_cohesion_scale = 5.0        # reward for staying near group centroid
+    cloud_cohesion_sigma = 0.5        # tanh sharpness for cohesion
+    cloud_max_neighbor_dist = 1.0     # max distance to nearest neighbor before penalty
+    cloud_spacing_penalty = 2.0       # penalty scale for straying too far
 
     # action smoothing (Phase 3 — EMA)
     smoothing_enabled = True          # EMA on policy actions

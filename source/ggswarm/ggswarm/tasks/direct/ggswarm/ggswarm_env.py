@@ -35,7 +35,8 @@ class GgswarmEnv(DirectRLEnv):
         device = self.device
 
         # Formation grouping
-        self._formation_active = A > 1 and self.cfg.formation_reward_scale > 0.0
+        self._formation_active = A > 1
+        self._cloud_mode = self.cfg.formation_mode == "cloud"
         if A > 1 and N % A != 0:
             raise ValueError(f"num_envs ({N}) must be divisible by num_agents ({A})")
         self._num_groups = N // A if A > 1 else N
@@ -268,9 +269,12 @@ class GgswarmEnv(DirectRLEnv):
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
 
-        # --- Formation reward (Phase 2B, curriculum-scaled) ---
+        # --- Formation reward (curriculum-scaled) ---
         if self._formation_active:
-            formation_rew = self._compute_formation_reward()
+            if self._cloud_mode:
+                formation_rew = self._compute_cloud_reward()
+            else:
+                formation_rew = self._compute_formation_reward()
             reward = reward + formation_rew
             rewards["formation"] = formation_rew
 
@@ -323,6 +327,58 @@ class GgswarmEnv(DirectRLEnv):
 
         # Broadcast from [G] -> [N] (same reward for all agents in group)
         return formation_reward.unsqueeze(1).expand(G, A).reshape(N)
+
+    def _compute_cloud_reward(self) -> torch.Tensor:
+        """Compute cloud/mesh formation reward (boids-like).
+
+        Two components:
+        - Cohesion: reward for staying near group centroid
+        - Spacing: penalty for nearest neighbor being too far
+
+        CBF handles the "too close" case separately.
+
+        Returns:
+            shape [num_envs] — per-drone reward
+        """
+        N = self.num_envs
+        A = self.cfg.num_agents
+        G = self._num_groups
+        pos_local = self._robot.data.root_pos_w - self._terrain.env_origins  # [N, 3]
+        pos_grouped = pos_local.reshape(G, A, 3)
+
+        # Curriculum alpha
+        alpha = min(1.0, max(0.0,
+            (self._global_step - self.cfg.formation_curriculum_start)
+            / max(1, self.cfg.formation_curriculum_end - self.cfg.formation_curriculum_start)
+        ))
+        if alpha <= 0.0:
+            return torch.zeros(N, device=self.device)
+
+        # --- Cohesion: reward for staying near group centroid ---
+        centroid = pos_grouped.mean(dim=1, keepdim=True)  # [G, 1, 3]
+        dist_to_centroid = torch.linalg.norm(pos_grouped - centroid, dim=2)  # [G, A]
+        cohesion_mapped = 1 - torch.tanh(dist_to_centroid / self.cfg.cloud_cohesion_sigma)
+        cohesion_reward = self.cfg.cloud_cohesion_scale * cohesion_mapped * self.step_dt  # [G, A]
+
+        # --- Spacing: penalty if nearest neighbor is too far ---
+        spacing_penalty = torch.zeros(G, A, device=self.device)
+        for i in range(A):
+            diff = pos_grouped - pos_grouped[:, i:i+1, :]  # [G, A, 3]
+            dists = torch.linalg.norm(diff, dim=2)  # [G, A]
+            dists[:, i] = float("inf")
+            nearest_dist = dists.min(dim=1).values  # [G]
+            too_far = torch.clamp(nearest_dist - self.cfg.cloud_max_neighbor_dist, min=0.0)
+            spacing_penalty[:, i] = -self.cfg.cloud_spacing_penalty * too_far * self.step_dt
+
+        total = alpha * (cohesion_reward + spacing_penalty)  # [G, A]
+
+        # Log metrics
+        if "log" not in self.extras:
+            self.extras["log"] = {}
+        self.extras["log"]["Metrics/mean_dist_to_centroid"] = dist_to_centroid.mean().item()
+        self.extras["log"]["Metrics/formation_alpha"] = alpha
+
+        return total.reshape(N)
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         time_out = self.episode_length_buf >= self.max_episode_length - 1
@@ -417,10 +473,11 @@ class GgswarmEnv(DirectRLEnv):
                 g = group_ids[g_idx]
                 for i in range(A):
                     drone_id = g * A + i
+                    offset = self._formation_offsets[i] if not self._cloud_mode else torch.zeros(3, device=self.device)
                     self._desired_pos_w[drone_id] = (
                         centroid[g_idx]
                         + self._terrain.env_origins[drone_id]
-                        + self._formation_offsets[i]
+                        + offset
                     )
         else:
             # Single-agent: independent random goals
