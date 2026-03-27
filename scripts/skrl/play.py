@@ -37,7 +37,7 @@ parser.add_argument(
     help="Filename prefix for video (e.g. p2b-3).",
 )
 parser.add_argument(
-    "--num_agents", type=int, default=1,
+    "--num_agents", type=int, default=8,
     help="Drones per swarm group. >1 enables SwarmWrapper for formation.",
 )
 parser.add_argument(
@@ -187,9 +187,12 @@ def main(
     train_task_name = task_name.replace("-Play", "")
 
     # override configurations with non-hydra CLI arguments
-    env_cfg.scene.num_envs = (
-        args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
-    )
+    if args_cli.num_envs is not None:
+        env_cfg.scene.num_envs = args_cli.num_envs
+    elif args_cli.num_agents > 1:
+        env_cfg.scene.num_envs = args_cli.num_agents  # one swarm group for play
+    else:
+        env_cfg.scene.num_envs = 1
     env_cfg.sim.device = (
         args_cli.device if args_cli.device is not None else env_cfg.sim.device
     )

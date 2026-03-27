@@ -38,7 +38,7 @@ parser.add_argument(
     "--num_envs", type=int, default=None, help="Number of environments to simulate."
 )
 parser.add_argument(
-    "--num_agents", type=int, default=1,
+    "--num_agents", type=int, default=8,
     help="Drones per swarm group. >1 enables SwarmWrapper for formation training.",
 )
 parser.add_argument(

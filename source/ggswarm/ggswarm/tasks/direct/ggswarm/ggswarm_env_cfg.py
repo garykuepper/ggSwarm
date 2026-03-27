@@ -32,7 +32,7 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     # env
     episode_length_s = 10.0
     decimation = 2
-    num_agents = 3
+    num_agents = 8
 
     # Single-agent spaces (PPO sees each drone as an independent instance)
     action_space = 4   # thrust + 3 moments
