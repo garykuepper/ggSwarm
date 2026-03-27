@@ -20,11 +20,14 @@ from isaaclab.app import AppLauncher
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Play a checkpoint of an RL agent from skrl.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
-parser.add_argument("--video_length", type=int, default=200, help="Length of the recorded video (in steps).")
+parser.add_argument("--video_length", type=int, default=500, help="Length of the recorded video (in steps).")
+parser.add_argument("--video_prefix", type=str, default="ggswarm", help="Filename prefix for video (e.g. p2b-3).")
+parser.add_argument("--play_length", type=int, default=1000, help="Number of steps to play (default: infinite).")
+parser.add_argument("--trajectories", action="store_true", default=True, help="Record and plot drone trajectories.")
 parser.add_argument(
     "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
 )
-parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
+parser.add_argument("--num_envs", type=int, default=1, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument(
     "--agent",
@@ -104,7 +107,6 @@ from isaaclab.envs import (
     ManagerBasedRLEnvCfg,
     multi_agent_to_single_agent,
 )
-from isaaclab.utils.dict import print_dict
 
 from isaaclab_rl.skrl import SkrlVecEnvWrapper
 from isaaclab_rl.utils.pretrained_checkpoint import get_published_pretrained_checkpoint
@@ -182,17 +184,18 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
     except AttributeError:
         dt = env.unwrapped.step_dt
 
-    # wrap for video recording
+    # wrap for video recording (NVENC H.264 hardware encoder)
     if args_cli.video:
-        video_kwargs = {
-            "video_folder": os.path.join(log_dir, "videos", "play"),
-            "step_trigger": lambda step: step == 0,
-            "video_length": args_cli.video_length,
-            "disable_logger": True,
-        }
-        print("[INFO] Recording videos during training.")
-        print_dict(video_kwargs, nesting=4)
-        env = gym.wrappers.RecordVideo(env, **video_kwargs)
+        from ggswarm.viz.nvenc_recorder import NvencRecorder
+
+        video_folder = os.path.join(log_dir, "videos", "play")
+        env = NvencRecorder(
+            env,
+            video_folder=video_folder,
+            video_length=args_cli.video_length,
+            name_prefix=args_cli.video_prefix,
+        )
+        print(f"[INFO] Recording video to {video_folder} (NVENC H.264, {args_cli.video_length} steps)")
 
     # wrap around environment for skrl
     env = SkrlVecEnvWrapper(env, ml_framework=args_cli.ml_framework)  # same as: `wrap_env(env, wrapper="auto")`
@@ -208,6 +211,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
     runner.agent.load(resume_path)
     # set agent to evaluation mode
     runner.agent.set_running_mode("eval")
+
+    # Trajectory recording buffers
+    traj_pos: list[torch.Tensor] = []
+    traj_quat: list[torch.Tensor] = []
 
     # reset environment
     obs, _ = env.reset()
@@ -228,16 +235,47 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
                 actions = outputs[-1].get("mean_actions", outputs[0])
             # env stepping
             obs, _, _, _, _ = env.step(actions)
-        if args_cli.video:
-            timestep += 1
-            # exit the play loop after recording one video
-            if timestep == args_cli.video_length:
-                break
+
+        # Record trajectory data (env 0 only)
+        if args_cli.trajectories:
+            base_env = env.unwrapped
+            # Single drone per env — record env 0's robot state
+            pos = base_env._robot.data.root_pos_w[0].unsqueeze(0)  # [1, 3]
+            quat = base_env._robot.data.root_quat_w[0].unsqueeze(0)  # [1, 4]
+            traj_pos.append(pos.detach().cpu().clone())
+            traj_quat.append(quat.detach().cpu().clone())
+
+        timestep += 1
+        if args_cli.video and timestep >= args_cli.video_length:
+            break
+        if args_cli.play_length and timestep >= args_cli.play_length:
+            break
 
         # time delay for real-time evaluation
         sleep_time = dt - (time.time() - start_time)
         if args_cli.real_time and sleep_time > 0:
             time.sleep(sleep_time)
+
+    # Generate trajectory plots
+    if args_cli.trajectories and traj_pos:
+        euler_fn = None
+        try:
+            from isaaclab.utils.math import euler_xyz_from_quat
+            euler_fn = euler_xyz_from_quat
+        except ImportError:
+            print("[WARN] euler_xyz_from_quat not available; attitude subplot will be empty.")
+
+        from ggswarm.viz.trajectory_plots import generate_trajectory_plots
+
+        traj_dir = os.path.join(log_dir, "trajectories")
+        base_env = env.unwrapped
+        generate_trajectory_plots(
+            traj_pos,
+            traj_quat,
+            out_dir=traj_dir,
+            agent_names=["drone_0"],
+            euler_fn=euler_fn,
+        )
 
     # close the simulator
     env.close()

@@ -63,7 +63,13 @@ parser.add_argument(
     help="Path to model checkpoint to resume training.",
 )
 parser.add_argument(
-    "--max_iterations", type=int, default=None, help="RL Policy training iterations."
+    "--log_subdir",
+    type=str,
+    default=None,
+    help="Subdirectory under experiment directory (e.g. phase2a, phase2b).",
+)
+parser.add_argument(
+    "--max_iterations", type=int, default=4800, help="RL Policy training iterations."
 )
 parser.add_argument(
     "--export_io_descriptors",
@@ -219,6 +225,8 @@ def main(
     log_root_path = os.path.join(
         "logs", "skrl", agent_cfg["agent"]["experiment"]["directory"]
     )
+    if args_cli.log_subdir:
+        log_root_path = os.path.join(log_root_path, args_cli.log_subdir)
     log_root_path = os.path.abspath(log_root_path)
     print(f"[INFO] Logging experiment in directory: {log_root_path}")
 
