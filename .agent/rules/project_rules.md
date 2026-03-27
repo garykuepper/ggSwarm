@@ -70,6 +70,7 @@ trigger: always_on
 - GCE is for training only — play/video/TB must run locally.
 - Always run a local smoke test (5 iterations) before GCE launch.
 - After GCE training, push logs to `gs://gg-swarm-training-logs`.
+- **Log naming:** Serialized run labels — `train_ggswarm_p2a-1.log`, `p2a-2.log`, etc. Must match `--log_subdir` phase.
 
 ## 10. Video Recording
 

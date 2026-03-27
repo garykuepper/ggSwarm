@@ -82,7 +82,7 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     spawn_radius = 0.3  # meters, distance from env center to each drone
 
     # reward scales
-    lin_vel_reward_scale = -0.15
+    lin_vel_reward_scale = -0.10
     ang_vel_reward_scale = -0.01
     distance_to_goal_reward_scale = 15.0
-    distance_to_goal_sigma = 0.3  # tanh sharpness (lower = tighter position hold)
+    distance_to_goal_sigma = 0.5  # tanh sharpness (lower = tighter position hold)

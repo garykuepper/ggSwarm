@@ -43,9 +43,10 @@ All rules below are MANDATORY unless marked SHOULD.
     nohup ~/ggSwarm/env_isaaclab/bin/python scripts/skrl/train.py \
     --headless --task ggswarm-v0 --num_envs 4096 \
     --max_iterations 500 --log_subdir p2a \
-    > ~/train_ggswarm_<label>_$(date +%Y%m%d_%H%M%S).log 2>&1 &'
+    > ~/train_ggswarm_<label>.log 2>&1 &'
   ```
 
+- **Log naming:** Use serialized run labels: `train_ggswarm_p2a-1.log`, `train_ggswarm_p2a-2.log`, etc. The label must match `--log_subdir` phase and increment per run.
 - After training, manually push logs to GCS:
 
   ```text
