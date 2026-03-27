@@ -308,6 +308,16 @@ class GgswarmEnv(DirectRLEnv):
             any_died = died_grouped.any(dim=1)
             died = any_died.unsqueeze(1).expand(G, A).reshape(-1)
 
+        # Debug: log which envs die and why (only first few envs, during play)
+        if self._debug_draw is not None:
+            A = min(self.cfg.num_agents, self.num_envs)
+            for idx in range(A):
+                if died[idx]:
+                    z = self._robot.data.root_pos_w[idx, 2].item()
+                    print(f"[DEBUG] env {idx} DIED: z={z:.4f}")
+                if time_out[idx]:
+                    print(f"[DEBUG] env {idx} TIMEOUT: ep_len={self.episode_length_buf[idx].item()}")
+
         return died, time_out
 
     def _reset_idx(self, env_ids: Sequence[int] | None):  # noqa: C901
@@ -339,9 +349,16 @@ class GgswarmEnv(DirectRLEnv):
         super()._reset_idx(env_ids)
         if len(env_ids) == self.num_envs:
             # Spread out resets to avoid training spikes
-            self.episode_length_buf = torch.randint_like(
-                self.episode_length_buf, high=int(self.max_episode_length)
-            )
+            if self.cfg.num_agents > 1:
+                # Sync episode length within each swarm group
+                A = self.cfg.num_agents
+                G = self._num_groups
+                group_lengths = torch.randint(0, int(self.max_episode_length), (G,), device=self.device)
+                self.episode_length_buf = group_lengths.unsqueeze(1).expand(G, A).reshape(-1).clone()
+            else:
+                self.episode_length_buf = torch.randint_like(
+                    self.episode_length_buf, high=int(self.max_episode_length)
+                )
 
         self._actions[env_ids] = 0.0
 
@@ -354,10 +371,14 @@ class GgswarmEnv(DirectRLEnv):
             group_ids = torch.unique(env_ids_t // A)
             n_groups = len(group_ids)
 
-            # Sample one centroid per group
-            centroid_xy = torch.zeros(n_groups, 2, device=self.device).uniform_(-2.0, 2.0)
-            centroid_z = torch.zeros(n_groups, 1, device=self.device).uniform_(0.5, 1.5)
-            centroid = torch.cat([centroid_xy, centroid_z], dim=-1)  # [n_groups, 3]
+            # Sample or use fixed centroid per group
+            if self.cfg.formation_centroid is not None:
+                fc = self.cfg.formation_centroid
+                centroid = torch.tensor([[fc[0], fc[1], fc[2]]], device=self.device).expand(n_groups, 3).clone()
+            else:
+                centroid_xy = torch.zeros(n_groups, 2, device=self.device).uniform_(-0.5, 0.5)
+                centroid_z = torch.zeros(n_groups, 1, device=self.device).uniform_(0.5, 1.5)
+                centroid = torch.cat([centroid_xy, centroid_z], dim=-1)  # [n_groups, 3]
 
             # Assign each drone in each group
             for g_idx in range(n_groups):
@@ -379,11 +400,14 @@ class GgswarmEnv(DirectRLEnv):
                 self._desired_pos_w[env_ids, 2]
             ).uniform_(0.5, 1.5)
 
-        # Reset robot state
+        # Reset robot state with random spawn position
         joint_pos = self._robot.data.default_joint_pos[env_ids]
         joint_vel = self._robot.data.default_joint_vel[env_ids]
         default_root_state = self._robot.data.default_root_state[env_ids]
         default_root_state[:, :3] += self._terrain.env_origins[env_ids]
+        # Random XY offset within [-0.5, 0.5]m of env origin
+        default_root_state[:, 0] += torch.zeros(len(env_ids), device=self.device).uniform_(-0.5, 0.5)
+        default_root_state[:, 1] += torch.zeros(len(env_ids), device=self.device).uniform_(-0.5, 0.5)
 
         self._robot.write_root_pose_to_sim(default_root_state[:, :7], env_ids)
         self._robot.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)

@@ -24,6 +24,7 @@ def generate_trajectory_plots(
     goal_data: list[torch.Tensor] | None = None,
     env_origins: torch.Tensor | None = None,
     target_spacing: float | None = None,
+    centroid: tuple[float, float, float] | None = None,
 ) -> Path:
     """Create a 2x2 trajectory summary and save as PNG.
 
@@ -71,6 +72,9 @@ def generate_trajectory_plots(
         for a in range(A):
             ax.plot(steps, goal[:, a, 2].numpy(), color=DRONE_COLORS[a % len(DRONE_COLORS)],
                     linewidth=1.0, linestyle=":", alpha=0.6, label=f"{agent_names[a]} goal Z")
+    if centroid is not None:
+        ax.axhline(centroid[2], color="green", linestyle="-.", linewidth=1.2,
+                   label=f"centroid Z={centroid[2]}m")
     ax.axhline(min_height, color="red", linestyle="--", linewidth=0.9, label=f"min {min_height}m")
     ax.axhline(max_height, color="grey", linestyle="--", linewidth=0.8, label=f"max {max_height}m")
     ax.axhline(0.0, color="black", linestyle=":", linewidth=0.5)
@@ -95,9 +99,13 @@ def generate_trajectory_plots(
             gy = goal[-1, a, 1].item()
             ax.plot(gx, gy, "*", color=DRONE_COLORS[a % len(DRONE_COLORS)],
                     markersize=15, markeredgewidth=1.0, label=f"{agent_names[a]} goal")
+    if centroid is not None:
+        ax.plot(centroid[0], centroid[1], "D", color="green",
+                markersize=12, markeredgewidth=2.0, markerfacecolor="none",
+                label="centroid")
     ax.set_xlabel("X (m)")
     ax.set_ylabel("Y (m)")
-    ax.set_title("XY Trace (x = spawn, * = goal)")
+    ax.set_title("XY Trace (x = spawn, * = goal, D = centroid)")
     ax.legend(fontsize=7)
     ax.set_aspect("equal", adjustable="datalim")
 

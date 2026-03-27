@@ -43,7 +43,7 @@ parser.add_argument(
 parser.add_argument(
     "--play_length",
     type=int,
-    default=500,
+    default=300,
     help="Number of steps to play (default: 500 = 1 episode).",
 )
 parser.add_argument(
@@ -196,6 +196,7 @@ def main(
         env_cfg.observation_space = 12 + (args_cli.num_agents - 1) * 3
         env_cfg.scene.env_spacing = 0.01  # drones visually in same space
         env_cfg.collective_resets = False  # no group teleport during play
+        env_cfg.formation_centroid = (0.0, 0.0, 1.0)  # hover over origin during play
     else:
         env_cfg.observation_space = 12
 
@@ -369,6 +370,7 @@ def main(
             goal_data=traj_goal if traj_goal else None,
             env_origins=env_origins,
             target_spacing=base_env.cfg.formation_target_spacing if A > 1 else None,
+            centroid=base_env.cfg.formation_centroid if A > 1 else None,
         )
 
     # close the simulator
