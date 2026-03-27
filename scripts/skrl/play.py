@@ -194,6 +194,8 @@ def main(
     env_cfg.num_agents = args_cli.num_agents
     if args_cli.num_agents > 1:
         env_cfg.observation_space = 12 + (args_cli.num_agents - 1) * 3
+        env_cfg.scene.env_spacing = 0.01  # drones visually in same space
+        env_cfg.collective_resets = False  # no group teleport during play
     else:
         env_cfg.observation_space = 12
 
@@ -356,13 +358,17 @@ def main(
 
         traj_dir = os.path.join(log_dir, "trajectories")
         base_env = env.unwrapped
+        A = base_env.cfg.num_agents
+        env_origins = base_env._terrain.env_origins[:A].cpu() if A > 1 else None
         generate_trajectory_plots(
             traj_pos,
             traj_quat,
             out_dir=traj_dir,
-            agent_names=[f"drone_{i}" for i in range(env.unwrapped.cfg.num_agents)],
+            agent_names=[f"drone_{i}" for i in range(A)],
             euler_fn=euler_fn,
             goal_data=traj_goal if traj_goal else None,
+            env_origins=env_origins,
+            target_spacing=base_env.cfg.formation_target_spacing if A > 1 else None,
         )
 
     # close the simulator

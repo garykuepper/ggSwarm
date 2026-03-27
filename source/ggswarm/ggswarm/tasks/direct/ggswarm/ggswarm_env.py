@@ -296,12 +296,12 @@ class GgswarmEnv(DirectRLEnv):
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         time_out = self.episode_length_buf >= self.max_episode_length - 1
         died = torch.logical_or(
-            self._robot.data.root_pos_w[:, 2] < 0.1,
+            self._robot.data.root_pos_w[:, 2] < 0.05,
             self._robot.data.root_pos_w[:, 2] > 2.0,
         )
 
         # Collective resets: if any drone in a swarm group dies, all die
-        if self.cfg.num_agents > 1:
+        if self.cfg.num_agents > 1 and self.cfg.collective_resets:
             A = self.cfg.num_agents
             G = self._num_groups
             died_grouped = died.reshape(G, A)

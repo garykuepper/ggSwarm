@@ -101,3 +101,4 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     formation_reward_sigma = 0.3      # tanh sharpness
     formation_curriculum_start = 0    # step to begin ramping
     formation_curriculum_end = 5000   # step at full weight (~200 iterations)
+    collective_resets = True          # if any drone in group dies, all reset
