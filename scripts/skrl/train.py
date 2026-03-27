@@ -42,8 +42,8 @@ parser.add_argument(
     help="Drones per swarm group. >1 enables SwarmWrapper for formation training.",
 )
 parser.add_argument(
-    "--policy", type=str, default="mlp", choices=["mlp", "gnn"],
-    help="Policy architecture: mlp (default) or gnn (GATv2).",
+    "--policy", type=str, default="gnn", choices=["mlp", "gnn"],
+    help="Policy architecture: gnn (default, GATv2) or mlp.",
 )
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument(

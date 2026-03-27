@@ -41,6 +41,10 @@ parser.add_argument(
     help="Drones per swarm group. >1 enables SwarmWrapper for formation.",
 )
 parser.add_argument(
+    "--policy", type=str, default="gnn", choices=["mlp", "gnn"],
+    help="Policy architecture: gnn (default, GATv2) or mlp.",
+)
+parser.add_argument(
     "--play_length",
     type=int,
     default=300,
@@ -286,7 +290,50 @@ def main(
     experiment_cfg["agent"]["experiment"][
         "checkpoint_interval"
     ] = 0  # don't generate checkpoints
-    runner = Runner(env, experiment_cfg)
+
+    if args_cli.policy == "gnn":
+        # GNN policy: manually create agent with GATv2 model
+        from skrl.agents.torch.ppo import PPO, PPO_DEFAULT_CONFIG
+        from skrl.memories.torch import RandomMemory
+        from skrl.resources.preprocessors.torch import RunningStandardScaler
+
+        from ggswarm.gnn_policy import GgswarmGNNPolicy
+
+        memory = RandomMemory(memory_size=24, num_envs=env.num_envs, device=env.device)
+        gnn_model = GgswarmGNNPolicy(
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            device=env.device,
+            num_neighbors=env_cfg.num_neighbors,
+        )
+        models = {"policy": gnn_model, "value": gnn_model}
+
+        ppo_cfg = PPO_DEFAULT_CONFIG.copy()
+        ppo_cfg.update({
+            "state_preprocessor": RunningStandardScaler,
+            "state_preprocessor_kwargs": {"size": env.observation_space, "device": env.device},
+            "value_preprocessor": RunningStandardScaler,
+            "value_preprocessor_kwargs": {"size": 1, "device": env.device},
+        })
+
+        agent = PPO(
+            models=models,
+            memory=memory,
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            device=env.device,
+            cfg=ppo_cfg,
+        )
+
+        class _GNNRunner:
+            """Minimal runner interface for GNN play compatibility."""
+            def __init__(self, a):
+                self.agent = a
+
+        runner = _GNNRunner(agent)
+        print("[INFO] Using GATv2 GNN policy for play")
+    else:
+        runner = Runner(env, experiment_cfg)
 
     print(f"[INFO] Loading model checkpoint from: {resume_path}")
     runner.agent.load(resume_path)
