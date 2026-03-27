@@ -97,7 +97,7 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
 
     # formation reward (Phase 2B) — set scale to 0.0 to disable
     formation_target_spacing = 0.5    # target inter-drone distance (m)
-    formation_reward_scale = 0.0      # disabled by default (hover only)
+    formation_reward_scale = 5.0      # active for formation training
     formation_reward_sigma = 0.3      # tanh sharpness
     formation_curriculum_start = 0    # step to begin ramping
     formation_curriculum_end = 50000  # step at full weight
