@@ -11,6 +11,8 @@ Based on Isaac Lab's quadcopter_env.py.
 
 from __future__ import annotations
 
+import math
+
 import torch
 from collections.abc import Sequence
 
@@ -45,6 +47,22 @@ class GgswarmEnv(DirectRLEnv):
             for i in range(A):
                 for j in range(i + 1, A):
                     self._pair_indices.append((i, j))
+
+        # Formation slot offsets — equilateral arrangement with target_spacing
+        # shape: [num_agents, 3] — XYZ offset from group centroid
+        if A > 1:
+            spacing = self.cfg.formation_target_spacing
+            offsets = []
+            for i in range(A):
+                angle = 2 * 3.14159265 * i / A
+                offsets.append([
+                    spacing * 0.5 * math.cos(angle),
+                    spacing * 0.5 * math.sin(angle),
+                    0.0,
+                ])
+            self._formation_offsets = torch.tensor(offsets, device=device)  # [A, 3]
+        else:
+            self._formation_offsets = None
 
         # Pre-allocate action tensors (reused every step)
         self._actions = torch.zeros(N, 4, device=device)
@@ -264,6 +282,12 @@ class GgswarmEnv(DirectRLEnv):
             alpha * self.cfg.formation_reward_scale * formation_mapped * self.step_dt
         )
 
+        # Log mean formation error in meters
+        if "log" not in self.extras:
+            self.extras["log"] = {}
+        self.extras["log"]["Metrics/mean_formation_error_m"] = mean_error.mean().item()
+        self.extras["log"]["Metrics/formation_alpha"] = alpha
+
         # Broadcast from [G] -> [N] (same reward for all agents in group)
         return formation_reward.unsqueeze(1).expand(G, A).reshape(N)
 
@@ -319,14 +343,39 @@ class GgswarmEnv(DirectRLEnv):
 
         self._actions[env_ids] = 0.0
 
-        # Sample new goal position
-        self._desired_pos_w[env_ids, :2] = torch.zeros_like(
-            self._desired_pos_w[env_ids, :2]
-        ).uniform_(-2.0, 2.0)
-        self._desired_pos_w[env_ids, :2] += self._terrain.env_origins[env_ids, :2]
-        self._desired_pos_w[env_ids, 2] = torch.zeros_like(
-            self._desired_pos_w[env_ids, 2]
-        ).uniform_(0.5, 1.5)
+        # Sample new goal positions
+        if self.cfg.num_agents > 1 and self._formation_offsets is not None:
+            # Group-aware: sample one centroid per group, assign formation offsets
+            A = self.cfg.num_agents
+            env_ids_t = torch.tensor(env_ids, device=self.device) if not isinstance(env_ids, torch.Tensor) else env_ids
+            # Find unique groups being reset
+            group_ids = torch.unique(env_ids_t // A)
+            n_groups = len(group_ids)
+
+            # Sample one centroid per group
+            centroid_xy = torch.zeros(n_groups, 2, device=self.device).uniform_(-2.0, 2.0)
+            centroid_z = torch.zeros(n_groups, 1, device=self.device).uniform_(0.5, 1.5)
+            centroid = torch.cat([centroid_xy, centroid_z], dim=-1)  # [n_groups, 3]
+
+            # Assign each drone in each group
+            for g_idx in range(n_groups):
+                g = group_ids[g_idx]
+                for i in range(A):
+                    drone_id = g * A + i
+                    self._desired_pos_w[drone_id] = (
+                        centroid[g_idx]
+                        + self._terrain.env_origins[drone_id]
+                        + self._formation_offsets[i]
+                    )
+        else:
+            # Single-agent: independent random goals
+            self._desired_pos_w[env_ids, :2] = torch.zeros_like(
+                self._desired_pos_w[env_ids, :2]
+            ).uniform_(-2.0, 2.0)
+            self._desired_pos_w[env_ids, :2] += self._terrain.env_origins[env_ids, :2]
+            self._desired_pos_w[env_ids, 2] = torch.zeros_like(
+                self._desired_pos_w[env_ids, 2]
+            ).uniform_(0.5, 1.5)
 
         # Reset robot state
         joint_pos = self._robot.data.default_joint_pos[env_ids]
