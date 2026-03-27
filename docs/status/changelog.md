@@ -803,3 +803,27 @@ matching) were irrelevant — the policy was receiving garbage inputs during eva
     ground\_hit 7.3%→0.2%). Late-episode crash at ~step 450 causes low survival.
   - **Next action:** investigate survival\_steps metric — drones hover stably for 450+
     steps then crash at episode end. May be truncation/boundary issue.
+
+## Fresh Start: CTDE Rebuild (Week 12)
+
+- [2026-03-26] **FRESH START.** Archived Phase 2 codebase to `archive/phase2-v1` branch.
+  Rebuilt from Isaac Lab quadcopter reference. Key architectural change:
+  `DirectMARLEnv` + MAPPO (per-agent weights) replaced by `DirectRLEnv` + PPO
+  (single shared policy). All drones are homogeneous — separate weights were wasteful.
+- [2026-03-26] New codebase: `GgswarmEnv(DirectRLEnv)`, 1 Crazyflie per env, shared PPO.
+  Task ID: `ggswarm-v0`. CTDE: centralized training, decentralized execution.
+- [2026-03-26] Added viz package: `ggswarm.viz.trajectory_plots` (2x2 summary),
+  `ggswarm.viz.nvenc_recorder` (NVENC H.264 video).
+- [2026-03-26] Added `--trajectories`, `--play_length`, `--video_prefix`, `--log_subdir`
+  to play.py and train.py.
+
+### Training runs
+
+- [2026-03-26] **p2a-1** (sigma=0.8, vel=-0.05, quadcopter baseline):
+  ep_len=497, std=0.077, reward=107. Converged by step 6k, slight overfit after.
+- [2026-03-26] **p2a-2** (sigma=0.3, vel=-0.15, too tight):
+  ep_len=78, reward=-0.09. Failed — reward landscape too steep from scratch.
+- [2026-03-26] **p2a-3** (sigma=0.5, vel=-0.10, middle ground):
+  ep_len=486, std=0.141, reward=97.5. Good convergence, healthier std.
+- [2026-03-26] **p2a-4** (sigma=0.8, vel=-0.05, reset to quadcopter exact):
+  Pending eval — testing whether drift is params or code.

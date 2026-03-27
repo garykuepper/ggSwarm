@@ -15,6 +15,24 @@ Baseline timeline is in the [Proposal](../project/proposal.md#7-timeline-and-mil
 
 ---
 
+## Week 12 Update (2026-03-26)
+
+- **FRESH START.** Archived the entire Phase 2 codebase (20+ MAPPO runs, GNN monkey-patches,
+  complex eval pipeline). Rebuilt from Isaac Lab quadcopter reference in one session.
+- **Architecture change:** `DirectMARLEnv` + MAPPO replaced by `DirectRLEnv` + PPO.
+  One shared policy across all drones (CTDE). No per-agent weights, no weight sync hacks.
+- **4 training runs (p2a-1 through p2a-4):**
+  - p2a-1 (quadcopter baseline): converged in 250 iterations, ep_len 497/500
+  - p2a-2 (tighter sigma=0.3): failed — too steep from scratch
+  - p2a-3 (sigma=0.5, vel=-0.10): converged, ep_len 486, healthier std
+  - p2a-4 (reset to quadcopter exact): isolating drift cause
+- **New tooling:** NVENC video recorder, trajectory diagnostic plots (2x2 summary
+  with goal visualization), `--log_subdir` for run organization.
+- **Ready for Phase 2B:** Formation rewards via SwarmWrapper (groups N envs into swarms).
+- **Timeline:** 29 days remain to deadline (Apr 24).
+
+---
+
 ## Week 11 Update (2026-03-24)
 
 - **Phase 2A COMPLETE.** Hover-stability solved after discovering the train-eval gap root cause:

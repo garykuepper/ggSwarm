@@ -1,4 +1,4 @@
-"""Generate a 2×2 trajectory summary plot from recorded drone state data."""
+"""Generate a 2x2 trajectory summary plot from recorded drone state data."""
 
 from __future__ import annotations
 
@@ -21,17 +21,19 @@ def generate_trajectory_plots(
     euler_fn=None,
     min_height: float = 0.1,
     max_height: float = 2.0,
+    goal_data: list[torch.Tensor] | None = None,
 ) -> Path:
-    """Create a 2×2 trajectory summary and save as PNG.
+    """Create a 2x2 trajectory summary and save as PNG.
 
     Args:
         pos_data: List of [num_agents, 3] tensors (one per step).
         quat_data: List of [num_agents, 4] tensors (one per step).
         out_dir: Directory to save the plot.
         agent_names: Agent labels (default: drone_0, drone_1, ...).
-        euler_fn: Callable(quat) → (roll, pitch, yaw) in radians. If None, attitude subplot is skipped.
+        euler_fn: Callable(quat) -> (roll, pitch, yaw) in radians.
         min_height: Minimum height line for altitude plot.
         max_height: Maximum height line for altitude plot.
+        goal_data: List of [num_agents, 3] tensors (goal position per step).
 
     Returns:
         Path to the saved PNG file.
@@ -43,6 +45,8 @@ def generate_trajectory_plots(
     T, A, _ = pos.shape
     steps = list(range(T))
 
+    goal = torch.stack(goal_data) if goal_data else None  # [T, num_agents, 3]
+
     if agent_names is None:
         agent_names = [f"drone_{i}" for i in range(A)]
 
@@ -53,6 +57,10 @@ def generate_trajectory_plots(
     for a in range(A):
         ax.plot(steps, pos[:, a, 2].numpy(), color=DRONE_COLORS[a % len(DRONE_COLORS)],
                 linewidth=1.2, label=agent_names[a])
+    if goal is not None:
+        for a in range(A):
+            ax.plot(steps, goal[:, a, 2].numpy(), color=DRONE_COLORS[a % len(DRONE_COLORS)],
+                    linewidth=1.0, linestyle=":", alpha=0.6, label=f"{agent_names[a]} goal Z")
     ax.axhline(min_height, color="red", linestyle="--", linewidth=0.9, label=f"min {min_height}m")
     ax.axhline(max_height, color="grey", linestyle="--", linewidth=0.8, label=f"max {max_height}m")
     ax.axhline(0.0, color="black", linestyle=":", linewidth=0.5)
@@ -71,9 +79,15 @@ def generate_trajectory_plots(
                 linewidth=1.1, label=agent_names[a])
         ax.plot(x[0], y[0], "x", color=DRONE_COLORS[a % len(DRONE_COLORS)],
                 markersize=10, markeredgewidth=2.0)
+    if goal is not None:
+        for a in range(A):
+            gx = goal[-1, a, 0].item()
+            gy = goal[-1, a, 1].item()
+            ax.plot(gx, gy, "*", color=DRONE_COLORS[a % len(DRONE_COLORS)],
+                    markersize=15, markeredgewidth=1.0, label=f"{agent_names[a]} goal")
     ax.set_xlabel("X (m)")
     ax.set_ylabel("Y (m)")
-    ax.set_title("XY Trace (× = spawn)")
+    ax.set_title("XY Trace (x = spawn, * = goal)")
     ax.legend(fontsize=7)
     ax.set_aspect("equal", adjustable="datalim")
 
@@ -89,7 +103,7 @@ def generate_trajectory_plots(
                     linewidth=1.0, label=f"{agent_names[a]} roll")
             ax.plot(steps, pitch_deg[:, a].numpy(), color=DRONE_COLORS[a % len(DRONE_COLORS)],
                     linewidth=1.0, linestyle="--", alpha=0.7, label=f"{agent_names[a]} pitch")
-        ax.axhline(15.0, color="darkorange", linestyle="--", linewidth=0.8, label="±15° gate")
+        ax.axhline(15.0, color="darkorange", linestyle="--", linewidth=0.8, label="+/-15 gate")
         ax.axhline(-15.0, color="darkorange", linestyle="--", linewidth=0.8)
         ax.axhline(0.0, color="black", linestyle=":", linewidth=0.5)
         ax.legend(fontsize=6, ncol=2)
@@ -100,25 +114,36 @@ def generate_trajectory_plots(
     ax.set_ylabel("Degrees")
     ax.set_title("Attitude (roll solid, pitch dashed)")
 
-    # --- Bottom-right: Inter-drone distances ---
+    # --- Bottom-right: Distance to goal ---
     ax = axes[1, 1]
-    if A >= 2:
+    if goal is not None:
+        for a in range(A):
+            dist = torch.linalg.norm(pos[:, a, :] - goal[:, a, :], dim=1).numpy()
+            ax.plot(steps, dist, color=DRONE_COLORS[a % len(DRONE_COLORS)],
+                    linewidth=1.1, label=f"{agent_names[a]}")
+        ax.axhline(0.0, color="black", linestyle=":", linewidth=0.5)
+        ax.set_ylabel("Distance (m)")
+        ax.set_title("Distance to Goal")
+        ax.legend(fontsize=7)
+    elif A >= 2:
         pair_idx = 0
         pair_colors = ["tab:purple", "tab:brown", "tab:pink", "tab:cyan"]
         for i in range(A):
             for j in range(i + 1, A):
                 dist = torch.linalg.norm(pos[:, i, :] - pos[:, j, :], dim=1).numpy()
                 ax.plot(steps, dist, color=pair_colors[pair_idx % len(pair_colors)],
-                        linewidth=1.1, label=f"{agent_names[i]}↔{agent_names[j]}")
+                        linewidth=1.1, label=f"{agent_names[i]}<->{agent_names[j]}")
                 pair_idx += 1
         ax.axhline(0.0, color="black", linestyle=":", linewidth=0.5)
+        ax.set_ylabel("Distance (m)")
+        ax.set_title("Inter-Drone Distance")
         ax.legend(fontsize=7)
     else:
-        ax.text(0.5, 0.5, "Need ≥2 agents for distance", transform=ax.transAxes,
+        ax.text(0.5, 0.5, "No goal or multi-agent data", transform=ax.transAxes,
                 ha="center", va="center", fontsize=12, color="grey")
+        ax.set_ylabel("Distance (m)")
+        ax.set_title("Distance")
     ax.set_xlabel("Step")
-    ax.set_ylabel("Distance (m)")
-    ax.set_title("Inter-Drone Distance")
 
     fig.suptitle(f"Trajectory Summary ({T} steps, {A} agents)", fontsize=14)
     fig.tight_layout()

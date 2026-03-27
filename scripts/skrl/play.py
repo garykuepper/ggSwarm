@@ -39,7 +39,7 @@ parser.add_argument(
 parser.add_argument(
     "--play_length",
     type=int,
-    default=400,
+    default=300,
     help="Number of steps to play (default: 500 = 1 episode).",
 )
 parser.add_argument(
@@ -282,6 +282,7 @@ def main(
     # Trajectory recording buffers
     traj_pos: list[torch.Tensor] = []
     traj_quat: list[torch.Tensor] = []
+    traj_goal: list[torch.Tensor] = []
 
     # reset environment
     obs, _ = env.reset()
@@ -312,8 +313,10 @@ def main(
             # Single drone per env — record env 0's robot state
             pos = base_env._robot.data.root_pos_w[0].unsqueeze(0)  # [1, 3]
             quat = base_env._robot.data.root_quat_w[0].unsqueeze(0)  # [1, 4]
+            goal = base_env._desired_pos_w[0].unsqueeze(0)  # [1, 3]
             traj_pos.append(pos.detach().cpu().clone())
             traj_quat.append(quat.detach().cpu().clone())
+            traj_goal.append(goal.detach().cpu().clone())
 
         timestep += 1
         if args_cli.video and timestep >= args_cli.video_length:
@@ -348,6 +351,7 @@ def main(
             out_dir=traj_dir,
             agent_names=["drone_0"],
             euler_fn=euler_fn,
+            goal_data=traj_goal if traj_goal else None,
         )
 
     # close the simulator
