@@ -49,15 +49,17 @@ class GgswarmEnv(DirectRLEnv):
                     self._pair_indices.append((i, j))
 
         # Formation slot offsets — equilateral arrangement with target_spacing
+        # Circumradius = target_spacing / (2 * sin(pi/A)) so pairwise distance = target_spacing
         # shape: [num_agents, 3] — XYZ offset from group centroid
         if A > 1:
             spacing = self.cfg.formation_target_spacing
+            radius = spacing / (2 * math.sin(math.pi / A))
             offsets = []
             for i in range(A):
-                angle = 2 * 3.14159265 * i / A
+                angle = 2 * math.pi * i / A
                 offsets.append([
-                    spacing * 0.5 * math.cos(angle),
-                    spacing * 0.5 * math.sin(angle),
+                    radius * math.cos(angle),
+                    radius * math.sin(angle),
                     0.0,
                 ])
             self._formation_offsets = torch.tensor(offsets, device=device)  # [A, 3]
