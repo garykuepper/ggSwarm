@@ -100,4 +100,4 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     formation_reward_scale = 5.0      # active for formation training
     formation_reward_sigma = 0.3      # tanh sharpness
     formation_curriculum_start = 0    # step to begin ramping
-    formation_curriculum_end = 50000  # step at full weight
+    formation_curriculum_end = 5000   # step at full weight (~200 iterations)
