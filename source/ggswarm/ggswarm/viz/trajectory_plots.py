@@ -132,24 +132,31 @@ def generate_trajectory_plots(
     ax.set_ylabel("Degrees")
     ax.set_title("Attitude (roll solid, pitch dashed)")
 
-    # --- Bottom-right: Inter-drone distance OR distance to goal ---
+    # --- Bottom-right: K-nearest neighbor distance per drone ---
     ax = axes[1, 1]
+    K = min(2, A - 1)  # K-nearest (match training K)
     if A >= 2:
-        pair_idx = 0
-        pair_colors = ["tab:purple", "tab:brown", "tab:pink", "tab:cyan"]
-        for i in range(A):
-            for j in range(i + 1, A):
-                dist = torch.linalg.norm(pos[:, i, :] - pos[:, j, :], dim=1).numpy()
-                ax.plot(steps, dist, color=pair_colors[pair_idx % len(pair_colors)],
-                        linewidth=1.1, label=f"{agent_names[i]}<->{agent_names[j]}")
-                pair_idx += 1
+        for a in range(A):
+            # Compute distance from drone a to all others at each step
+            diffs = pos[:, a:a+1, :] - pos  # [T, A, 3]
+            dists = torch.linalg.norm(diffs, dim=2)  # [T, A]
+            dists[:, a] = float("inf")  # exclude self
+
+            # Get K nearest distances per step
+            knn_dists, _ = torch.topk(dists, K, dim=1, largest=False)  # [T, K]
+
+            # Plot mean of K-nearest as single line per drone
+            mean_knn = knn_dists.mean(dim=1).numpy()
+            ax.plot(steps, mean_knn, color=DRONE_COLORS[a % len(DRONE_COLORS)],
+                    linewidth=1.0, alpha=0.8, label=f"{agent_names[a]} K={K}nn")
+
         if target_spacing is not None:
             ax.axhline(target_spacing, color="green", linestyle="--", linewidth=1.2,
                        label=f"target {target_spacing}m")
         ax.axhline(0.0, color="black", linestyle=":", linewidth=0.5)
         ax.set_ylabel("Distance (m)")
-        ax.set_title("Inter-Drone Distance")
-        ax.legend(fontsize=7)
+        ax.set_title(f"K={K} Nearest Neighbor Distance")
+        ax.legend(fontsize=6, ncol=2)
     elif goal is not None:
         for a in range(A):
             dist = torch.linalg.norm(pos[:, a, :] - goal[:, a, :], dim=1).numpy()
