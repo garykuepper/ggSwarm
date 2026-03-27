@@ -108,3 +108,8 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     # action smoothing (Phase 3 — EMA)
     smoothing_enabled = True          # EMA on policy actions
     smoothing_alpha = 0.3             # 0=full smooth, 1=no smooth
+
+    # CBF safety shield (Phase 3)
+    cbf_enabled = True                # collision avoidance barrier
+    cbf_d_safe = 0.12                 # min safe distance (m) — ~drone diameter
+    cbf_gamma = 1.0                   # barrier decay rate

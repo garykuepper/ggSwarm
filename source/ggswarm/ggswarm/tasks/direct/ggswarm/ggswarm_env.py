@@ -138,6 +138,20 @@ class GgswarmEnv(DirectRLEnv):
         else:
             act = self._actions
 
+        # CBF safety shield (Phase 3)
+        if self.cfg.cbf_enabled and self.cfg.num_agents > 1:
+            from ggswarm.cbf import apply_cbf  # noqa: PLC0415
+
+            act = apply_cbf(
+                act,
+                self._robot.data.root_pos_w,
+                self._terrain.env_origins,
+                self._robot.data.root_lin_vel_w,
+                self.cfg.num_agents,
+                self.cfg.cbf_d_safe,
+                self.cfg.cbf_gamma,
+            )
+
         self._thrust[:, 0, 2] = (
             self.cfg.thrust_to_weight * self._robot_weight * (act[:, 0] + 1.0) / 2.0
         )
