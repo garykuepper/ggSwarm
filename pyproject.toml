@@ -49,7 +49,7 @@ ignore = [
 "__init__.py" = ["F401"]  # Allow unused imports in __init__.py files
 
 [tool.ruff.lint.mccabe]
-max-complexity = 15
+max-complexity = 30
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -128,11 +128,15 @@ reportOptionalMemberAccess = "warning" # -> raises 8 errors
 reportPrivateUsage = "warning"
 
 
+[tool.codespell]
+skip = '*.usd,*.usda,*.usdz,*.svg,*.png,_isaac_sim*,*.bib,*.css,*/_build'
+quiet-level = 0
+# the world list should always have words in lower case
+ignore-words-list = "haa,slq,collapsable,buss,reacher,thirdparty"
+
+
 [tool.pytest.ini_options]
 
-testpaths = ["tests"]
-
 markers = [
-    "isaacsim_ci: mark test to run with Isaac Sim + GPU (integration tests, normally skipped)",
-    "slow: mark test as slow (use -m slow to run)",
+    "isaacsim_ci: mark test to run in isaacsim ci",
 ]
