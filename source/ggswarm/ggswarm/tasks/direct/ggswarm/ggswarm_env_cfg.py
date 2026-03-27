@@ -91,7 +91,7 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
 
     # reward scales — hover (quadcopter reference)
     lin_vel_reward_scale = -0.05
-    ang_vel_reward_scale = -0.05
+    ang_vel_reward_scale = -0.15
     distance_to_goal_reward_scale = 15.0
     distance_to_goal_sigma = 0.8
 
@@ -99,6 +99,6 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     formation_target_spacing = 0.5    # target inter-drone distance (m)
     formation_reward_scale = 2.0      # active for formation training
     formation_reward_sigma = 0.3      # tanh sharpness
-    formation_curriculum_start = 0    # step to begin ramping
-    formation_curriculum_end = 5000   # step at full weight (~200 iterations)
+    formation_curriculum_start = 3000  # let hover stabilize first (~125 iterations)
+    formation_curriculum_end = 8000   # full formation by ~330 iterations
     collective_resets = True          # if any drone in group dies, all reset
