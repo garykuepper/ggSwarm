@@ -826,4 +826,51 @@ matching) were irrelevant — the policy was receiving garbage inputs during eva
 - [2026-03-26] **p2a-3** (sigma=0.5, vel=-0.10, middle ground):
   ep_len=486, std=0.141, reward=97.5. Good convergence, healthier std.
 - [2026-03-26] **p2a-4** (sigma=0.8, vel=-0.05, reset to quadcopter exact):
-  Pending eval — testing whether drift is params or code.
+  ep_len=499, std=0.077, reward=107. Confirmed quadcopter baseline works.
+  "Drift" was actually the drone navigating to its random goal — not a bug.
+
+## Phase 2B: Formation Control (Week 12)
+
+- [2026-03-26] **Architecture:** Formation logic built directly into GgswarmEnv
+  (no SwarmWrapper — SKRL bypasses gym wrappers for metadata). Consecutive env
+  IDs grouped into logical swarms. Observations expanded 12D→18D with neighbor
+  relative positions. Formation reward: tanh spacing error with curriculum alpha.
+- [2026-03-26] **Key fixes discovered during p2b iteration:**
+  - env_origins must be subtracted before computing neighbor obs and formation reward
+    (drones in different envs are separated by env_spacing=2.5m)
+  - Correct circumradius: `spacing / (2*sin(pi/A))` for exact pairwise distance
+  - Episode timeout sync: `episode_length_buf` must be identical within swarm groups
+    (drone_1 "despawn" was actually episode timeout from randomized stagger)
+  - Group-aware goal sampling: shared centroid + formation offsets per drone
+  - Random spawn positions within ±0.5m of env origin
+  - Play-mode overrides: env_spacing=0.01, collective_resets=False, fixed centroid
+
+### Training runs
+
+- [2026-03-26] **p2b-1** (scale=5.0, curriculum 0/50k): formation reward ~0.
+  Curriculum too slow — alpha only reached 0.24 in 12k steps.
+- [2026-03-26] **p2b-2** (scale=5.0, curriculum 0/5k): formation reward 0.0003.
+  env_origins not subtracted — pairwise distances included 2.5m env_spacing.
+- [2026-03-26] **p2b-3** (env_origins fix): formation reward 0.09. Signal appearing
+  but goals still independent per drone — conflicting with formation reward.
+- [2026-03-26] **p2b-4** (group goals + formation offsets): BREAKTHROUGH.
+  Mid-training: ep_len=499, formation=3.5, reward=157. Then collapsed at iter 250+
+  (std→0.11, ang_vel→-2.6). Formation reward scale 5.0 too dominant.
+- [2026-03-26] **p2b-5** (scale 2.0, ang_vel -0.05): STABLE. ep_len=499,
+  formation=1.59, reward=139. No collapse. But trajectory showed ±80° roll
+  oscillations and drone crashes during play.
+- [2026-03-26] **p2b-7** (delayed curriculum 3k/8k, ang_vel -0.15): ep_len=324,
+  std=0.05. Too aggressive ang_vel penalty suppressed the policy.
+- [2026-03-27] **p2b-8** (all fixes, curriculum 0/5k, ang_vel -0.05): **BEST RUN.**
+  ep_len mean=499, min=499 (zero crashes). Formation=1.39. Stable throughout.
+  All bug fixes applied: timeout sync, circumradius, env_origins, random spawn,
+  fixed centroid for play, tighter goal range.
+
+### Lessons learned
+
+1. Formation reward scale must be subordinate to hover base (2.0 not 5.0)
+2. ang_vel penalty -0.05 is the sweet spot (-0.15 kills the policy)
+3. Curriculum 0/5000 works — delayed curriculum (3k/8k) doesn't help
+4. Episode timeout stagger causes "despawn" artifacts — sync within groups
+5. env_origins subtraction is critical for multi-env formation
+6. SKRL bypasses gym wrappers for metadata — put formation logic in env, not wrapper

@@ -15,21 +15,31 @@ Baseline timeline is in the [Proposal](../project/proposal.md#7-timeline-and-mil
 
 ---
 
-## Week 12 Update (2026-03-26)
+## Week 12 Update (2026-03-27)
 
-- **FRESH START.** Archived the entire Phase 2 codebase (20+ MAPPO runs, GNN monkey-patches,
-  complex eval pipeline). Rebuilt from Isaac Lab quadcopter reference in one session.
-- **Architecture change:** `DirectMARLEnv` + MAPPO replaced by `DirectRLEnv` + PPO.
-  One shared policy across all drones (CTDE). No per-agent weights, no weight sync hacks.
-- **4 training runs (p2a-1 through p2a-4):**
-  - p2a-1 (quadcopter baseline): converged in 250 iterations, ep_len 497/500
-  - p2a-2 (tighter sigma=0.3): failed — too steep from scratch
-  - p2a-3 (sigma=0.5, vel=-0.10): converged, ep_len 486, healthier std
-  - p2a-4 (reset to quadcopter exact): isolating drift cause
-- **New tooling:** NVENC video recorder, trajectory diagnostic plots (2x2 summary
-  with goal visualization), `--log_subdir` for run organization.
-- **Ready for Phase 2B:** Formation rewards via SwarmWrapper (groups N envs into swarms).
-- **Timeline:** 29 days remain to deadline (Apr 24).
+- **FRESH START + FORMATION IN ONE DAY.**
+  Archived old Phase 2 codebase, rebuilt from Isaac Lab quadcopter reference,
+  and achieved working formation control — all in a single session.
+- **Phase 2A (hover):** 4 runs (p2a-1 through p2a-4). Hover solved with
+  `DirectRLEnv` + PPO shared policy (CTDE). ep_len 499/500.
+- **Phase 2B (formation):** 8 runs (p2b-1 through p2b-8). Progressive fixes:
+  - p2b-1/2: formation reward ~0 (curriculum too slow, env_origins not subtracted)
+  - p2b-3: formation signal appearing (env_origins fix)
+  - p2b-4: BREAKTHROUGH — formation reward 3.5 mid-training, then collapsed
+  - p2b-5: stable formation (reward 1.59, no collapse) but play showed tumbling
+  - p2b-8: **ALL FIXES APPLIED.** ep_len min=499 (zero crashes), formation=1.39.
+    Drones visually form triangle with fixed centroid goal.
+- **Key bugs found and fixed:**
+  - SKRL bypasses gym wrappers → formation logic in env, not wrapper
+  - env_origins subtraction for neighbor obs
+  - Episode timeout stagger caused drone "despawn" → synced within groups
+  - Correct circumradius formula for formation offsets
+  - Group-aware goal sampling with shared centroid
+- **New tooling:** NVENC video, trajectory plots with centroid/inter-drone distance,
+  random spawn positions, fixed centroid for play mode.
+- **Architecture:** `GgswarmEnv(DirectRLEnv)`, 1 drone/env, PPO shared policy,
+  formation via expanded obs (18D) + curriculum-scaled formation reward.
+- **Timeline:** 28 days remain to deadline (Apr 24).
 
 ---
 
