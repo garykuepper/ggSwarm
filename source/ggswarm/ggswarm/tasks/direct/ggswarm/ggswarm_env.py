@@ -1,9 +1,10 @@
-"""ggSwarm: Single-drone hover environment using DirectRLEnv + PPO.
+"""ggSwarm: Drone hover + formation environment using DirectRLEnv + PPO.
 
-One Crazyflie per env. PPO trains a shared policy across all envs.
-For hover training, this is equivalent to multi-drone-per-env since
-drones don't interact. Formation (Phase 2B+) will add a wrapper for
-multi-drone-per-env with inter-drone observations.
+One Crazyflie per env. PPO trains a shared policy across all envs (CTDE).
+When num_agents > 1, consecutive envs are grouped into logical swarms:
+  - Observations expanded with neighbor relative positions
+  - Formation reward added (curriculum-scaled)
+  - Collective resets within each swarm group
 
 Based on Isaac Lab's quadcopter_env.py.
 """
@@ -27,24 +28,43 @@ class GgswarmEnv(DirectRLEnv):
     def __init__(self, cfg: GgswarmEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
 
+        N = self.num_envs
+        A = self.cfg.num_agents
+        device = self.device
+
+        # Formation grouping
+        self._formation_active = A > 1 and self.cfg.formation_reward_scale > 0.0
+        if A > 1 and N % A != 0:
+            raise ValueError(f"num_envs ({N}) must be divisible by num_agents ({A})")
+        self._num_groups = N // A if A > 1 else N
+        self._global_step = 0
+
+        # Pre-build pair indices for formation error
+        self._pair_indices = []
+        if A > 1:
+            for i in range(A):
+                for j in range(i + 1, A):
+                    self._pair_indices.append((i, j))
+
         # Pre-allocate action tensors (reused every step)
-        self._actions = torch.zeros(self.num_envs, 4, device=self.device)
-        self._thrust = torch.zeros(self.num_envs, 1, 3, device=self.device)
-        self._moment = torch.zeros(self.num_envs, 1, 3, device=self.device)
-        self._desired_pos_w = torch.zeros(self.num_envs, 3, device=self.device)
+        self._actions = torch.zeros(N, 4, device=device)
+        self._thrust = torch.zeros(N, 1, 3, device=device)
+        self._moment = torch.zeros(N, 1, 3, device=device)
+        self._desired_pos_w = torch.zeros(N, 3, device=device)
 
         # Body ID, mass, weight
         self._body_id = self._robot.find_bodies("body")[0]
         self._robot_mass = self._robot.root_physx_view.get_masses()[0].sum()
-        self._gravity_magnitude = torch.tensor(
-            self.sim.cfg.gravity, device=self.device
-        ).norm()
+        self._gravity_magnitude = torch.tensor(self.sim.cfg.gravity, device=device).norm()
         self._robot_weight = (self._robot_mass * self._gravity_magnitude).item()
 
         # Episode logging
+        log_keys = ["lin_vel", "ang_vel", "distance_to_goal"]
+        if self._formation_active:
+            log_keys.append("formation")
         self._episode_sums = {
-            key: torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
-            for key in ["lin_vel", "ang_vel", "distance_to_goal"]
+            key: torch.zeros(N, dtype=torch.float, device=device)
+            for key in log_keys
         }
 
         # Debug draw for altitude line
@@ -89,10 +109,7 @@ class GgswarmEnv(DirectRLEnv):
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         self._actions = actions.clamp(-1.0, 1.0)
         self._thrust[:, 0, 2] = (
-            self.cfg.thrust_to_weight
-            * self._robot_weight
-            * (self._actions[:, 0] + 1.0)
-            / 2.0
+            self.cfg.thrust_to_weight * self._robot_weight * (self._actions[:, 0] + 1.0) / 2.0
         )
         self._moment[:, 0, :] = self.cfg.moment_scale * self._actions[:, 1:]
 
@@ -109,6 +126,7 @@ class GgswarmEnv(DirectRLEnv):
             self._robot.data.root_quat_w,
             self._desired_pos_w,
         )
+        # shape: [num_envs, 12]
         obs = torch.cat(
             [
                 self._robot.data.root_lin_vel_b,
@@ -119,20 +137,61 @@ class GgswarmEnv(DirectRLEnv):
             dim=-1,
         )
 
+        # Expand obs with neighbor relative positions for formation
+        if self.cfg.num_agents > 1:
+            obs = self._expand_obs_with_neighbors(obs)
+
         # Draw altitude line (env 0 only)
         if self._debug_draw is not None:
             self._debug_draw.clear_lines()
             pos = self._robot.data.root_pos_w[0].cpu().tolist()
             self._debug_draw.draw_lines(
-                [pos],
-                [[pos[0], pos[1], 0.0]],
-                [(0.12, 0.47, 0.71, 0.9)],
-                [1.0],
+                [pos], [[pos[0], pos[1], 0.0]],
+                [(0.12, 0.47, 0.71, 0.9)], [1.0],
             )
 
         return {"policy": obs}
 
+    def _expand_obs_with_neighbors(self, obs: torch.Tensor) -> torch.Tensor:
+        """Append relative neighbor positions to each drone's observation.
+
+        Groups consecutive envs into swarms of num_agents. Each drone gets
+        (num_agents-1) * 3 extra dims: relative XYZ to each neighbor.
+
+        Args:
+            obs: shape [num_envs, 12]
+
+        Returns:
+            shape [num_envs, 12 + (num_agents-1)*3]
+        """
+        N = self.num_envs
+        A = self.cfg.num_agents
+        G = self._num_groups
+        pos_w = self._robot.data.root_pos_w  # shape: [N, 3]
+
+        # Reshape to [num_groups, num_agents, 3]
+        pos_grouped = pos_w.reshape(G, A, 3)
+
+        # For each drone, compute relative positions to all neighbors
+        rel_parts = []
+        for i in range(A):
+            neighbors = []
+            for j in range(A):
+                if i == j:
+                    continue
+                rel = pos_grouped[:, j, :] - pos_grouped[:, i, :]  # [G, 3]
+                neighbors.append(rel)
+            rel_parts.append(torch.cat(neighbors, dim=-1))  # [G, (A-1)*3]
+
+        # Stack and flatten: [G, A, (A-1)*3] -> [N, (A-1)*3]
+        rel_all = torch.stack(rel_parts, dim=1).reshape(N, -1)
+
+        return torch.cat([obs, rel_all], dim=-1)
+
     def _get_rewards(self) -> torch.Tensor:
+        self._global_step += 1
+
+        # --- Hover reward (always active) ---
         lin_vel = torch.sum(torch.square(self._robot.data.root_lin_vel_b), dim=1)
         ang_vel = torch.sum(torch.square(self._robot.data.root_ang_vel_b), dim=1)
         distance_to_goal = torch.linalg.norm(
@@ -146,10 +205,15 @@ class GgswarmEnv(DirectRLEnv):
             "lin_vel": self.cfg.lin_vel_reward_scale * lin_vel * self.step_dt,
             "ang_vel": self.cfg.ang_vel_reward_scale * ang_vel * self.step_dt,
             "distance_to_goal": self.cfg.distance_to_goal_reward_scale
-            * distance_to_goal_mapped
-            * self.step_dt,
+            * distance_to_goal_mapped * self.step_dt,
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
+
+        # --- Formation reward (Phase 2B, curriculum-scaled) ---
+        if self._formation_active:
+            formation_rew = self._compute_formation_reward()
+            reward = reward + formation_rew
+            rewards["formation"] = formation_rew
 
         # Logging
         for key, value in rewards.items():
@@ -157,12 +221,58 @@ class GgswarmEnv(DirectRLEnv):
 
         return reward
 
+    def _compute_formation_reward(self) -> torch.Tensor:
+        """Compute formation reward based on inter-drone spacing error.
+
+        Returns:
+            shape [num_envs] — formation reward per drone (same for all in group)
+        """
+        N = self.num_envs
+        A = self.cfg.num_agents
+        G = self._num_groups
+        pos_w = self._robot.data.root_pos_w  # shape: [N, 3]
+        pos_grouped = pos_w.reshape(G, A, 3)
+
+        # Curriculum alpha: ramps 0 -> 1 over training
+        alpha = min(1.0, max(0.0,
+            (self._global_step - self.cfg.formation_curriculum_start)
+            / max(1, self.cfg.formation_curriculum_end - self.cfg.formation_curriculum_start)
+        ))
+
+        if alpha <= 0.0:
+            return torch.zeros(N, device=self.device)
+
+        # Compute mean pairwise distance error
+        total_error = torch.zeros(G, device=self.device)
+        for i, j in self._pair_indices:
+            dist = torch.linalg.norm(pos_grouped[:, i, :] - pos_grouped[:, j, :], dim=1)
+            total_error += torch.abs(dist - self.cfg.formation_target_spacing)
+        mean_error = total_error / len(self._pair_indices)
+
+        # Tanh mapping (same pattern as distance_to_goal)
+        formation_mapped = 1 - torch.tanh(mean_error / self.cfg.formation_reward_sigma)
+        formation_reward = (
+            alpha * self.cfg.formation_reward_scale * formation_mapped * self.step_dt
+        )
+
+        # Broadcast from [G] -> [N] (same reward for all agents in group)
+        return formation_reward.unsqueeze(1).expand(G, A).reshape(N)
+
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         time_out = self.episode_length_buf >= self.max_episode_length - 1
         died = torch.logical_or(
             self._robot.data.root_pos_w[:, 2] < 0.1,
             self._robot.data.root_pos_w[:, 2] > 2.0,
         )
+
+        # Collective resets: if any drone in a swarm group dies, all die
+        if self.cfg.num_agents > 1:
+            A = self.cfg.num_agents
+            G = self._num_groups
+            died_grouped = died.reshape(G, A)
+            any_died = died_grouped.any(dim=1)
+            died = any_died.unsqueeze(1).expand(G, A).reshape(-1)
+
         return died, time_out
 
     def _reset_idx(self, env_ids: Sequence[int] | None):  # noqa: C901

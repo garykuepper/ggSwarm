@@ -37,6 +37,10 @@ parser.add_argument(
 parser.add_argument(
     "--num_envs", type=int, default=None, help="Number of environments to simulate."
 )
+parser.add_argument(
+    "--num_agents", type=int, default=1,
+    help="Drones per swarm group. >1 enables SwarmWrapper for formation training.",
+)
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument(
     "--agent",
@@ -187,6 +191,15 @@ def main(
     env_cfg.sim.device = (
         args_cli.device if args_cli.device is not None else env_cfg.sim.device
     )
+
+    # Apply num_agents and expand observation space for formation
+    env_cfg.num_agents = args_cli.num_agents
+    if args_cli.num_agents > 1:
+        env_cfg.observation_space = 12 + (args_cli.num_agents - 1) * 3
+        print(f"[INFO] Formation mode: {args_cli.num_agents} agents/swarm, "
+              f"obs_space={env_cfg.observation_space}")
+    else:
+        env_cfg.observation_space = 12
 
     # Check for invalid combination of CPU device with distributed training
     if (

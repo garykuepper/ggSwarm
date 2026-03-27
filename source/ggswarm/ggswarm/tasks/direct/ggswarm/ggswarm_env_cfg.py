@@ -35,10 +35,10 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     num_agents = 3
 
     # Single-agent spaces (PPO sees each drone as an independent instance)
-    action_space = 4  # thrust + 3 moments
-    observation_space = (
-        12  # lin_vel_b(3) + ang_vel_b(3) + proj_grav_b(3) + desired_pos_b(3)
-    )
+    action_space = 4   # thrust + 3 moments
+    # obs = 12 (local) + (num_agents-1)*3 (neighbor rel_pos) = 18 for 3 agents
+    # Set to 12 for hover-only (num_agents=1), 18 for formation (num_agents=3)
+    observation_space = 12
     state_space = 0
 
     # simulation — match Isaac Lab quadcopter reference
@@ -89,8 +89,15 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     # spawn offsets — computed dynamically as circle of radius 0.3m
     spawn_radius = 0.3  # meters, distance from env center to each drone
 
-    # reward scales — exact quadcopter reference values
+    # reward scales — hover (quadcopter reference)
     lin_vel_reward_scale = -0.05
     ang_vel_reward_scale = -0.01
     distance_to_goal_reward_scale = 15.0
-    distance_to_goal_sigma = 0.8  # matches quadcopter reference exactly
+    distance_to_goal_sigma = 0.8
+
+    # formation reward (Phase 2B) — set scale to 0.0 to disable
+    formation_target_spacing = 0.5    # target inter-drone distance (m)
+    formation_reward_scale = 0.0      # disabled by default (hover only)
+    formation_reward_sigma = 0.3      # tanh sharpness
+    formation_curriculum_start = 0    # step to begin ramping
+    formation_curriculum_end = 50000  # step at full weight

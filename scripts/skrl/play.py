@@ -37,9 +37,13 @@ parser.add_argument(
     help="Filename prefix for video (e.g. p2b-3).",
 )
 parser.add_argument(
+    "--num_agents", type=int, default=1,
+    help="Drones per swarm group. >1 enables SwarmWrapper for formation.",
+)
+parser.add_argument(
     "--play_length",
     type=int,
-    default=300,
+    default=500,
     help="Number of steps to play (default: 500 = 1 episode).",
 )
 parser.add_argument(
