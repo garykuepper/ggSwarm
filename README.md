@@ -1,135 +1,137 @@
-# Template for Isaac Lab Projects
+# ggSwarm: Decentralized Formation Control for Drone Swarms
 
-## Overview
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/)
+[![Isaac Lab](https://img.shields.io/badge/Isaac%20Lab-2.3-76B900?logo=nvidia&logoColor=white)](https://isaac-sim.github.io/IsaacLab/)
+[![Isaac Sim](https://img.shields.io/badge/Isaac%20Sim-5.1-76B900?logo=nvidia&logoColor=white)](https://developer.nvidia.com/isaac-sim)
+![Status](https://img.shields.io/badge/Status-In%20Development-orange)
 
-This project/repository serves as a template for building projects or extensions based on Isaac Lab.
-It allows you to develop in an isolated environment, outside of the core Isaac Lab repository.
+`ggSwarm` develops a decentralized UAV swarm controller in NVIDIA Isaac Lab using
+CTDE (Centralized Training, Decentralized Execution), graph-based policy learning
+with GATv2, and staged milestone delivery.
 
-**Key Features:**
+> Developed with [Claude Code](https://claude.com/claude-code)
 
-- `Isolation` Work outside the core Isaac Lab repository, ensuring that your development efforts remain self-contained.
-- `Flexibility` This template is set up to allow your code to be run as an extension in Omniverse.
+## Table of Contents
 
-**Keywords:** extension, template, isaaclab
+- [Project Navigation](#project-navigation)
+- [Quickstart](#quickstart)
+- [Run Demos and Training](#run-demos-and-training)
+- [Schedule and Milestones](#schedule-and-milestones)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
 
-## Installation
+## Project Navigation
 
-- Install Isaac Lab by following the [installation guide](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html).
-  We recommend using the conda or uv installation as it simplifies calling Python scripts from the terminal.
+### Design
 
-- Clone or copy this project/repository separately from the Isaac Lab installation (i.e. outside the `IsaacLab` directory):
+- [Architecture (GNSC 5-Layer Model)](docs/design/architecture.md) — system design source of truth
+- [Proposal and project scope](docs/project/proposal.md)
 
-- Using a python interpreter that has Isaac Lab installed, install the library in editable mode using:
+### Phases
 
-    ```bash
-    # use 'PATH_TO_isaaclab.sh|bat -p' instead of 'python' if Isaac Lab is not installed in Python venv or conda
-    python -m pip install -e source/ggswarm
+- [Phase 1: Foundation](docs/phases/phase1_foundation.md) — Isaac Lab setup, env implementation
+- [Phase 2: Brain Development](docs/phases/phase2_brain_development.md) — GATv2 policy, formation control
+- [Phase 3: Muscle Refinement](docs/phases/phase3_muscle_refinement.md) — CBF safety, SwarmRaft, MINCO
+- [Phase 4: Stress Testing](docs/phases/phase4_stress_testing.md) — agent loss, obstacles, scale
+- [Phase 5: Showcase Prep](docs/phases/phase5_showcase_prep.md) — HD demo, Testing Report
+- [Phase 6: Delivery](docs/phases/phase6_delivery.md) — Capstone Festival, submissions
 
-- Verify that the extension is correctly installed by:
+### Operations
 
-    - Listing the available tasks:
+- [Commands reference](docs/ops/commands.md) — train, play, eval, video
+- [Training workflow](docs/ops/training_workflow.md) — 8-step GCE training cycle
+- [Post-training assessment](docs/ops/post_train_analysis.md) — metrics and decision matrix
+- [GCS sync workflow](docs/ops/gce_results_sync.md) — push/pull logs from GCE
 
-        Note: It the task name changes, it may be necessary to update the search pattern `"Template-"`
-        (in the `scripts/list_envs.py` file) so that it can be listed.
+### Status
 
-        ```bash
-        # use 'FULL_PATH_TO_isaaclab.sh|bat -p' instead of 'python' if Isaac Lab is not installed in Python venv or conda
-        python scripts/list_envs.py
-        ```
+- [Weekly updates](docs/status/weekly_updates.md)
+- [Changelog](docs/status/changelog.md)
+- [Run history](docs/status/run_history.md)
 
-    - Running a task:
+## Quickstart
 
-        ```bash
-        # use 'FULL_PATH_TO_isaaclab.sh|bat -p' instead of 'python' if Isaac Lab is not installed in Python venv or conda
-        python scripts/<RL_LIBRARY>/train.py --task=<TASK_NAME>
-        ```
+> Isaac Lab is expected to be installed inside your Python virtual environment.
+> No sibling `IsaacLab` repository clone is required for this project setup.
 
-    - Running a task with dummy agents:
+1. Clone the repo:
 
-        These include dummy agents that output zero or random agents. They are useful to ensure that the environments are configured correctly.
+   ```powershell
+   git clone https://github.com/garykuepper/ggSwarm.git
+   cd ggSwarm
+   ```
 
-        - Zero-action agent
+2. Create and activate a Python 3.11 virtual environment:
 
-            ```bash
-            # use 'FULL_PATH_TO_isaaclab.sh|bat -p' instead of 'python' if Isaac Lab is not installed in Python venv or conda
-            python scripts/zero_agent.py --task=<TASK_NAME>
-            ```
-        - Random-action agent
+   ```powershell
+   py -3.11 -m venv env_isaaclab
+   env_isaaclab\Scripts\activate
+   python -m pip install --upgrade pip
+   ```
 
-            ```bash
-            # use 'FULL_PATH_TO_isaaclab.sh|bat -p' instead of 'python' if Isaac Lab is not installed in Python venv or conda
-            python scripts/random_agent.py --task=<TASK_NAME>
-            ```
+3. Install Isaac Sim and Isaac Lab into the active virtual environment:
+   - Isaac Sim pip package: [NVIDIA Isaac Sim](https://developer.nvidia.com/isaac-sim)
+   - Isaac Lab install docs: [Isaac Lab Installation](https://isaac-sim.github.io/IsaacLab/)
 
-### Set up IDE (Optional)
+4. Install this package:
 
-To setup the IDE, please follow these instructions:
+   ```powershell
+   pip install -e source/ggSwarm
+   ```
 
-- Run VSCode Tasks, by pressing `Ctrl+Shift+P`, selecting `Tasks: Run Task` and running the `setup_python_env` in the drop down menu.
-  When running this task, you will be prompted to add the absolute path to your Isaac Sim installation.
+5. If you encounter Windows HDF5 DLL conflicts, pin `h5py`:
 
-If everything executes correctly, it should create a file .python.env in the `.vscode` directory.
-The file contains the python paths to all the extensions provided by Isaac Sim and Omniverse.
-This helps in indexing all the python modules for intelligent suggestions while writing code.
+   ```powershell
+   pip install "h5py>=3.9.0,<3.12" --force-reinstall
+   ```
 
-### Setup as Omniverse Extension (Optional)
+## Run Demos and Training
 
-We provide an example UI extension that will load upon enabling your extension defined in `source/ggswarm/ggswarm/ui_extension_example.py`.
+Full command reference: [`docs/ops/commands.md`](docs/ops/commands.md)
 
-To enable your extension, follow these steps:
+```powershell
+# Hover baseline
+python scripts/run.py hover train --headless
+python scripts/run.py hover play --checkpoint <path>
 
-1. **Add the search path of this project/repository** to the extension manager:
-    - Navigate to the extension manager using `Window` -> `Extensions`.
-    - Click on the **Hamburger Icon**, then go to `Settings`.
-    - In the `Extension Search Paths`, enter the absolute path to the `source` directory of this project/repository.
-    - If not already present, in the `Extension Search Paths`, enter the path that leads to Isaac Lab's extension directory directory (`IsaacLab/source`)
-    - Click on the **Hamburger Icon**, then click `Refresh`.
+# Phase 2B formation
+python scripts/run.py phase2b train --headless --checkpoint <phase2a_best>
+python scripts/run.py phase2b play --video --video_prefix p2b-3 --checkpoint <path>
 
-2. **Search and enable your extension**:
-    - Find your extension under the `Third Party` category.
-    - Toggle it to enable your extension.
+# Phase 2C perturbation
+python scripts/run.py phase2c train --headless --checkpoint <phase2b_best>
 
-## Code formatting
-
-We have a pre-commit template to automatically format your code.
-To install pre-commit:
-
-```bash
-pip install pre-commit
+# Debug
+python scripts/run.py debug smoke --task Template-GGSwarm-Marl-Formation-v0 --iterations 1 --gnn --headless
 ```
 
-Then you can run pre-commit with:
+## Schedule and Milestones
 
-```bash
-pre-commit run --all-files
-```
+| Phase | Timeline | Gate |
+| :--- | :--- | :--- |
+| 1. Foundation | Feb 5 – Feb 17 | - |
+| 2. Brain Development | Feb 25 – Mar 25 | M1: Formation control |
+| 3. Muscle Refinement | Mar 25 – Apr 7 | M2: Logic integration |
+| 4. Stress Testing | Apr 8 – Apr 14 | M3: Mission validation |
+| 5. Showcase Prep | Apr 14 – Apr 21 | M4: HD showcase |
+| 6. Delivery | Apr 22 – Apr 24 | **Final: Apr 24** |
+
+Full timeline: [`docs/project/proposal.md`](docs/project/proposal.md#7-timeline-and-milestones)
+| Progress: [`docs/status/weekly_updates.md`](docs/status/weekly_updates.md)
 
 ## Troubleshooting
 
-### Pylance Missing Indexing of Extensions
+- `ModuleNotFoundError: No module named 'isaacsim'`
+  - Ensure the venv is active: `env_isaaclab\Scripts\activate`
+- `ModuleNotFoundError: No module named 'isaaclab'`
+  - Isaac Lab is not installed in the active venv
+- Long path errors on Windows
+  - Enable long path support (`LongPathsEnabled = 1`)
+- `ImportError: DLL load failed while importing _errors` (`h5py`)
+  - Run: `pip install "h5py>=3.9.0,<3.12" --force-reinstall`
 
-In some VsCode versions, the indexing of part of the extensions is missing.
-In this case, add the path to your extension in `.vscode/settings.json` under the key `"python.analysis.extraPaths"`.
+## License
 
-```json
-{
-    "python.analysis.extraPaths": [
-        "<path-to-ext-repo>/source/ggswarm"
-    ]
-}
-```
-
-### Pylance Crash
-
-If you encounter a crash in `pylance`, it is probable that too many files are indexed and you run out of memory.
-A possible solution is to exclude some of omniverse packages that are not used in your project.
-To do so, modify `.vscode/settings.json` and comment out packages under the key `"python.analysis.extraPaths"`
-Some examples of packages that can likely be excluded are:
-
-```json
-"<path-to-isaac-sim>/extscache/omni.anim.*"         // Animation packages
-"<path-to-isaac-sim>/extscache/omni.kit.*"          // Kit UI tools
-"<path-to-isaac-sim>/extscache/omni.graph.*"        // Graph UI tools
-"<path-to-isaac-sim>/extscache/omni.services.*"     // Services tools
-...
-```
+This project is licensed under the MIT License. See [`LICENSE`](LICENSE).
