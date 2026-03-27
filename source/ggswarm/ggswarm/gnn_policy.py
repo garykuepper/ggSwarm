@@ -132,12 +132,10 @@ class GgswarmGNNPolicy(GaussianMixin, DeterministicMixin, Model):
             node_features: [batch, 12] — local obs per drone
             edge_index: [2, num_edges] — graph connectivity
         """
-        B = obs.shape[0]
-        K = self._num_neighbors
         local_obs_dim = self._local_obs_dim
 
         # Split obs
-        node_features = obs[:, :local_obs_dim]  # [B, 12]
+        node_features = obs[:, :local_obs_dim]  # [batch, 12]
 
         # Build edge index: each node connects to K neighbors
         # Since we're processing a batch of independent nodes (not a
@@ -165,21 +163,11 @@ class GgswarmGNNPolicy(GaussianMixin, DeterministicMixin, Model):
         # processing batch. GATv2 attention will learn to weight edges.
         # This works because self-loops + attention = local processing.
 
-        # For now: each node connects to all others in the batch
-        # (GATv2 attention handles relevance). For small batches (3-6
-        # drones) this is efficient. For large batches, we'd need
-        # proper edge construction.
-        if B <= 64:
-            # Small batch: fully connected (play mode or small training)
-            src = torch.arange(B, device=obs.device).repeat_interleave(B)
-            dst = torch.arange(B, device=obs.device).repeat(B)
-            # Remove self-loops (GATv2 adds them internally)
-            mask = src != dst
-            edge_index = torch.stack([src[mask], dst[mask]], dim=0)
-        else:
-            # Large batch: self-loops only (GATv2 adds them)
-            # The node encoder + self-attention acts as an MLP fallback
-            edge_index = torch.zeros(2, 0, dtype=torch.long, device=obs.device)
+        # Self-loops only (GATv2 adds them via add_self_loops=True).
+        # Neighbor information flows through the concatenated 18D obs —
+        # no explicit inter-node edges needed. This ensures identical
+        # behavior between training (large batch) and play (small batch).
+        edge_index = torch.zeros(2, 0, dtype=torch.long, device=obs.device)
 
         return node_features, edge_index
 

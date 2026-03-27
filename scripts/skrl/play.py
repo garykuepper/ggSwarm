@@ -340,6 +340,18 @@ def main(
     # set agent to evaluation mode
     runner.agent.set_running_mode("eval")
 
+    # Debug: verify preprocessor stats loaded correctly
+    if hasattr(runner.agent, '_state_preprocessor') and runner.agent._state_preprocessor is not None:
+        sp = runner.agent._state_preprocessor
+        if hasattr(sp, 'running_mean'):
+            print(f"[DEBUG] state_preprocessor running_mean: {sp.running_mean.mean():.4f}, "
+                  f"running_var: {sp.running_variance.mean():.4f}, "
+                  f"count: {sp.current_count.item():.0f}")
+        else:
+            print("[WARN] state_preprocessor has no running_mean — stats may not be loaded!")
+    else:
+        print("[WARN] No state_preprocessor found on agent!")
+
     # Trajectory recording buffers
     traj_pos: list[torch.Tensor] = []
     traj_quat: list[torch.Tensor] = []
