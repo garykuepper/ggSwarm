@@ -190,6 +190,13 @@ def main(
         args_cli.device if args_cli.device is not None else env_cfg.sim.device
     )
 
+    # Apply num_agents and expand observation space for formation
+    env_cfg.num_agents = args_cli.num_agents
+    if args_cli.num_agents > 1:
+        env_cfg.observation_space = 12 + (args_cli.num_agents - 1) * 3
+    else:
+        env_cfg.observation_space = 12
+
     # configure the ML framework into the global skrl variable
     if args_cli.ml_framework.startswith("jax"):
         skrl.config.jax.backend = "jax" if args_cli.ml_framework == "jax" else "numpy"
@@ -311,13 +318,13 @@ def main(
             # env stepping
             obs, _, _, _, _ = env.step(actions)
 
-        # Record trajectory data (env 0 only)
+        # Record trajectory data (first swarm group)
         if args_cli.trajectories:
             base_env = env.unwrapped
-            # Single drone per env — record env 0's robot state
-            pos = base_env._robot.data.root_pos_w[0].unsqueeze(0)  # [1, 3]
-            quat = base_env._robot.data.root_quat_w[0].unsqueeze(0)  # [1, 4]
-            goal = base_env._desired_pos_w[0].unsqueeze(0)  # [1, 3]
+            A = base_env.cfg.num_agents
+            pos = base_env._robot.data.root_pos_w[:A]    # [A, 3]
+            quat = base_env._robot.data.root_quat_w[:A]  # [A, 4]
+            goal = base_env._desired_pos_w[:A]            # [A, 3]
             traj_pos.append(pos.detach().cpu().clone())
             traj_quat.append(quat.detach().cpu().clone())
             traj_goal.append(goal.detach().cpu().clone())
@@ -353,7 +360,7 @@ def main(
             traj_pos,
             traj_quat,
             out_dir=traj_dir,
-            agent_names=["drone_0"],
+            agent_names=[f"drone_{i}" for i in range(env.unwrapped.cfg.num_agents)],
             euler_fn=euler_fn,
             goal_data=traj_goal if traj_goal else None,
         )

@@ -141,14 +141,21 @@ class GgswarmEnv(DirectRLEnv):
         if self.cfg.num_agents > 1:
             obs = self._expand_obs_with_neighbors(obs)
 
-        # Draw altitude line (env 0 only)
+        # Draw altitude lines (first swarm group)
         if self._debug_draw is not None:
             self._debug_draw.clear_lines()
-            pos = self._robot.data.root_pos_w[0].cpu().tolist()
-            self._debug_draw.draw_lines(
-                [pos], [[pos[0], pos[1], 0.0]],
-                [(0.12, 0.47, 0.71, 0.9)], [1.0],
-            )
+            colors = [
+                (0.12, 0.47, 0.71, 0.9),  # tab:blue
+                (1.0, 0.50, 0.05, 0.9),   # tab:orange
+                (0.17, 0.63, 0.17, 0.9),   # tab:green
+            ]
+            A = min(self.cfg.num_agents, len(colors), self.num_envs)
+            for i in range(A):
+                pos = self._robot.data.root_pos_w[i].cpu().tolist()
+                self._debug_draw.draw_lines(
+                    [pos], [[pos[0], pos[1], 0.0]],
+                    [colors[i % len(colors)]], [1.0],
+                )
 
         return {"policy": obs}
 
@@ -167,10 +174,11 @@ class GgswarmEnv(DirectRLEnv):
         N = self.num_envs
         A = self.cfg.num_agents
         G = self._num_groups
-        pos_w = self._robot.data.root_pos_w  # shape: [N, 3]
+        # Subtract env origins to get local positions (removes env_spacing offset)
+        pos_local = self._robot.data.root_pos_w - self._terrain.env_origins  # shape: [N, 3]
 
         # Reshape to [num_groups, num_agents, 3]
-        pos_grouped = pos_w.reshape(G, A, 3)
+        pos_grouped = pos_local.reshape(G, A, 3)
 
         # For each drone, compute relative positions to all neighbors
         rel_parts = []
@@ -230,8 +238,9 @@ class GgswarmEnv(DirectRLEnv):
         N = self.num_envs
         A = self.cfg.num_agents
         G = self._num_groups
-        pos_w = self._robot.data.root_pos_w  # shape: [N, 3]
-        pos_grouped = pos_w.reshape(G, A, 3)
+        # Subtract env origins to get local positions (removes env_spacing offset)
+        pos_local = self._robot.data.root_pos_w - self._terrain.env_origins  # shape: [N, 3]
+        pos_grouped = pos_local.reshape(G, A, 3)
 
         # Curriculum alpha: ramps 0 -> 1 over training
         alpha = min(1.0, max(0.0,
