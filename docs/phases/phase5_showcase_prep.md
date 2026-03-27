@@ -6,43 +6,57 @@
 
 | ID | Goal | Success Criteria |
 | :--- | :--- | :--- |
-| P5.1 | HD demo video of 20+ agents | >= 1080p, >= 30 s, showing formation keeping + fault recovery + obstacle navigation |
-| P5.2 | Proposal objectives O1--O4 verified | Testing Report finalized with pass/fail against each criterion |
-| P5.3 | M3 milestone met | Formation error < 0.1 m steady-state; 0 collisions; recovery < 2.0 s |
-| P5.4 | Presentation-ready repository | Clean README, reproducible run commands, no debug artifacts |
+| P5.1 | HD demo video of swarm formation | >= 1080p, >= 30 s, showing formation + fault recovery |
+| P5.2 | Proposal objectives verified | Testing Report finalized with pass/fail |
+| P5.3 | Formation error < 0.5 m steady-state | Verified across evaluation suite |
+| P5.4 | Presentation-ready repository | Clean README, reproducible commands |
 
 ## 2. Tasks
 
-No new environment or policy code. All work is tooling, configuration, and documentation.
+No new environment or policy code. All work is recording, documentation,
+and polish.
 
-**Visual environment setup** -- finalize `drone_swarm_env_cfg_showcase.py` with cluttered
-forest and urban canyon scenario configs. Configure RTX rendering (path tracing via
-`RayTracedLighting`), camera placement (overhead 45-degree + leader follow-cam), and
-target >= 30 fps at `num_envs=1`.
+**Visual setup** — configure camera angles for the best formation view.
+Use `env_spacing=0.01` (play mode) so drones are visually together.
+Set `formation_centroid = (0, 0, 1.0)` for centered hover.
 
-**HD demo recording** -- record five scenario sequences using Isaac Sim's viewport
-capture: formation keeping (15 s), shape transition (10 s), obstacle navigation (20 s),
-fault recovery (15 s), 20+ agents full scenario (30 s). Edit to <= 3 min for festival.
-Export H.264 MP4 at 1920x1080, 30 fps.
+**HD demo recording** — record scenario sequences using NVENC recorder:
 
-**Testing Report compilation** -- `scripts/compile_testing_report.py` consumes Phase 4 eval JSON and bench CSV outputs. Produces `docs/testing_report.md` with objective pass/fail table, scenario metrics, scale benchmark, and comparison plots (CBF on/off, MINCO on/off, recovery latency CDF, scale curve).
+- Formation hover (3 agents, 15 s) — triangle formation at centroid
+- Scale demo (6-10 agents, 15 s) — larger swarm, same checkpoint
+- Agent loss recovery (3 agents, 15 s) — kill drone, watch re-form
+- Full scenario (10+ agents, 30 s) — combined demo
 
-**M3/M4 validation checklist** -- run Phase 3 eval (formation error < 0.1 m), Phase 4 obstacle eval (0 collisions), Phase 4 kill eval (gap-fill < 2.0 s), bench (VRAM < 20 GB at 20 agents), confirm demo video exists.
+Commands:
+
+```powershell
+# 3-agent formation demo
+python scripts/skrl/play.py --task ggswarm-v0 --num_agents 3 --num_envs 3 `
+  --policy gnn --checkpoint <path> --video --video_prefix showcase-3
+
+# 10-agent scale demo
+python scripts/skrl/play.py --task ggswarm-v0 --num_agents 10 --num_envs 10 `
+  --policy gnn --checkpoint <path> --video --video_prefix showcase-10
+```
+
+**Testing Report** — compile Phase 4 evaluation results into
+`docs/testing_report.md` with:
+
+- Objective pass/fail table (O1-O4)
+- Formation error metrics by scenario
+- Scale benchmark results
+- Trajectory plot comparisons (MLP vs GNN, 3 vs 10 agents)
 
 ## 3. Design Integration
 
-Phase 5 introduces no architectural changes. It consumes the validated Phase 4 stack and packages results for presentation.
+No architectural changes. Consumes Phase 4 validated stack and packages
+for presentation.
 
-New files:
-
-| File | Purpose |
+| Deliverable | Source |
 | :--- | :--- |
-| `drone_swarm_env_cfg_showcase.py` | Pre-built scenario configs for recording |
-| `scripts/compile_testing_report.py` | Reads eval JSON + bench CSV, writes markdown Testing Report |
-
-Commands: `python scripts/run.py phase5 play`, `python scripts/run.py phase5 report`.
-
-Cross-references: `docs/phases/phase4_stress_testing.md`, `docs/design/architecture.md`.
+| Demo videos | NVENC recorder output |
+| Trajectory plots | `ggswarm.viz.trajectory_plots` |
+| Testing Report | Phase 4 evaluation data |
 
 ## 4. Results
 
@@ -52,5 +66,5 @@ Phase 5 has not started.
 
 ## See Also
 
-- `docs/phases/phase4_stress_testing.md` -- Phase 4: stress testing and evaluation suite
-- `docs/design/architecture.md` -- GNSC 5-layer architecture
+- [Phase 4: Stress Testing](phase4_stress_testing.md)
+- [Phase 6: Delivery](phase6_delivery.md)
