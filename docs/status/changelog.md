@@ -874,3 +874,16 @@ matching) were irrelevant — the policy was receiving garbage inputs during eva
 4. Episode timeout stagger causes "despawn" artifacts — sync within groups
 5. env_origins subtraction is critical for multi-env formation
 6. SKRL bypasses gym wrappers for metadata — put formation logic in env, not wrapper
+
+## Phase 3: Muscle Refinement
+
+- [2026-03-27] **Bug fix: cloud-mode drone convergence.** All drones in a cloud-mode
+  group shared the same `_desired_pos_w` (zero offset on line 484). The per-drone
+  `distance_to_goal` reward (scale 15.0) pulled every drone to the identical point,
+  overwhelming the separation penalty (10.0, only active below 0.25m).
+  **Fix:** Replaced per-drone `distance_to_goal` with a centroid-to-goal shared reward
+  in cloud mode — the group centroid tracks the goal, individual drones spread via
+  cohesion + separation. Added `cloud_centroid_goal_scale` (15.0) and
+  `cloud_centroid_goal_sigma` (0.8) config params. Increased `cloud_min_spacing`
+  from 0.25 to 0.35m for earlier separation activation. Fixed per-step tensor
+  allocation violations in `_compute_formation_reward` and `_compute_cloud_reward`.

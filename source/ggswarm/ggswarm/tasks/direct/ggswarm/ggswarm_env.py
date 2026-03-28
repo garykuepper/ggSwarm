@@ -74,6 +74,18 @@ class GgswarmEnv(DirectRLEnv):
         self._moment = torch.zeros(N, 1, 3, device=device)
         self._desired_pos_w = torch.zeros(N, 3, device=device)
 
+        # Cloud-mode scratch buffers (pre-allocated to avoid per-step allocation)
+        G = self._num_groups
+        if self._cloud_mode and A > 1:
+            self._group_goal_local = torch.zeros(G, 3, device=device)  # [G, 3]
+            self._cloud_centroid_dist = torch.zeros(G, device=device)  # [G]
+            self._cloud_spacing_penalty = torch.zeros(G, A, device=device)  # [G, A]
+
+        # Pre-allocated zero-reward buffers (avoid per-step allocation)
+        self._zero_reward_N = torch.zeros(N, device=device)  # [N]
+        if A > 1:
+            self._formation_total_error = torch.zeros(G, device=device)  # [G]
+
         # Body ID, mass, weight
         self._body_id = self._robot.find_bodies("body")[0]
         self._robot_mass = self._robot.root_physx_view.get_masses()[0].sum()
@@ -261,11 +273,20 @@ class GgswarmEnv(DirectRLEnv):
             distance_to_goal / self.cfg.distance_to_goal_sigma
         )
 
+        # In cloud mode, suppress per-drone goal reward — centroid-to-goal is in
+        # _compute_cloud_reward instead, so drones aren't all pulled to one point.
+        if self._cloud_mode:
+            dtg_reward = self._zero_reward_N  # shape: [N]
+        else:
+            dtg_reward = (
+                self.cfg.distance_to_goal_reward_scale
+                * distance_to_goal_mapped * self.step_dt
+            )  # shape: [N]
+
         rewards = {
             "lin_vel": self.cfg.lin_vel_reward_scale * lin_vel * self.step_dt,
             "ang_vel": self.cfg.ang_vel_reward_scale * ang_vel * self.step_dt,
-            "distance_to_goal": self.cfg.distance_to_goal_reward_scale
-            * distance_to_goal_mapped * self.step_dt,
+            "distance_to_goal": dtg_reward,
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
 
@@ -304,14 +325,14 @@ class GgswarmEnv(DirectRLEnv):
         ))
 
         if alpha <= 0.0:
-            return torch.zeros(N, device=self.device)
+            return self._zero_reward_N  # shape: [N]
 
         # Compute mean pairwise distance error
-        total_error = torch.zeros(G, device=self.device)
+        self._formation_total_error.zero_()  # shape: [G]
         for i, j in self._pair_indices:
             dist = torch.linalg.norm(pos_grouped[:, i, :] - pos_grouped[:, j, :], dim=1)
-            total_error += torch.abs(dist - self.cfg.formation_target_spacing)
-        mean_error = total_error / len(self._pair_indices)
+            self._formation_total_error += torch.abs(dist - self.cfg.formation_target_spacing)
+        mean_error = self._formation_total_error / len(self._pair_indices)
 
         # Tanh mapping (same pattern as distance_to_goal)
         formation_mapped = 1 - torch.tanh(mean_error / self.cfg.formation_reward_sigma)
@@ -331,11 +352,10 @@ class GgswarmEnv(DirectRLEnv):
     def _compute_cloud_reward(self) -> torch.Tensor:
         """Compute cloud/mesh formation reward (boids-like).
 
-        Two components:
+        Three components:
+        - Centroid-to-goal: shared reward for group centroid reaching target
         - Cohesion: reward for staying near group centroid
-        - Spacing: penalty for nearest neighbor being too far
-
-        CBF handles the "too close" case separately.
+        - Spacing: penalty for nearest neighbor being too close or too far
 
         Returns:
             shape [num_envs] — per-drone reward
@@ -352,16 +372,30 @@ class GgswarmEnv(DirectRLEnv):
             / max(1, self.cfg.formation_curriculum_end - self.cfg.formation_curriculum_start)
         ))
         if alpha <= 0.0:
-            return torch.zeros(N, device=self.device)
+            return self._zero_reward_N  # shape: [N]
+
+        # --- Centroid-to-goal: reward group centroid for reaching target ---
+        centroid = pos_grouped.mean(dim=1, keepdim=True)  # [G, 1, 3]
+        centroid_squeezed = centroid.squeeze(1)  # [G, 3]
+        self._cloud_centroid_dist[:] = torch.linalg.norm(
+            centroid_squeezed - self._group_goal_local, dim=1
+        )  # [G]
+        centroid_mapped = 1 - torch.tanh(
+            self._cloud_centroid_dist / self.cfg.cloud_centroid_goal_sigma
+        )  # [G]
+        centroid_reward = (
+            self.cfg.cloud_centroid_goal_scale * centroid_mapped * self.step_dt
+        )  # [G]
+        # Broadcast to all drones in group: [G] -> [G, A]
+        centroid_reward_broadcast = centroid_reward.unsqueeze(1).expand(G, A)
 
         # --- Cohesion: reward for staying near group centroid ---
-        centroid = pos_grouped.mean(dim=1, keepdim=True)  # [G, 1, 3]
         dist_to_centroid = torch.linalg.norm(pos_grouped - centroid, dim=2)  # [G, A]
         cohesion_mapped = 1 - torch.tanh(dist_to_centroid / self.cfg.cloud_cohesion_sigma)
         cohesion_reward = self.cfg.cloud_cohesion_scale * cohesion_mapped * self.step_dt  # [G, A]
 
         # --- Spacing: penalty if nearest neighbor too far OR too close ---
-        spacing_penalty = torch.zeros(G, A, device=self.device)
+        self._cloud_spacing_penalty.zero_()  # [G, A]
         for i in range(A):
             diff = pos_grouped - pos_grouped[:, i:i+1, :]  # [G, A, 3]
             dists = torch.linalg.norm(diff, dim=2)  # [G, A]
@@ -373,16 +407,17 @@ class GgswarmEnv(DirectRLEnv):
             # Too close: penalty when nearest neighbor < min_spacing
             too_close = torch.clamp(self.cfg.cloud_min_spacing - nearest_dist, min=0.0)
 
-            spacing_penalty[:, i] = -(
+            self._cloud_spacing_penalty[:, i] = -(
                 self.cfg.cloud_spacing_penalty * too_far
                 + self.cfg.cloud_separation_penalty * too_close
             ) * self.step_dt
 
-        total = alpha * (cohesion_reward + spacing_penalty)  # [G, A]
+        total = alpha * (centroid_reward_broadcast + cohesion_reward + self._cloud_spacing_penalty)  # [G, A]
 
         # Log metrics
         if "log" not in self.extras:
             self.extras["log"] = {}
+        self.extras["log"]["Metrics/centroid_to_goal_dist"] = self._cloud_centroid_dist.mean().item()
         self.extras["log"]["Metrics/mean_dist_to_centroid"] = dist_to_centroid.mean().item()
         self.extras["log"]["Metrics/formation_alpha"] = alpha
 
@@ -479,6 +514,9 @@ class GgswarmEnv(DirectRLEnv):
             # Assign each drone in each group
             for g_idx in range(n_groups):
                 g = group_ids[g_idx]
+                # Store group goal in local coords for centroid-to-goal reward
+                if self._cloud_mode:
+                    self._group_goal_local[g] = centroid[g_idx]  # [3]
                 for i in range(A):
                     drone_id = g * A + i
                     offset = self._formation_offsets[i] if not self._cloud_mode else torch.zeros(3, device=self.device)
