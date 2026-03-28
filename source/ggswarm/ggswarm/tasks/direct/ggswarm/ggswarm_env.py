@@ -394,23 +394,28 @@ class GgswarmEnv(DirectRLEnv):
         cohesion_mapped = 1 - torch.tanh(dist_to_centroid / self.cfg.cloud_cohesion_sigma)
         cohesion_reward = self.cfg.cloud_cohesion_scale * cohesion_mapped * self.step_dt  # [G, A]
 
-        # --- Spacing: penalty if nearest neighbor too far OR too close ---
+        # --- Spacing: smooth repulsion + too-far penalty ---
         self._cloud_spacing_penalty.zero_()  # [G, A]
+        d_desired = self.cfg.cloud_min_spacing  # target minimum distance
+        eps = 0.01  # avoid division by zero
         for i in range(A):
             diff = pos_grouped - pos_grouped[:, i:i+1, :]  # [G, A, 3]
             dists = torch.linalg.norm(diff, dim=2)  # [G, A]
             dists[:, i] = float("inf")
             nearest_dist = dists.min(dim=1).values  # [G]
 
-            # Too far: penalty when nearest neighbor > max_dist
-            too_far = torch.clamp(nearest_dist - self.cfg.cloud_max_neighbor_dist, min=0.0)
-            # Too close: penalty when nearest neighbor < min_spacing
-            too_close = torch.clamp(self.cfg.cloud_min_spacing - nearest_dist, min=0.0)
+            # Smooth inverse-distance repulsion: strong push at close range, decays with distance
+            # Peaks when nearest_dist → 0, equals -scale*dt when nearest_dist = d_desired
+            repulsion = -self.cfg.cloud_separation_penalty * (
+                d_desired / (nearest_dist + eps)
+            ).square() * self.step_dt  # [G]
 
-            self._cloud_spacing_penalty[:, i] = -(
-                self.cfg.cloud_spacing_penalty * too_far
-                + self.cfg.cloud_separation_penalty * too_close
-            ) * self.step_dt
+            # Too far: linear penalty when nearest neighbor > max_dist
+            too_far = torch.clamp(nearest_dist - self.cfg.cloud_max_neighbor_dist, min=0.0)
+
+            self._cloud_spacing_penalty[:, i] = (
+                repulsion - self.cfg.cloud_spacing_penalty * too_far * self.step_dt
+            )
 
         total = alpha * (centroid_reward_broadcast + cohesion_reward + self._cloud_spacing_penalty)  # [G, A]
 

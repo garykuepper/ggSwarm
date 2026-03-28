@@ -107,10 +107,10 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     formation_centroid = None         # fixed centroid (x,y,z) or None for random
 
     # cloud formation (Phase 3)
-    cloud_cohesion_scale = 5.0        # reward for staying near group centroid
+    cloud_cohesion_scale = 3.0        # reward for staying near group centroid
     cloud_cohesion_sigma = 0.5        # tanh sharpness for cohesion
     cloud_min_spacing = 0.50           # min distance to nearest neighbor (separation)
-    cloud_separation_penalty = 10.0   # penalty for being too close (strong push-apart)
+    cloud_separation_penalty = 30.0   # smooth inverse-distance repulsion scale
     cloud_max_neighbor_dist = 1.0     # max distance to nearest neighbor before penalty
     cloud_spacing_penalty = 2.0       # penalty scale for straying too far
     cloud_centroid_goal_scale = 15.0  # centroid-to-goal reward (replaces per-drone in cloud)
