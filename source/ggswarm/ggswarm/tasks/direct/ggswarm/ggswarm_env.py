@@ -360,15 +360,23 @@ class GgswarmEnv(DirectRLEnv):
         cohesion_mapped = 1 - torch.tanh(dist_to_centroid / self.cfg.cloud_cohesion_sigma)
         cohesion_reward = self.cfg.cloud_cohesion_scale * cohesion_mapped * self.step_dt  # [G, A]
 
-        # --- Spacing: penalty if nearest neighbor is too far ---
+        # --- Spacing: penalty if nearest neighbor too far OR too close ---
         spacing_penalty = torch.zeros(G, A, device=self.device)
         for i in range(A):
             diff = pos_grouped - pos_grouped[:, i:i+1, :]  # [G, A, 3]
             dists = torch.linalg.norm(diff, dim=2)  # [G, A]
             dists[:, i] = float("inf")
             nearest_dist = dists.min(dim=1).values  # [G]
+
+            # Too far: penalty when nearest neighbor > max_dist
             too_far = torch.clamp(nearest_dist - self.cfg.cloud_max_neighbor_dist, min=0.0)
-            spacing_penalty[:, i] = -self.cfg.cloud_spacing_penalty * too_far * self.step_dt
+            # Too close: penalty when nearest neighbor < min_spacing
+            too_close = torch.clamp(self.cfg.cloud_min_spacing - nearest_dist, min=0.0)
+
+            spacing_penalty[:, i] = -(
+                self.cfg.cloud_spacing_penalty * too_far
+                + self.cfg.cloud_separation_penalty * too_close
+            ) * self.step_dt
 
         total = alpha * (cohesion_reward + spacing_penalty)  # [G, A]
 
