@@ -904,3 +904,9 @@ matching) were irrelevant — the policy was receiving garbage inputs during eva
   mini-batch update (shuffled samples destroy group structure). Edge template
   pre-computed in `__init__`, cached per group count. This enables 2-hop GATv2
   spatial awareness per the proposal's L2 layer.
+- [2026-03-28] **K-hop sparse edges (replacing fully-connected).** Switched from
+  fully-connected within-group edges (56 for A=8) to K-nearest sparse edges
+  (K=2, bidirectional → 32 edges for A=8). Environment computes KNN indices in
+  `_expand_obs_with_neighbors()` and publishes edge_index to GNN policy via
+  shared class buffer. Scales from 8 to 20+ agents without architecture changes.
+  2 GATv2 layers give 2-hop coverage through the sparse graph.

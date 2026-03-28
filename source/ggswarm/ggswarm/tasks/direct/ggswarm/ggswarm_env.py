@@ -81,6 +81,16 @@ class GgswarmEnv(DirectRLEnv):
             self._cloud_centroid_dist = torch.zeros(G, device=device)  # [G]
             self._cloud_spacing_penalty = torch.zeros(G, A, device=device)  # [G, A]
 
+        # KNN edge buffer for GNN message passing (pre-allocated)
+        K = min(self.cfg.num_neighbors, A - 1) if A > 1 else 0
+        if A > 1 and K > 0:
+            num_edges = N * K * 2  # K edges per drone, bidirectional
+            self._knn_edge_index = torch.zeros(2, num_edges, dtype=torch.long, device=device)
+            # Pre-compute source index pattern: each drone repeated K times
+            # [A, K] pattern repeated for G groups with offsets
+            src_local = torch.arange(A, device=device).unsqueeze(1).expand(A, K)  # [A, K]
+            self._knn_src_pattern = src_local  # reused each step
+
         # Pre-allocated zero-reward buffers (avoid per-step allocation)
         self._zero_reward_N = torch.zeros(N, device=device)  # [N]
         if A > 1:
@@ -216,10 +226,12 @@ class GgswarmEnv(DirectRLEnv):
         return {"policy": obs}
 
     def _expand_obs_with_neighbors(self, obs: torch.Tensor) -> torch.Tensor:
-        """Append K-nearest neighbor relative positions to each drone's obs.
+        """Append K-nearest neighbor relative positions and publish KNN edges.
 
         Uses fixed K=num_neighbors regardless of swarm size, enabling
-        train-with-3 / deploy-with-N scalability.
+        train-with-3 / deploy-with-N scalability. Also builds sparse
+        KNN edge_index and publishes it to the GNN policy for K-hop
+        message passing.
 
         Args:
             obs: shape [num_envs, 12]
@@ -227,6 +239,8 @@ class GgswarmEnv(DirectRLEnv):
         Returns:
             shape [num_envs, 12 + num_neighbors*3]
         """
+        from ggswarm.gnn_policy import GgswarmGNNPolicy  # noqa: PLC0415
+
         N = self.num_envs
         A = self.cfg.num_agents
         K = min(self.cfg.num_neighbors, A - 1)  # can't have more neighbors than agents-1
@@ -238,6 +252,7 @@ class GgswarmEnv(DirectRLEnv):
         pos_grouped = pos_local.reshape(G, A, 3)
 
         rel_parts = []
+        all_nearest_idx = []  # collect KNN indices for edge construction
         for i in range(A):
             # Compute distances from drone i to all others in group
             # shape: [G, A, 3] - [G, 1, 3] -> [G, A, 3] -> norm -> [G, A]
@@ -247,6 +262,7 @@ class GgswarmEnv(DirectRLEnv):
 
             # Find K nearest indices
             _, nearest_idx = torch.topk(dists, K, dim=1, largest=False)  # [G, K]
+            all_nearest_idx.append(nearest_idx)
 
             # Gather relative positions of K nearest
             neighbors = []
@@ -258,6 +274,28 @@ class GgswarmEnv(DirectRLEnv):
 
         # Stack and flatten: [G, A, K*3] -> [N, K*3]
         rel_all = torch.stack(rel_parts, dim=1).reshape(N, -1)
+
+        # --- Build KNN sparse edge_index and publish to GNN policy ---
+        # all_nearest_idx: list of A tensors, each [G, K] (group-local indices)
+        knn_idx = torch.stack(all_nearest_idx, dim=1)  # [G, A, K]
+
+        # Convert group-local indices to global batch indices
+        offsets = torch.arange(G, device=self.device).reshape(G, 1, 1) * A  # [G, 1, 1]
+        global_dst = (knn_idx + offsets).reshape(-1)  # [G*A*K]
+
+        # Source indices: drone i repeated K times, offset by group
+        # _knn_src_pattern: [A, K], unsqueeze(0): [1, A, K], offsets: [G, 1, 1]
+        global_src = (self._knn_src_pattern.unsqueeze(0) + offsets).reshape(-1)  # [G*A*K]
+
+        # Write bidirectional edges into pre-allocated buffer
+        half = global_src.shape[0]  # G*A*K
+        self._knn_edge_index[0, :half] = global_src
+        self._knn_edge_index[1, :half] = global_dst
+        self._knn_edge_index[0, half:] = global_dst
+        self._knn_edge_index[1, half:] = global_src
+
+        # Publish to GNN policy
+        GgswarmGNNPolicy.set_knn_edges(self._knn_edge_index, N)
 
         return torch.cat([obs, rel_all], dim=-1)
 

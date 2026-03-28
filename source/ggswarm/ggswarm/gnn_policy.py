@@ -1,13 +1,13 @@
 """GATv2 Graph Neural Network policy for ggSwarm formation control.
 
-Custom SKRL policy that replaces the MLP with GATv2 message passing.
-Each drone is a graph node (12D local obs). Edges connect all drones
-within each swarm group (fully-connected within-group). GATv2 performs
-attention-weighted message passing to produce 4D actions.
+Custom SKRL policy that uses GATv2 K-hop message passing for spatial
+awareness. The environment publishes KNN sparse edges each step via
+set_knn_edges(). The policy reads these during collection (group-aligned
+batches) and falls back to self-loops during PPO mini-batch updates.
 
-During PPO mini-batch updates (shuffled samples), falls back to
-self-loops only since group structure is destroyed. This is standard
-practice in GNN-RL (DGN, CommNet, TarMAC).
+K-hop depth is controlled by num_gnn_layers (default 2).
+Edge sparsity is controlled by num_neighbors in env config (default K=2).
+This architecture scales from 8 to 20+ agents without changes.
 
 Compatible with SKRL's PPO via GaussianMixin + DeterministicMixin.
 """
@@ -22,11 +22,11 @@ from skrl.models.torch import DeterministicMixin, GaussianMixin, Model
 
 
 class GgswarmGNNPolicy(GaussianMixin, DeterministicMixin, Model):
-    """GATv2 policy for swarm formation control.
+    """GATv2 policy for swarm formation control with K-hop message passing.
 
     Obs layout: [local_obs(12), rel_pos_n0(3), rel_pos_n1(3)] = 18D
-    The policy splits this into node features (12D) and uses the group
-    structure to build within-group edges for GATv2 message passing.
+    The policy uses 12D local obs as node features. KNN sparse edges are
+    published by the environment via set_knn_edges() each step.
 
     Args:
         observation_space: Observation space (18D for K=2 neighbors).
@@ -36,9 +36,27 @@ class GgswarmGNNPolicy(GaussianMixin, DeterministicMixin, Model):
         num_heads: Number of attention heads.
         num_gnn_layers: Number of GATv2 layers (K-hop depth).
         num_neighbors: K-nearest neighbors (must match env config).
-        num_agents: Drones per swarm group (for edge construction).
+        num_agents: Drones per swarm group (kept for backward compat).
         local_obs_dim: Dimension of local observation (12D).
     """
+
+    # --- Shared KNN edge buffer (set by environment each step) ---
+    _latest_knn_edges: torch.Tensor | None = None
+    _latest_knn_batch_size: int = -1
+
+    @classmethod
+    def set_knn_edges(cls, edge_index: torch.Tensor, batch_size: int) -> None:
+        """Publish KNN sparse edges from the environment.
+
+        Called by the environment in _get_observations() every step.
+        The policy reads these in _prepare_graph() during collection.
+
+        Args:
+            edge_index: [2, num_edges] — bidirectional KNN edges
+            batch_size: number of drones in the batch (for freshness check)
+        """
+        cls._latest_knn_edges = edge_index
+        cls._latest_knn_batch_size = batch_size
 
     def __init__(
         self,
@@ -102,36 +120,11 @@ class GgswarmGNNPolicy(GaussianMixin, DeterministicMixin, Model):
         # Cache for shared computation between policy and value
         self._shared_output = None
 
-        # --- Pre-compute within-group edge template ---
-        # Fully-connected edges within a single group of A agents
-        # (excludes self-loops — GATv2 adds those via add_self_loops=True)
-        A = num_agents
-        if A > 1:
-            src, dst = [], []
-            for i in range(A):
-                for j in range(A):
-                    if i != j:
-                        src.append(i)
-                        dst.append(j)
-            self.register_buffer(
-                "_group_edge_template",
-                torch.tensor([src, dst], dtype=torch.long),
-            )  # shape: [2, A*(A-1)]
-        else:
-            self.register_buffer(
-                "_group_edge_template",
-                torch.zeros(2, 0, dtype=torch.long),
-            )
-
         # Empty edge fallback (for mini-batch / single-agent)
         self.register_buffer(
             "_empty_edge_index",
             torch.zeros(2, 0, dtype=torch.long),
         )
-
-        # Cache for the expanded edge_index (avoid recomputation)
-        self._cached_edge_index: torch.Tensor | None = None
-        self._cached_num_groups: int = -1
 
     def act(self, inputs, role=""):
         if role == "policy":
@@ -161,42 +154,30 @@ class GgswarmGNNPolicy(GaussianMixin, DeterministicMixin, Model):
             return value, {}
 
     def _prepare_graph(self, obs: torch.Tensor):
-        """Split obs into node features and construct within-group edges.
+        """Split obs into node features and retrieve KNN sparse edges.
 
-        When the batch is group-aligned (batch_size divisible by num_agents),
-        builds fully-connected edges within each swarm group for proper
-        GATv2 message passing. Otherwise falls back to empty edges
-        (self-loops only via add_self_loops=True).
+        Uses edges published by the environment via set_knn_edges().
+        Falls back to empty edges (self-loops only) when edges are stale
+        or batch size doesn't match (PPO mini-batch update).
 
         Args:
             obs: shape [batch, 18] — [local_obs(12), rel_n0(3), rel_n1(3)]
 
         Returns:
             node_features: [batch, 12] — local obs per drone
-            edge_index: [2, num_edges] — graph connectivity
+            edge_index: [2, num_edges] — KNN sparse graph connectivity
         """
         node_features = obs[:, :self._local_obs_dim]  # [B, 12]
-
         B = obs.shape[0]
-        A = self._num_agents
 
-        # Build within-group edges when batch structure is intact
-        # (collection phase: full env batch with consecutive group indices)
-        if A > 1 and B >= A and B % A == 0:
-            G = B // A
-            # Rebuild edge_index only when group count changes
-            if G != self._cached_num_groups:
-                offsets = torch.arange(G, device=obs.device) * A  # [G]
-                # Broadcast template [2, E] across G groups with offsets
-                # template.unsqueeze(2): [2, E, 1] + offsets [1, 1, G] → [2, E, G]
-                self._cached_edge_index = (
-                    self._group_edge_template.unsqueeze(2)
-                    + offsets.reshape(1, 1, G)
-                ).reshape(2, -1)
-                self._cached_num_groups = G
-            edge_index = self._cached_edge_index
+        # Use KNN edges if fresh (published by env this step, batch size matches)
+        if (
+            GgswarmGNNPolicy._latest_knn_edges is not None
+            and GgswarmGNNPolicy._latest_knn_batch_size == B
+        ):
+            edge_index = GgswarmGNNPolicy._latest_knn_edges
         else:
-            # Mini-batch during PPO update or single-agent: no group structure
+            # Mini-batch during PPO update or single-agent: no edges
             edge_index = self._empty_edge_index
 
         return node_features, edge_index
