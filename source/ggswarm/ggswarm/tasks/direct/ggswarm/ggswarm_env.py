@@ -479,14 +479,14 @@ class GgswarmEnv(DirectRLEnv):
         self._robot.reset(env_ids)
         super()._reset_idx(env_ids)
         if len(env_ids) == self.num_envs:
-            # Spread out resets to avoid training spikes
-            if self.cfg.num_agents > 1:
+            # Spread out resets to avoid training spikes (skip for single group / play)
+            if self.cfg.num_agents > 1 and self._num_groups > 1:
                 # Sync episode length within each swarm group
                 A = self.cfg.num_agents
                 G = self._num_groups
                 group_lengths = torch.randint(0, int(self.max_episode_length), (G,), device=self.device)
                 self.episode_length_buf = group_lengths.unsqueeze(1).expand(G, A).reshape(-1).clone()
-            else:
+            elif self.cfg.num_agents <= 1:
                 self.episode_length_buf = torch.randint_like(
                     self.episode_length_buf, high=int(self.max_episode_length)
                 )
