@@ -76,6 +76,43 @@ or relaunching (Rule 23). Full assessment workflow: [`docs/ops/post_train_analys
 > (pre-2026-03-22 `Phase2Collector`). They are **not** comparable to `survival_steps` from assess runs
 > after the fix. See [`post_train_analysis.md`](../ops/post_train_analysis.md) § Metric definitions.
 
+### Phase 3 Runs (Cloud formation — centroid-to-goal + CBF + GNN)
+
+| Run | Timestamp | Reward (mean) | Ep Len (mean) | Std | KNN Separation | Key Change | Verdict |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| p3-1 | 2026-03-27_15-04-41 | 122.4 | — | — | — | Initial cloud formation | — |
+| p3-2 | 2026-03-27_15-24-55 | 120.7 | — | — | — | — | — |
+| p3-3 | 2026-03-27_16-11-50 | 104.9 | — | — | — | — | — |
+| p3-4 | 2026-03-27_16-50-25 | 129.9 | — | — | — | — | — |
+| p3-5 | 2026-03-27_17-25-05 | 89.7 | 383 | 0.17 | Collapsed to ~0m | Per-drone goal, drones stack | FAIL |
+| p3-6 | 2026-03-27_19-51-55 | 118.3 | 499 | 0.35 | 0.2–0.5m, dips to 0 | Centroid-to-goal fix | WARN |
+| p3-7 | 2026-03-27_20-20-20 | 118.7 | 499 | 0.25 | 0.25–0.3m, dips to 0 | min_spacing 0.50, cbf_d_safe 0.30 | WARN |
+| p3-8 | 2026-03-27_21-14-49 | -107.4 | 16 | 0.76 | — | Inverse-distance² repulsion (scale 30) | FAIL |
+| p3-9 | 2026-03-27_21-41-25 | -16.3 | 18 | 0.26 | — | Linear inverse-distance (scale 15) | FAIL |
+| p3-10 | 2026-03-27_22-03-29 | -7.1 | 19 | 0.33 | Spreads but flips | Clamped repulsion (scale 5) | FAIL |
+| p3-11 | 2026-03-27_22-36-52 | 4.3 | 60 | 0.17 | 0.5–1.5m but crashes | CBF lateral moments (scale 0.5) | FAIL |
+| p3-12 | 2026-03-28_09-28-26 | 97.2 | 479 | 0.23 | Collapses to ~0m | CBF lateral scale 0.15 | WARN |
+| p3-13 | 2026-03-28 (p4 subdir) | — | — | — | — | L2 fix: proper GNN edges | pending |
+
+> **p3-5 (2026-03-27):** Root cause identified — all drones in cloud mode shared same
+> `_desired_pos_w`, per-drone goal reward (15.0) pulled them all to one point.
+
+> **p3-6 (2026-03-27):** Centroid-to-goal fix. Reward now tracks group centroid to goal.
+> Drones hover stably (499 ep_len) but still converge — CBF was only clamping thrust.
+
+> **p3-8 through p3-10:** Reward-based separation iteration. Every approach failed:
+> too strong killed hover, too weak had no effect, smooth repulsion made drones flip.
+
+> **p3-11 (2026-03-27):** CBF rewrite with lateral moment injection. Drones separate
+> (0.5–1.5m) but lateral_scale=0.5 causes ±150° flips and crashes.
+
+> **p3-12 (2026-03-28):** CBF lateral_scale reduced to 0.15. Stable hover restored
+> (reward 97, ep_len 479) but separation still collapses. Conclusion: CBF tuning is
+> insufficient — need proper L2 GNN message passing for spatial awareness.
+
+> **p3-13 (2026-03-28):** L2 fix — proper within-group fully-connected edges in GATv2.
+> First run with actual GNN message passing. Results pending.
+
 ---
 
 ## Column Definitions

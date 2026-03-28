@@ -4,6 +4,10 @@
 **Advisors:** Eric Tao
 **Term:** Spring 2026
 
+> **Edit Policy:** This is the authoritative source document for the project.
+> All revisions must preserve the original text via ~~strikethrough~~ and add
+> new text inline with a `[Revised]` tag and date. Do not delete original content.
+
 ---
 
 ## 1. Executive Summary
@@ -65,7 +69,11 @@ The project employs a **Centralized Training, Decentralized Execution (CTDE)** w
 * **Platform:** NVIDIA Isaac Lab 2.3 and Isaac Sim 5.1.
 * **RL Library:** SKRL using Proximal Policy Optimization (PPO).
 * **Software Stack:** `PyTorch` 2.5+ and `OpenUSD`.
-* **Compute:** Local RTX 3070 (8GB VRAM) for development; cloud-based **NVIDIA `Brev` (A100 80GB)** for large-scale multi-agent training to ensure convergence within the project timeline.
+* **Compute:** Local RTX 3070 (8GB VRAM) for development; ~~cloud-based **NVIDIA `Brev` (A100 80GB)**~~ **GCE NVIDIA L4 (24GB VRAM)** `[Revised 2026-03-28]` for large-scale multi-agent training to ensure convergence within the project timeline.
+
+> **`[Revised 2026-03-28]` Brev A100 → GCE L4:** Switched to Google Compute
+> Engine with NVIDIA L4 GPU for cost efficiency. L4's 24GB VRAM is sufficient
+> for 4096-env training runs.
 
 ---
 
@@ -73,12 +81,31 @@ The project employs a **Centralized Training, Decentralized Execution (CTDE)** w
 
 To achieve stable formation control, the reinforcement learning agent is trained using a multi-objective reward function $R$:
 
-$$R = w_{pos} \times R_{pos} + w_{vel} \times R_{vel} + w_{ang\_vel} \times R_{ang\_vel} + w_{alive} \times R_{alive} + w_{term} \times R_{term}$$
+~~$$R = w_{pos} \times R_{pos} + w_{vel} \times R_{vel} + w_{ang\_vel} \times R_{ang\_vel} + w_{alive} \times R_{alive} + w_{term} \times R_{term}$$~~
 
-* **Formation Error ($R_{pos}$):** A Gaussian-shaped reward based on the Euclidean distance to the desired formation coordinate.
-* **Stability ($R_{vel}, R_{ang\_vel}$):** Penalties on linear and angular velocity jitter to encourage smooth hovering.
-* **Resilience ($R_{alive}$):** A constant positive bonus for each timestep the agent remains within safety bounds.
-* **Termination ($R_{term}$):** A significant negative penalty for collisions or exceeding altitude limits ($0.1m < z < 3.0m$).
+~~* **Formation Error ($R_{pos}$):** A Gaussian-shaped reward based on the Euclidean distance to the desired formation coordinate.~~
+~~* **Stability ($R_{vel}, R_{ang\_vel}$):** Penalties on linear and angular velocity jitter to encourage smooth hovering.~~
+~~* **Resilience ($R_{alive}$):** A constant positive bonus for each timestep the agent remains within safety bounds.~~
+~~* **Termination ($R_{term}$):** A significant negative penalty for collisions or exceeding altitude limits ($0.1m < z < 3.0m$).~~
+
+`[Revised 2026-03-28]` The reward function was restructured during implementation
+to better support the CTDE multi-agent architecture:
+
+$$R = R_{hover} + R_{formation}$$
+
+**Hover reward** (always active, per-drone):
+
+* **Goal proximity ($R_{goal}$):** Tanh-mapped distance to goal: $15.0 \times (1 - \tanh(d / 0.8)) \times dt$. In cloud mode, rewards the group centroid reaching the goal rather than individual drones.
+* **Velocity penalties ($R_{vel}$):** $-0.05 \times \|v_{lin}\|^2 \times dt$ and $-0.05 \times \|v_{ang}\|^2 \times dt$.
+
+**Formation reward** (curriculum-scaled, cloud mode):
+
+* **Centroid-to-goal ($R_{centroid}$):** Shared reward for group centroid reaching target position.
+* **Cohesion ($R_{cohesion}$):** Tanh-mapped distance to group centroid, scale 3.0.
+* **Spacing ($R_{spacing}$):** Threshold penalty for nearest neighbor below 0.50m or above 1.0m.
+
+Termination is handled by episode reset (z < 0.05m or z > 2.0m), not reward penalty.
+CBF safety shields (L4) enforce hard collision constraints separately from the reward.
 
 ---
 
@@ -97,11 +124,13 @@ $$R = w_{pos} \times R_{pos} + w_{vel} \times R_{vel} + w_{ang\_vel} \times R_{a
 | Weeks | Dates | Phase | Activity | Milestone |
 | :--- | :--- | :--- | :--- | :--- |
 | 5–6 | Feb 5 – Feb 17 | 1. Foundation | Install NVIDIA Isaac Lab; configure simulated multirotor assets; finalize graph connectivity logic. | - |
-| 7–8 | Feb 18 – Mar 3 | 2. Brain Development | Train the GATv2 policy using **Multi-Agent PPO (MAPPO)**; test basic formation keeping in empty space. | **M1 (Week 8):** GNN policy training |
+| 7–8 | Feb 18 – Mar 3 | 2. Brain Development | Train GATv2 with ~~MAPPO~~ **PPO (CTDE)**[^1]; test formation in empty space. | **M1 (Week 8):** GNN policy training |
 | 9–11 | Mar 4 – Mar 24 | 3. Muscle Refinement | Integrate MINCO trajectory optimization as a post-processing layer; implement SwarmRaft consensus logic. | **M2 (Week 11, by 3/24):** Logic integration |
 | 12–13 | Mar 25 – Apr 7 | 4. Stress Testing | Conduct simulated agent loss tests; benchmark swarm navigation in high-density obstacle environments. | - |
 | 14–15 | Apr 8 – Apr 21 | 5. Showcase Prep | Finalize RTX Tiled Rendering; record HD demo; compile results. | **M3 (Week 14, by 4/14):** Mission success validation; **M4 (Week 15):** HD showcase + Testing Report |
 | 16 | Apr 22 – Apr 24 | 6. Delivery | Present at Capstone Festival; submit Portfolio and Learning Journals. | Final Presentation due 4/24/26 |
+
+[^1]: `[Revised 2026-03-28]` **MAPPO → PPO (CTDE):** SKRL's MAPPO integration was problematic; switched to Centralized Training, Decentralized Execution — one shared PPO policy across all drones, each executing independently.
 
 ---
 
