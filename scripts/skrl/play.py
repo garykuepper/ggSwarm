@@ -310,6 +310,7 @@ def main(
             num_neighbors=env_cfg.num_neighbors,
             num_agents=args_cli.num_agents,
         )
+        GgswarmGNNPolicy.init_edge_cache(memory_size=24, num_envs=env.num_envs)
         models = {"policy": gnn_model, "value": gnn_model}
 
         ppo_cfg = PPO_DEFAULT_CONFIG.copy()

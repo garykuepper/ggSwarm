@@ -2,8 +2,8 @@
 
 Custom SKRL policy that uses GATv2 K-hop message passing for spatial
 awareness. The environment publishes KNN sparse edges each step via
-set_knn_edges(). The policy reads these during collection (group-aligned
-batches) and falls back to self-loops during PPO mini-batch updates.
+set_knn_edges(). The policy caches these edges and replays them during
+PPO mini-batch updates to maintain graph structure.
 
 K-hop depth is controlled by num_gnn_layers (default 2).
 Edge sparsity is controlled by num_neighbors in env config (default K=2).
@@ -13,6 +13,8 @@ Compatible with SKRL's PPO via GaussianMixin + DeterministicMixin.
 """
 
 from __future__ import annotations
+
+from collections import deque
 
 import torch
 import torch.nn as nn
@@ -26,7 +28,8 @@ class GgswarmGNNPolicy(GaussianMixin, DeterministicMixin, Model):
 
     Obs layout: [local_obs(12), rel_pos_n0(3), rel_pos_n1(3)] = 18D
     The policy uses 12D local obs as node features. KNN sparse edges are
-    published by the environment via set_knn_edges() each step.
+    published by the environment via set_knn_edges() each step and cached
+    in a deque ring buffer for replay during PPO updates.
 
     Args:
         observation_space: Observation space (18D for K=2 neighbors).
@@ -40,16 +43,31 @@ class GgswarmGNNPolicy(GaussianMixin, DeterministicMixin, Model):
         local_obs_dim: Dimension of local observation (12D).
     """
 
-    # --- Shared KNN edge buffer (set by environment each step) ---
+    # --- Shared KNN edge state (set by environment, read by policy) ---
     _latest_knn_edges: torch.Tensor | None = None
     _latest_knn_batch_size: int = -1
+    _edge_cache: deque = deque()
+    _num_envs: int = 0
+
+    @classmethod
+    def init_edge_cache(cls, memory_size: int, num_envs: int) -> None:
+        """Initialize the edge cache ring buffer.
+
+        Must be called after policy creation and before training.
+
+        Args:
+            memory_size: number of rollout steps (matches SKRL memory_size)
+            num_envs: total number of environments (= total drone count)
+        """
+        cls._edge_cache = deque(maxlen=memory_size)
+        cls._num_envs = num_envs
 
     @classmethod
     def set_knn_edges(cls, edge_index: torch.Tensor, batch_size: int) -> None:
         """Publish KNN sparse edges from the environment.
 
         Called by the environment in _get_observations() every step.
-        The policy reads these in _prepare_graph() during collection.
+        Caches the edges for replay during PPO mini-batch updates.
 
         Args:
             edge_index: [2, num_edges] — bidirectional KNN edges
@@ -57,6 +75,9 @@ class GgswarmGNNPolicy(GaussianMixin, DeterministicMixin, Model):
         """
         cls._latest_knn_edges = edge_index
         cls._latest_knn_batch_size = batch_size
+        cls._num_envs = batch_size
+        # Cache for PPO update replay (deque auto-drops oldest at maxlen)
+        cls._edge_cache.append(edge_index.clone())
 
     def __init__(
         self,
@@ -120,7 +141,7 @@ class GgswarmGNNPolicy(GaussianMixin, DeterministicMixin, Model):
         # Cache for shared computation between policy and value
         self._shared_output = None
 
-        # Empty edge fallback (for mini-batch / single-agent)
+        # Empty edge fallback (for initialization / single-agent)
         self.register_buffer(
             "_empty_edge_index",
             torch.zeros(2, 0, dtype=torch.long),
@@ -154,11 +175,12 @@ class GgswarmGNNPolicy(GaussianMixin, DeterministicMixin, Model):
             return value, {}
 
     def _prepare_graph(self, obs: torch.Tensor):
-        """Split obs into node features and retrieve KNN sparse edges.
+        """Split obs into node features and retrieve/reconstruct KNN edges.
 
-        Uses edges published by the environment via set_knn_edges().
-        Falls back to empty edges (self-loops only) when edges are stale
-        or batch size doesn't match (PPO mini-batch update).
+        Three modes:
+        1. Collection (B == num_envs): use fresh edges from env
+        2. PPO update (B is multiple of num_envs): reconstruct from cache
+        3. Fallback: empty edges (self-loops only via add_self_loops=True)
 
         Args:
             obs: shape [batch, 18] — [local_obs(12), rel_n0(3), rel_n1(3)]
@@ -169,15 +191,34 @@ class GgswarmGNNPolicy(GaussianMixin, DeterministicMixin, Model):
         """
         node_features = obs[:, :self._local_obs_dim]  # [B, 12]
         B = obs.shape[0]
+        N = GgswarmGNNPolicy._num_envs
 
-        # Use KNN edges if fresh (published by env this step, batch size matches)
-        if (
-            GgswarmGNNPolicy._latest_knn_edges is not None
-            and GgswarmGNNPolicy._latest_knn_batch_size == B
-        ):
+        if B == N and GgswarmGNNPolicy._latest_knn_edges is not None:
+            # Collection phase: single timestep, use fresh edges
             edge_index = GgswarmGNNPolicy._latest_knn_edges
+
+        elif (
+            N > 0
+            and B > N
+            and B % N == 0
+            and len(GgswarmGNNPolicy._edge_cache) > 0
+        ):
+            # PPO update phase: mini-batch contains multiple timestep blocks
+            # Each block of N samples has group structure intact (SKRL sample_all
+            # returns sequential contiguous slices, no shuffling)
+            num_blocks = B // N
+            edges = []
+            for block_idx in range(num_blocks):
+                cache_idx = block_idx % len(GgswarmGNNPolicy._edge_cache)
+                # Offset edge indices by block position in the mega-batch
+                block_edges = (
+                    GgswarmGNNPolicy._edge_cache[cache_idx] + block_idx * N
+                )
+                edges.append(block_edges)
+            edge_index = torch.cat(edges, dim=1)
+
         else:
-            # Mini-batch during PPO update or single-agent: no edges
+            # Fallback: no edges (initialization, single-agent, or misaligned batch)
             edge_index = self._empty_edge_index
 
         return node_features, edge_index
