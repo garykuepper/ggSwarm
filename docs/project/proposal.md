@@ -38,11 +38,30 @@ environments like forests and urban canyons.
 
 The project employs a **Centralized Training, Decentralized Execution (CTDE)** workflow using the five-layer Graph Neural Swarm Control (GNSC) model:
 
-* **L1 - Local Sensing:** Agents collect LiDAR and IMU perception data locally within Isaac Lab.
-* **L2 - GNN Message Passing:** Information is aggregated within a K-hop neighborhood using **GATv2** to establish spatial awareness.
+* **L1 - Local Sensing:** ~~Agents collect LiDAR and IMU perception data locally
+  within Isaac Lab.~~ Each agent observes its own body-frame state and K-nearest
+  neighbor relative positions. `[Revised 2026-03-28]`
+* **L2 - GNN Message Passing:** Information is aggregated within a ~~K-hop neighborhood~~ fully-connected within-group graph using **GATv2** to establish spatial awareness. `[Revised 2026-03-28]`
 * **L3 - Distributed Consensus:** **SwarmRaft** logic (a peer-to-peer consensus mechanism) allows agents to align on global formation objectives through local peer interactions without a central leader.
-* **L4 - Runtime Safety Shields:** **Control Barrier Functions (CBFs)** enforce hard safety constraints to ensure zero inter-agent collisions.
+* **L4 - Runtime Safety Shields:** **Control Barrier Functions (CBFs)** enforce hard safety constraints ~~to ensure zero inter-agent collisions~~ via thrust clamping and lateral moment injection to separate drones. `[Revised 2026-03-28]`
 * **L5 - Mission Execution:** The swarm executes high-level commands, such as "Move to Goal" or "Change Formation Shape".
+
+> **`[Revised 2026-03-28]` L1 Local Sensing:** The original proposal specified LiDAR
+> and IMU sensor data. The implementation uses an abstract 12D observation vector
+> (body-frame velocities, projected gravity, goal direction in body frame) plus
+> K-nearest neighbor relative positions (6D for K=2). This is sensor-agnostic —
+> the observation could come from any sensing modality. LiDAR may be added in
+> Phase 4 for obstacle avoidance if needed.
+>
+> **`[Revised 2026-03-28]` L2 GNN Message Passing:** For A=8 drones per group,
+> fully-connected within-group edges (56 per group) are used instead of K-hop
+> sparse edges. 2 GATv2 layers give full group coverage in 1 hop. Will transition
+> to sparse K-nearest edges when scaling to 20+ agents.
+>
+> **`[Revised 2026-03-28]` L4 Safety Shields:** CBF implementation uses both thrust
+> clamping (vertical) and lateral moment injection (roll/pitch) to separate drones.
+> "Zero collisions" is a goal, not yet achieved — CBF acts as a soft safety layer
+> alongside reward-based spacing incentives.
 
 ---
 
@@ -112,7 +131,9 @@ CBF safety shields (L4) enforce hard collision constraints separately from the r
 ## 7. Risks and Mitigations
 
 * **VRAM Saturation:** Mitigation involves using **headless training** locally and offloading heavy workloads to the cloud.
-* **GNN Over-smoothing:** Deep graph layers can cause identical node features; mitigation involves restricting message passing to **3-hops**.
+* **GNN Over-smoothing:** Deep graph layers can cause identical node features;
+  mitigation involves ~~restricting message passing to **3-hops**~~ using 2 GATv2
+  layers with residual connections and LayerNorm. `[Revised 2026-03-28]`
 * **Algorithm Divergence:** Complex shapes may fail to converge; mitigation involves **curriculum learning**.
 
 ---
