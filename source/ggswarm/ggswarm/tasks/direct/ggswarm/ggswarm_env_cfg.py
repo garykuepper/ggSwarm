@@ -109,7 +109,7 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     # cloud formation (Phase 3)
     cloud_cohesion_scale = 5.0        # reward for staying near group centroid
     cloud_cohesion_sigma = 0.5        # tanh sharpness for cohesion
-    cloud_min_spacing = 0.35           # min distance to nearest neighbor (separation)
+    cloud_min_spacing = 0.50           # min distance to nearest neighbor (separation)
     cloud_separation_penalty = 10.0   # penalty for being too close (strong push-apart)
     cloud_max_neighbor_dist = 1.0     # max distance to nearest neighbor before penalty
     cloud_spacing_penalty = 2.0       # penalty scale for straying too far
@@ -122,5 +122,5 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
 
     # CBF safety shield (Phase 3)
     cbf_enabled = True                # collision avoidance barrier
-    cbf_d_safe = 0.20                 # min safe distance (m)
+    cbf_d_safe = 0.30                 # min safe distance (m)
     cbf_gamma = 1.0                   # barrier decay rate
