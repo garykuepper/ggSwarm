@@ -887,3 +887,12 @@ matching) were irrelevant — the policy was receiving garbage inputs during eva
   `cloud_centroid_goal_sigma` (0.8) config params. Increased `cloud_min_spacing`
   from 0.25 to 0.35m for earlier separation activation. Fixed per-step tensor
   allocation violations in `_compute_formation_reward` and `_compute_cloud_reward`.
+- [2026-03-27] **p3-6 through p3-10:** Iterated on separation penalty (threshold,
+  inverse-distance squared, linear, clamped). All failed — too strong killed hover
+  learning, too weak had no effect, smooth repulsion made drones flip.
+- [2026-03-27] **CBF rewrite: lateral moment injection.** Root cause of convergence:
+  CBF only clamped thrust (Z-axis), never touched moments (roll/pitch/yaw). Drones
+  converged laterally and CBF did nothing. New CBF computes escape direction in XY
+  between too-close pairs and injects roll/pitch moments to tilt drones apart.
+  Strength scales with barrier violation severity. Added `cbf_lateral_scale` (0.5)
+  config param. Reverted separation penalty to simple threshold (scale 10).

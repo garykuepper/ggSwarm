@@ -163,6 +163,7 @@ class GgswarmEnv(DirectRLEnv):
                 self.cfg.num_agents,
                 self.cfg.cbf_d_safe,
                 self.cfg.cbf_gamma,
+                self.cfg.cbf_lateral_scale,
             )
 
         self._thrust[:, 0, 2] = (
@@ -394,27 +395,23 @@ class GgswarmEnv(DirectRLEnv):
         cohesion_mapped = 1 - torch.tanh(dist_to_centroid / self.cfg.cloud_cohesion_sigma)
         cohesion_reward = self.cfg.cloud_cohesion_scale * cohesion_mapped * self.step_dt  # [G, A]
 
-        # --- Spacing: smooth repulsion + too-far penalty ---
+        # --- Spacing: penalty if nearest neighbor too far OR too close ---
         self._cloud_spacing_penalty.zero_()  # [G, A]
-        d_desired = self.cfg.cloud_min_spacing  # target minimum distance
-        eps = 0.01  # avoid division by zero
         for i in range(A):
             diff = pos_grouped - pos_grouped[:, i:i+1, :]  # [G, A, 3]
             dists = torch.linalg.norm(diff, dim=2)  # [G, A]
             dists[:, i] = float("inf")
             nearest_dist = dists.min(dim=1).values  # [G]
 
-            # Smooth repulsion: only active below d_desired, ramps up as 1/dist near zero
-            # Zero penalty at d_desired, grows smoothly as drones get closer
-            ratio = torch.clamp(d_desired / (nearest_dist + eps) - 1.0, min=0.0)  # [G]
-            repulsion = -self.cfg.cloud_separation_penalty * ratio * self.step_dt  # [G]
-
-            # Too far: linear penalty when nearest neighbor > max_dist
+            # Too far: penalty when nearest neighbor > max_dist
             too_far = torch.clamp(nearest_dist - self.cfg.cloud_max_neighbor_dist, min=0.0)
+            # Too close: penalty when nearest neighbor < min_spacing
+            too_close = torch.clamp(self.cfg.cloud_min_spacing - nearest_dist, min=0.0)
 
-            self._cloud_spacing_penalty[:, i] = (
-                repulsion - self.cfg.cloud_spacing_penalty * too_far * self.step_dt
-            )
+            self._cloud_spacing_penalty[:, i] = -(
+                self.cfg.cloud_spacing_penalty * too_far
+                + self.cfg.cloud_separation_penalty * too_close
+            ) * self.step_dt
 
         total = alpha * (centroid_reward_broadcast + cohesion_reward + self._cloud_spacing_penalty)  # [G, A]
 

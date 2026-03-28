@@ -5,6 +5,11 @@ separation constraints. Operates within each swarm group — drones in
 different groups don't interact.
 
 Post-policy filter: no retraining needed. Enable via cfg.cbf_enabled.
+
+Lateral repulsion: when drones are approaching too closely, injects
+roll/pitch moments to tilt the drone away from its neighbor, not just
+clamp thrust. This is critical because thrust-only CBF cannot prevent
+horizontal convergence.
 """
 
 from __future__ import annotations
@@ -20,6 +25,7 @@ def apply_cbf(
     num_agents: int,
     d_safe: float,
     gamma: float,
+    lateral_scale: float = 0.5,
 ) -> torch.Tensor:
     """Apply CBF safety projection to actions within each swarm group.
 
@@ -28,8 +34,8 @@ def apply_cbf(
         h_dot_ij = 2 * (p_i - p_j) . (v_i - v_j)
         Safe: h_dot_ij + gamma * h_ij >= 0
 
-    When violated, reduces the approaching drone's thrust to prevent
-    further closure.
+    When violated, injects lateral moments to tilt the drone away from
+    its neighbor AND clamps thrust to prevent further closure.
 
     Args:
         actions: [N, 4] raw actions in [-1, 1]
@@ -39,6 +45,7 @@ def apply_cbf(
         num_agents: agents per swarm group
         d_safe: minimum safe distance (m)
         gamma: barrier decay rate
+        lateral_scale: strength of lateral moment injection (0-1)
 
     Returns:
         [N, 4] safe actions
@@ -76,8 +83,22 @@ def apply_cbf(
             unsafe = constraint < 0  # [G] bool
 
             if unsafe.any():
-                # Reduce thrust for drone i where unsafe
-                # Clamp toward hover thrust (action=0 → 50% max thrust)
+                # Violation severity: 0 at boundary, 1 at max violation
+                strength = (-constraint[unsafe] / (gamma * d_safe_sq + 1e-6)).clamp(0.0, 1.0)  # [U]
+
+                # Escape direction in XY plane (from j toward i)
+                escape_xy = diff[unsafe, :2]  # [U, 2]
+                escape_norm = escape_xy.norm(dim=1, keepdim=True).clamp(min=1e-6)  # [U, 1]
+                escape_dir = escape_xy / escape_norm  # [U, 2] unit vector
+
+                # Inject lateral moments to tilt drone i away from drone j
+                # act[:, 2] = pitch moment → X-axis lateral movement
+                # act[:, 1] = roll moment → Y-axis lateral movement
+                act_safe[unsafe, i, 2] += strength * escape_dir[:, 0] * lateral_scale
+                act_safe[unsafe, i, 1] += strength * escape_dir[:, 1] * lateral_scale
+
+                # Also reduce thrust to prevent aggressive vertical closure
                 act_safe[unsafe, i, 0] = act_safe[unsafe, i, 0].clamp(min=-0.5)
 
-    return act_safe.reshape(N, 4)
+    # Clamp all actions back to valid range
+    return act_safe.reshape(N, 4).clamp(-1.0, 1.0)
