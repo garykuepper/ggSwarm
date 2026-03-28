@@ -404,11 +404,10 @@ class GgswarmEnv(DirectRLEnv):
             dists[:, i] = float("inf")
             nearest_dist = dists.min(dim=1).values  # [G]
 
-            # Smooth inverse-distance repulsion: push at close range, decays with distance
-            # Equals -scale*dt when nearest_dist = d_desired, stronger when closer
-            repulsion = -self.cfg.cloud_separation_penalty * (
-                d_desired / (nearest_dist + eps)
-            ) * self.step_dt  # [G]
+            # Smooth repulsion: only active below d_desired, ramps up as 1/dist near zero
+            # Zero penalty at d_desired, grows smoothly as drones get closer
+            ratio = torch.clamp(d_desired / (nearest_dist + eps) - 1.0, min=0.0)  # [G]
+            repulsion = -self.cfg.cloud_separation_penalty * ratio * self.step_dt  # [G]
 
             # Too far: linear penalty when nearest neighbor > max_dist
             too_far = torch.clamp(nearest_dist - self.cfg.cloud_max_neighbor_dist, min=0.0)
