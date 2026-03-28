@@ -324,6 +324,7 @@ def main(
             action_space=env.action_space,
             device=env.device,
             num_neighbors=env_cfg.num_neighbors,
+            num_agents=args_cli.num_agents,
         )
         models = {"policy": gnn_model, "value": gnn_model}
 

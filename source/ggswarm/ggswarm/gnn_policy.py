@@ -1,9 +1,13 @@
 """GATv2 Graph Neural Network policy for ggSwarm formation control.
 
 Custom SKRL policy that replaces the MLP with GATv2 message passing.
-Each drone is a graph node (12D local obs). Edges connect K-nearest
-neighbors. GATv2 performs attention-weighted message passing to produce
-4D actions (thrust + 3 moments).
+Each drone is a graph node (12D local obs). Edges connect all drones
+within each swarm group (fully-connected within-group). GATv2 performs
+attention-weighted message passing to produce 4D actions.
+
+During PPO mini-batch updates (shuffled samples), falls back to
+self-loops only since group structure is destroyed. This is standard
+practice in GNN-RL (DGN, CommNet, TarMAC).
 
 Compatible with SKRL's PPO via GaussianMixin + DeterministicMixin.
 """
@@ -21,8 +25,8 @@ class GgswarmGNNPolicy(GaussianMixin, DeterministicMixin, Model):
     """GATv2 policy for swarm formation control.
 
     Obs layout: [local_obs(12), rel_pos_n0(3), rel_pos_n1(3)] = 18D
-    The policy splits this into node features (12D) and neighbor info
-    (6D) to construct the graph internally.
+    The policy splits this into node features (12D) and uses the group
+    structure to build within-group edges for GATv2 message passing.
 
     Args:
         observation_space: Observation space (18D for K=2 neighbors).
@@ -30,8 +34,9 @@ class GgswarmGNNPolicy(GaussianMixin, DeterministicMixin, Model):
         device: Torch device.
         hidden_channels: GATv2 hidden dimension.
         num_heads: Number of attention heads.
-        num_gnn_layers: Number of GATv2 layers.
+        num_gnn_layers: Number of GATv2 layers (K-hop depth).
         num_neighbors: K-nearest neighbors (must match env config).
+        num_agents: Drones per swarm group (for edge construction).
         local_obs_dim: Dimension of local observation (12D).
     """
 
@@ -44,6 +49,7 @@ class GgswarmGNNPolicy(GaussianMixin, DeterministicMixin, Model):
         num_heads: int = 2,
         num_gnn_layers: int = 2,
         num_neighbors: int = 2,
+        num_agents: int = 8,
         local_obs_dim: int = 12,
     ):
         Model.__init__(self, observation_space, action_space, device)
@@ -59,6 +65,7 @@ class GgswarmGNNPolicy(GaussianMixin, DeterministicMixin, Model):
         DeterministicMixin.__init__(self, clip_actions=False, role="value")
 
         self._num_neighbors = num_neighbors
+        self._num_agents = num_agents
         self._local_obs_dim = local_obs_dim
         self._hidden = hidden_channels
 
@@ -95,6 +102,37 @@ class GgswarmGNNPolicy(GaussianMixin, DeterministicMixin, Model):
         # Cache for shared computation between policy and value
         self._shared_output = None
 
+        # --- Pre-compute within-group edge template ---
+        # Fully-connected edges within a single group of A agents
+        # (excludes self-loops — GATv2 adds those via add_self_loops=True)
+        A = num_agents
+        if A > 1:
+            src, dst = [], []
+            for i in range(A):
+                for j in range(A):
+                    if i != j:
+                        src.append(i)
+                        dst.append(j)
+            self.register_buffer(
+                "_group_edge_template",
+                torch.tensor([src, dst], dtype=torch.long),
+            )  # shape: [2, A*(A-1)]
+        else:
+            self.register_buffer(
+                "_group_edge_template",
+                torch.zeros(2, 0, dtype=torch.long),
+            )
+
+        # Empty edge fallback (for mini-batch / single-agent)
+        self.register_buffer(
+            "_empty_edge_index",
+            torch.zeros(2, 0, dtype=torch.long),
+        )
+
+        # Cache for the expanded edge_index (avoid recomputation)
+        self._cached_edge_index: torch.Tensor | None = None
+        self._cached_num_groups: int = -1
+
     def act(self, inputs, role=""):
         if role == "policy":
             return GaussianMixin.act(self, inputs, role)
@@ -123,7 +161,12 @@ class GgswarmGNNPolicy(GaussianMixin, DeterministicMixin, Model):
             return value, {}
 
     def _prepare_graph(self, obs: torch.Tensor):
-        """Split obs into node features and construct edge index.
+        """Split obs into node features and construct within-group edges.
+
+        When the batch is group-aligned (batch_size divisible by num_agents),
+        builds fully-connected edges within each swarm group for proper
+        GATv2 message passing. Otherwise falls back to empty edges
+        (self-loops only via add_self_loops=True).
 
         Args:
             obs: shape [batch, 18] — [local_obs(12), rel_n0(3), rel_n1(3)]
@@ -132,42 +175,29 @@ class GgswarmGNNPolicy(GaussianMixin, DeterministicMixin, Model):
             node_features: [batch, 12] — local obs per drone
             edge_index: [2, num_edges] — graph connectivity
         """
-        local_obs_dim = self._local_obs_dim
+        node_features = obs[:, :self._local_obs_dim]  # [B, 12]
 
-        # Split obs
-        node_features = obs[:, :local_obs_dim]  # [batch, 12]
+        B = obs.shape[0]
+        A = self._num_agents
 
-        # Build edge index: each node connects to K neighbors
-        # Since we're processing a batch of independent nodes (not a
-        # multi-node graph), we create self-loops and neighbor edges
-        # based on the neighbor relative positions being non-zero.
-        #
-        # For batched PPO: each "node" in the batch is an independent
-        # drone. We connect each drone to itself (self-loop handled by
-        # GATv2's add_self_loops=True). For neighbor edges, we need to
-        # know which batch indices are neighbors.
-        #
-        # Key insight: during training, the batch contains all drones
-        # from all swarm groups. Drones in the same group are at
-        # consecutive indices. We can reconstruct edges from this.
-
-        # Extract neighbor relative positions
-        neighbor_data = obs[:, local_obs_dim:]  # [B, K*3]
-
-        # Build edges: connect node i to its K nearest neighbors
-        # Neighbors are at positions i+offset within each swarm group
-        # But we don't know group boundaries here. Instead, use the
-        # neighbor data to identify which nodes are connected.
-        #
-        # Simple approach: create a fully-connected graph within each
-        # processing batch. GATv2 attention will learn to weight edges.
-        # This works because self-loops + attention = local processing.
-
-        # Self-loops only (GATv2 adds them via add_self_loops=True).
-        # Neighbor information flows through the concatenated 18D obs —
-        # no explicit inter-node edges needed. This ensures identical
-        # behavior between training (large batch) and play (small batch).
-        edge_index = torch.zeros(2, 0, dtype=torch.long, device=obs.device)
+        # Build within-group edges when batch structure is intact
+        # (collection phase: full env batch with consecutive group indices)
+        if A > 1 and B >= A and B % A == 0:
+            G = B // A
+            # Rebuild edge_index only when group count changes
+            if G != self._cached_num_groups:
+                offsets = torch.arange(G, device=obs.device) * A  # [G]
+                # Broadcast template [2, E] across G groups with offsets
+                # template.unsqueeze(2): [2, E, 1] + offsets [1, 1, G] → [2, E, G]
+                self._cached_edge_index = (
+                    self._group_edge_template.unsqueeze(2)
+                    + offsets.reshape(1, 1, G)
+                ).reshape(2, -1)
+                self._cached_num_groups = G
+            edge_index = self._cached_edge_index
+        else:
+            # Mini-batch during PPO update or single-agent: no group structure
+            edge_index = self._empty_edge_index
 
         return node_features, edge_index
 

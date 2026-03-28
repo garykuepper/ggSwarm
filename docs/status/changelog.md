@@ -896,3 +896,11 @@ matching) were irrelevant — the policy was receiving garbage inputs during eva
   between too-close pairs and injects roll/pitch moments to tilt drones apart.
   Strength scales with barrier violation severity. Added `cbf_lateral_scale` (0.5)
   config param. Reverted separation penalty to simple threshold (scale 10).
+- [2026-03-28] **L2 fix: proper GNN message passing.** The GNN policy had empty
+  edges (`torch.zeros(2, 0)`) — GATv2 was functionally an MLP with self-loops only.
+  No inter-drone message passing was occurring despite having a graph architecture.
+  **Fix:** Build fully-connected within-group edges (A=8 → 56 edges/group) when
+  batch is group-aligned (collection phase). Falls back to empty edges during PPO
+  mini-batch update (shuffled samples destroy group structure). Edge template
+  pre-computed in `__init__`, cached per group count. This enables 2-hop GATv2
+  spatial awareness per the proposal's L2 layer.
