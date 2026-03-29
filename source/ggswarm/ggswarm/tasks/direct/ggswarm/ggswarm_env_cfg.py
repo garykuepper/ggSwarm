@@ -122,7 +122,7 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
 
     # MINCO trajectory smoothing (L3 layer — replaces EMA)
     minco_enabled = True              # minimum-jerk trajectory filter
-    minco_horizon = 0.10              # planning horizon T (seconds)
+    minco_horizon = 0.04              # planning horizon T (seconds)
     minco_max_vel = 5.0               # velocity clamp (action-units/s)
     minco_max_acc = 25.0              # acceleration clamp (action-units/s²)
 
