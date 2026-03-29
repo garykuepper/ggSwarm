@@ -106,6 +106,11 @@ class GgswarmEnv(DirectRLEnv):
         if A > 1:
             self._collision_count = torch.zeros(G, device=device)  # [G]
 
+        # SwarmRaft: agent alive mask and dropout scheduling
+        self._agent_alive = torch.ones(N, dtype=torch.bool, device=device)  # [N]
+        if A > 1:
+            self._dropout_step = torch.zeros(G, dtype=torch.long, device=device)  # [G]
+
         # Body ID, mass, weight
         self._body_id = self._robot.find_bodies("body")[0]
         self._robot_mass = self._robot.root_physx_view.get_masses()[0].sum()
@@ -163,6 +168,20 @@ class GgswarmEnv(DirectRLEnv):
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         self._actions = actions.clamp(-1.0, 1.0)
 
+        # SwarmRaft: trigger agent dropout at scheduled step
+        if self.cfg.dropout_enabled and self.cfg.num_agents > 1:
+            A = self.cfg.num_agents
+            G = self._num_groups
+            ep_len_grouped = self.episode_length_buf.reshape(G, A)[:, 0]  # shape: [G]
+            should_trigger = (ep_len_grouped == self._dropout_step) & (self._dropout_step > 0)
+            if should_trigger.any():
+                for g in should_trigger.nonzero(as_tuple=True)[0]:
+                    group_start = g * A
+                    alive_in_group = self._agent_alive[group_start:group_start + A].nonzero(as_tuple=True)[0]
+                    if len(alive_in_group) > 2:  # keep at least 2 alive
+                        victim = alive_in_group[torch.randint(len(alive_in_group), (1,))]
+                        self._agent_alive[group_start + victim] = False
+
         # MINCO minimum-jerk smoothing (L3 layer — replaces EMA)
         if self.cfg.minco_enabled:
             from ggswarm.minco import apply_minco  # noqa: PLC0415
@@ -197,11 +216,16 @@ class GgswarmEnv(DirectRLEnv):
                 self.cfg.num_agents,
                 self.cfg.cbf_d_safe,
                 self.cfg.cbf_gamma,
+                self._agent_alive if self.cfg.dropout_enabled else None,
             )
             # Sync MINCO state to post-CBF action so corrections are sticky —
             # without this, MINCO overwrites CBF corrections every step.
             if self.cfg.minco_enabled:
                 self._minco_pos.copy_(act)
+
+        # Zero out dead drone actions (no thrust/moment for dead drones)
+        if self.cfg.dropout_enabled:
+            act[~self._agent_alive] = 0.0
 
         self._thrust[:, 0, 2] = (
             self.cfg.thrust_to_weight * self._robot_weight * (act[:, 0] + 1.0) / 2.0
@@ -278,6 +302,11 @@ class GgswarmEnv(DirectRLEnv):
         # Reshape to [num_groups, num_agents, 3]
         pos_grouped = pos_local.reshape(G, A, 3)
 
+        # Pre-compute dead drone mask for dropout exclusion
+        dead_g = None
+        if self.cfg.dropout_enabled:
+            dead_g = ~self._agent_alive.reshape(G, A)  # shape: [G, A]
+
         rel_parts = []
         all_nearest_idx = []  # collect KNN indices for edge construction
         for i in range(A):
@@ -286,6 +315,9 @@ class GgswarmEnv(DirectRLEnv):
             diff = pos_grouped - pos_grouped[:, i:i+1, :]  # [G, A, 3]
             dists = torch.linalg.norm(diff, dim=2)  # [G, A]
             dists[:, i] = float("inf")  # exclude self
+            # Exclude dead drones from neighbor selection
+            if dead_g is not None:
+                dists[dead_g] = float("inf")
 
             # Find K nearest indices
             _, nearest_idx = torch.topk(dists, K, dim=1, largest=False)  # [G, K]
@@ -442,7 +474,14 @@ class GgswarmEnv(DirectRLEnv):
             return self._zero_reward_N  # shape: [N]
 
         # --- Centroid-to-goal: reward group centroid for reaching target ---
-        centroid = pos_grouped.mean(dim=1, keepdim=True)  # [G, 1, 3]
+        # Compute centroid from alive drones only when dropout is active
+        if self.cfg.dropout_enabled:
+            alive_g = self._agent_alive.reshape(G, A)  # shape: [G, A]
+            alive_count = alive_g.sum(dim=1, keepdim=True).clamp(min=1).unsqueeze(2)  # [G, 1, 1]
+            alive_pos = pos_grouped * alive_g.unsqueeze(2)  # zero dead positions [G, A, 3]
+            centroid = alive_pos.sum(dim=1, keepdim=True) / alive_count  # [G, 1, 3]
+        else:
+            centroid = pos_grouped.mean(dim=1, keepdim=True)  # [G, 1, 3]
         centroid_squeezed = centroid.squeeze(1)  # [G, 3]
         self._cloud_centroid_dist[:] = torch.linalg.norm(
             centroid_squeezed - self._group_goal_local, dim=1
@@ -461,10 +500,16 @@ class GgswarmEnv(DirectRLEnv):
         # Spacing: penalty for nearest neighbor being too close or too far
         self._cloud_cohesion_reward.zero_()  # [G, A]
         self._cloud_spacing_penalty.zero_()  # [G, A]
+        dead_g = None
+        if self.cfg.dropout_enabled:
+            dead_g = ~self._agent_alive.reshape(G, A)  # shape: [G, A]
         for i in range(A):
             diff = pos_grouped - pos_grouped[:, i:i+1, :]  # [G, A, 3]
             dists = torch.linalg.norm(diff, dim=2)  # [G, A]
             dists[:, i] = float("inf")
+            # Exclude dead drones from neighbor distances
+            if dead_g is not None:
+                dists[dead_g] = float("inf")
 
             # KNN cohesion: mean distance to K nearest neighbors
             knn_dists, _ = torch.topk(dists, K, dim=1, largest=False)  # [G, K]
@@ -486,6 +531,9 @@ class GgswarmEnv(DirectRLEnv):
         total = alpha * (
             centroid_reward_broadcast + self._cloud_cohesion_reward + self._cloud_spacing_penalty
         )  # [G, A]
+        # Zero reward for dead drones
+        if dead_g is not None:
+            total[dead_g] = 0.0
 
         # Log metrics
         if "log" not in self.extras:
@@ -510,9 +558,10 @@ class GgswarmEnv(DirectRLEnv):
             pos_local = self._robot.data.root_pos_w - self._terrain.env_origins  # shape: [N, 3]
             pos_g = pos_local.reshape(G, A, 3)  # shape: [G, A, 3]
 
-            # Check all pairs for collision
+            # Check all pairs for collision (alive pairs only)
             self._collision_count.zero_()  # shape: [G]
             collided_group = self._collision_count > 0  # init false, shape: [G]
+            alive_g = self._agent_alive.reshape(G, A) if self.cfg.dropout_enabled else None
             r = self.cfg.collision_radius
             for i in range(A):
                 for j in range(i + 1, A):
@@ -520,6 +569,9 @@ class GgswarmEnv(DirectRLEnv):
                         pos_g[:, i] - pos_g[:, j], dim=1
                     )  # shape: [G]
                     pair_collided = dist < r  # shape: [G]
+                    # Skip collisions involving dead drones
+                    if alive_g is not None:
+                        pair_collided = pair_collided & alive_g[:, i] & alive_g[:, j]
                     self._collision_count += pair_collided.float()
                     collided_group = collided_group | pair_collided
 
@@ -531,6 +583,13 @@ class GgswarmEnv(DirectRLEnv):
             if "log" not in self.extras:
                 self.extras["log"] = {}
             self.extras["log"]["Metrics/collision_pairs_per_step"] = self._collision_count.sum().item()
+
+        # Log alive agent count for SwarmRaft monitoring
+        if self.cfg.dropout_enabled and self.cfg.num_agents > 1:
+            if "log" not in self.extras:
+                self.extras["log"] = {}
+            alive_per_group = self._agent_alive.reshape(self._num_groups, self.cfg.num_agents).sum(dim=1).float()
+            self.extras["log"]["Metrics/alive_agents_per_group"] = alive_per_group.mean().item()
 
         # Collective resets: if any drone in a swarm group dies, all die
         if self.cfg.num_agents > 1 and self.cfg.collective_resets:
@@ -597,6 +656,8 @@ class GgswarmEnv(DirectRLEnv):
         self._minco_pos[env_ids] = 0.0
         self._minco_vel[env_ids] = 0.0
         self._minco_acc[env_ids] = 0.0
+        # SwarmRaft: revive all drones on reset
+        self._agent_alive[env_ids] = True
 
         # Sample new goal positions
         if self.cfg.num_agents > 1 and self._formation_offsets is not None:
@@ -606,6 +667,13 @@ class GgswarmEnv(DirectRLEnv):
             # Find unique groups being reset
             group_ids = torch.unique(env_ids_t // A)
             n_groups = len(group_ids)
+
+            # SwarmRaft: sample random dropout step for each group
+            if self.cfg.dropout_enabled:
+                self._dropout_step[group_ids] = torch.randint(
+                    self.cfg.dropout_step_min, self.cfg.dropout_step_max + 1,
+                    (n_groups,), device=self.device,
+                )
 
             # Sample or use fixed centroid per group
             if self.cfg.formation_centroid is not None:

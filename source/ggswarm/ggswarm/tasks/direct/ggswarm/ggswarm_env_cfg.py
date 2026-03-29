@@ -134,3 +134,9 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     # Virtual collision detection
     collision_radius = 0.10           # body collision radius (m) — terminates episode
     collision_enabled = True          # enable virtual collision termination
+
+    # SwarmRaft agent dropout (L3 consensus)
+    dropout_enabled = True            # enable random agent dropout during training
+    dropout_step_min = 100            # earliest step to trigger dropout
+    dropout_step_max = 250            # latest step to trigger dropout
+    dropout_count = 1                 # agents to kill per group

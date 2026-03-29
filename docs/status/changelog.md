@@ -947,3 +947,11 @@ matching) were irrelevant — the policy was receiving garbage inputs during eva
   its K=2 nearest neighbors within range, forming a connected mesh that scales
   to any swarm size. Merged cohesion and spacing into a single loop (no redundant
   distance computation). Bumped `cloud_cohesion_sigma` from 0.5 to 0.8.
+- [2026-03-29] **SwarmRaft agent dropout (L3 consensus).** Implemented simulated
+  agent failure: `_agent_alive [N]` mask tracks which drones are alive. At a random
+  step (configurable range), one drone per group is killed. Dead drones are excluded
+  from KNN neighbor selection, CBF pair checks, cloud reward (centroid computed
+  from alive only), and collision detection. Observations stay fixed size (K=2
+  nearest *alive* neighbors). Policy learns to handle topology changes implicitly
+  via GNN. Targets O3: re-sync within 2.0s of failure. `dropout_enabled=False`
+  by default for safe rollout.

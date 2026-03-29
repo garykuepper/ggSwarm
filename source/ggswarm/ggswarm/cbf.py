@@ -26,6 +26,7 @@ def apply_cbf(
     num_agents: int,
     d_safe: float,
     gamma: float,
+    alive_mask: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Apply CBF safety projection to actions within each swarm group.
 
@@ -47,6 +48,7 @@ def apply_cbf(
         num_agents: agents per swarm group
         d_safe: minimum safe distance (m)
         gamma: barrier decay rate
+        alive_mask: [N] bool — if provided, skip pairs involving dead drones
 
     Returns:
         [N, 4] safe actions
@@ -66,8 +68,17 @@ def apply_cbf(
 
     d_safe_sq = d_safe * d_safe
 
+    # Pre-compute alive mask per group if provided
+    alive_g = alive_mask.reshape(G, A) if alive_mask is not None else None  # shape: [G, A]
+
     for i in range(A):
         for j in range(i + 1, A):
+            # Skip pairs involving dead drones
+            if alive_g is not None:
+                both_alive = alive_g[:, i] & alive_g[:, j]  # shape: [G]
+                if not both_alive.any():
+                    continue
+
             # Pairwise barrier computation
             diff = pos_g[:, i] - pos_g[:, j]  # shape: [G, 3]
             dist_sq = (diff * diff).sum(dim=1)  # shape: [G]
@@ -79,6 +90,8 @@ def apply_cbf(
             # Barrier constraint: h_dot + gamma * h >= 0
             constraint = h_dot + gamma * h  # shape: [G]
             unsafe = constraint < 0  # shape: [G] bool
+            if alive_g is not None:
+                unsafe = unsafe & both_alive  # shape: [G]
 
             if not unsafe.any():
                 continue
