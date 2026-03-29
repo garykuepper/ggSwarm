@@ -93,7 +93,21 @@ def generate_trajectory_plots(
                 linewidth=1.1, label=agent_names[a])
         ax.plot(x[0], y[0], "x", color=DRONE_COLORS[a % len(DRONE_COLORS)],
                 markersize=10, markeredgewidth=2.0)
-    if goal is not None:
+    # In cloud mode all goals are identical (group centroid) — show final
+    # drone positions instead, which are more informative.
+    _goals_identical = (
+        goal is not None
+        and A > 1
+        and (goal[-1, :, :2] - goal[-1, 0:1, :2]).abs().max().item() < 0.01
+    )
+    if _goals_identical:
+        for a in range(A):
+            fx = pos[-1, a, 0].item()
+            fy = pos[-1, a, 1].item()
+            ax.plot(fx, fy, "o", color=DRONE_COLORS[a % len(DRONE_COLORS)],
+                    markersize=10, markeredgewidth=1.5, markerfacecolor="none",
+                    label=f"{agent_names[a]} final pos")
+    elif goal is not None:
         for a in range(A):
             gx = goal[-1, a, 0].item()
             gy = goal[-1, a, 1].item()
@@ -105,7 +119,7 @@ def generate_trajectory_plots(
                 label="centroid")
     ax.set_xlabel("X (m)")
     ax.set_ylabel("Y (m)")
-    ax.set_title("XY Trace (x = spawn, * = goal, D = centroid)")
+    ax.set_title("XY Trace (x = spawn, * = goal / o = final, D = centroid)")
     ax.legend(fontsize=7)
     ax.set_aspect("equal", adjustable="datalim")
 

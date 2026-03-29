@@ -123,5 +123,4 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     # CBF safety shield (Phase 3)
     cbf_enabled = True                # collision avoidance barrier
     cbf_d_safe = 0.30                 # min safe distance (m)
-    cbf_gamma = 1.0                   # barrier decay rate
-    cbf_lateral_scale = 0.15          # lateral moment injection strength
+    cbf_gamma = 2.0                   # barrier decay rate (QP enforcement strength)

@@ -173,7 +173,6 @@ class GgswarmEnv(DirectRLEnv):
                 self.cfg.num_agents,
                 self.cfg.cbf_d_safe,
                 self.cfg.cbf_gamma,
-                self.cfg.cbf_lateral_scale,
             )
 
         self._thrust[:, 0, 2] = (

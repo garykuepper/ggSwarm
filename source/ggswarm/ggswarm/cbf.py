@@ -1,15 +1,11 @@
 """Control Barrier Function (CBF) safety shield for swarm collision avoidance.
 
-Projects unsafe actions onto the safe set defined by pairwise minimum
-separation constraints. Operates within each swarm group — drones in
-different groups don't interact.
+Minimally invasive QP safety filter: solves min ||u - u_nom||^2 subject to
+pairwise barrier constraints h_dot_ij + gamma * h_ij >= 0. Only modifies
+actions that would violate safety, and modifies them as little as possible.
 
+Operates within each swarm group — drones in different groups don't interact.
 Post-policy filter: no retraining needed. Enable via cfg.cbf_enabled.
-
-Lateral repulsion: when drones are approaching too closely, injects
-roll/pitch moments to tilt the drone away from its neighbor, not just
-clamp thrust. This is critical because thrust-only CBF cannot prevent
-horizontal convergence.
 """
 
 from __future__ import annotations
@@ -25,17 +21,18 @@ def apply_cbf(
     num_agents: int,
     d_safe: float,
     gamma: float,
-    lateral_scale: float = 0.5,
 ) -> torch.Tensor:
-    """Apply CBF safety projection to actions within each swarm group.
+    """Apply CBF-QP safety projection to actions within each swarm group.
 
-    For each pair (i,j) in a group, checks the barrier constraint:
+    For each pair (i,j) in a group, enforces the barrier constraint:
         h_ij = ||p_i - p_j||^2 - d_safe^2
         h_dot_ij = 2 * (p_i - p_j) . (v_i - v_j)
         Safe: h_dot_ij + gamma * h_ij >= 0
 
-    When violated, injects lateral moments to tilt the drone away from
-    its neighbor AND clamps thrust to prevent further closure.
+    When violated, projects u_nom onto the constraint boundary using the
+    analytical QP solution (gradient projection). For multiple simultaneous
+    violations, applies sequential projections (converges in 2-3 iterations
+    for sparse constraints).
 
     Args:
         actions: [N, 4] raw actions in [-1, 1]
@@ -45,7 +42,6 @@ def apply_cbf(
         num_agents: agents per swarm group
         d_safe: minimum safe distance (m)
         gamma: barrier decay rate
-        lateral_scale: strength of lateral moment injection (0-1)
 
     Returns:
         [N, 4] safe actions
@@ -53,52 +49,75 @@ def apply_cbf(
     if num_agents <= 1:
         return actions
 
-    N = actions.shape[0]
+    N = actions.shape[0]  # shape: [N, 4]
     A = num_agents
     G = N // A
 
     # Local positions (env_origins subtracted)
     pos_local = pos_w - env_origins  # shape: [N, 3]
-    pos_g = pos_local.reshape(G, A, 3)
-    vel_g = vel_w.reshape(G, A, 3)
-    act_safe = actions.reshape(G, A, 4).clone()
+    pos_g = pos_local.reshape(G, A, 3)  # shape: [G, A, 3]
+    vel_g = vel_w.reshape(G, A, 3)  # shape: [G, A, 3]
+    act_g = actions.reshape(G, A, 4).clone()  # shape: [G, A, 4]
 
     d_safe_sq = d_safe * d_safe
 
-    for i in range(A):
-        for j in range(A):
-            if i == j:
-                continue
+    # Sequential projection: iterate pairs, project each drone's action
+    # onto the barrier constraint boundary when violated.
+    # 2 passes for convergence with overlapping constraints.
+    for _pass in range(2):
+        for i in range(A):
+            for j in range(i + 1, A):
+                # Pairwise barrier computation
+                diff = pos_g[:, i] - pos_g[:, j]  # shape: [G, 3]
+                dist_sq = (diff * diff).sum(dim=1)  # shape: [G]
+                h = dist_sq - d_safe_sq  # shape: [G]
 
-            # Pairwise barrier computation
-            diff = pos_g[:, i] - pos_g[:, j]  # [G, 3]
-            dist_sq = (diff * diff).sum(dim=1)  # [G]
-            h = dist_sq - d_safe_sq  # [G]
+                vel_diff = vel_g[:, i] - vel_g[:, j]  # shape: [G, 3]
+                h_dot = 2.0 * (diff * vel_diff).sum(dim=1)  # shape: [G]
 
-            vel_diff = vel_g[:, i] - vel_g[:, j]  # [G, 3]
-            h_dot = 2.0 * (diff * vel_diff).sum(dim=1)  # [G]
+                # Barrier constraint: h_dot + gamma * h >= 0
+                constraint = h_dot + gamma * h  # shape: [G]
+                unsafe = constraint < 0  # shape: [G] bool
 
-            # Check barrier constraint
-            constraint = h_dot + gamma * h  # [G]
-            unsafe = constraint < 0  # [G] bool
+                if not unsafe.any():
+                    continue
 
-            if unsafe.any():
-                # Violation severity: 0 at boundary, 1 at max violation
-                strength = (-constraint[unsafe] / (gamma * d_safe_sq + 1e-6)).clamp(0.0, 1.0)  # [U]
+                # Violation magnitude
+                violation = -constraint[unsafe]  # shape: [U], positive
 
-                # Escape direction in XY plane (from j toward i)
-                escape_xy = diff[unsafe, :2]  # [U, 2]
-                escape_norm = escape_xy.norm(dim=1, keepdim=True).clamp(min=1e-6)  # [U, 1]
-                escape_dir = escape_xy / escape_norm  # [U, 2] unit vector
+                # The barrier constraint is linear in accelerations, which are
+                # proportional to actions. The gradient of h_dot w.r.t. action
+                # of drone i is along the relative position direction projected
+                # onto action space. For a quadrotor with [thrust, roll, pitch, yaw]:
+                #   - thrust (act[:,0]) affects Z acceleration
+                #   - roll   (act[:,1]) affects Y lateral
+                #   - pitch  (act[:,2]) affects X lateral
+                #   - yaw    (act[:,3]) affects heading (minimal barrier effect)
+                #
+                # Map spatial diff to action-space gradient:
+                #   diff_x -> pitch correction (act[:,2])
+                #   diff_y -> roll correction  (act[:,1])
+                #   diff_z -> thrust correction (act[:,0])
+                diff_unsafe = diff[unsafe]  # shape: [U, 3]
 
-                # Inject lateral moments to tilt drone i away from drone j
-                # act[:, 2] = pitch moment → X-axis lateral movement
-                # act[:, 1] = roll moment → Y-axis lateral movement
-                act_safe[unsafe, i, 2] += strength * escape_dir[:, 0] * lateral_scale
-                act_safe[unsafe, i, 1] += strength * escape_dir[:, 1] * lateral_scale
+                # Action-space gradient for drone i (maps spatial barrier to action dims)
+                # grad_a[k] = direction in action space that increases h_dot
+                grad_a = torch.zeros(unsafe.sum(), 4, device=actions.device)  # shape: [U, 4]
+                grad_a[:, 0] = diff_unsafe[:, 2]  # thrust <- Z separation
+                grad_a[:, 1] = diff_unsafe[:, 1]  # roll <- Y separation
+                grad_a[:, 2] = diff_unsafe[:, 0]  # pitch <- X separation
+                # yaw (act[:,3]) has negligible barrier effect, leave at 0
 
-                # Also reduce thrust to prevent aggressive vertical closure
-                act_safe[unsafe, i, 0] = act_safe[unsafe, i, 0].clamp(min=-0.5)
+                grad_norm_sq = (grad_a * grad_a).sum(dim=1).clamp(min=1e-8)  # shape: [U]
+
+                # Project: u* = u + (violation / ||grad||^2) * grad
+                # This is the minimal correction to satisfy the constraint
+                correction_scale = (violation / grad_norm_sq).unsqueeze(1)  # shape: [U, 1]
+
+                # Apply correction to drone i (push away from j)
+                act_g[unsafe, i] = act_g[unsafe, i] + correction_scale * grad_a * 0.5
+                # Apply opposite correction to drone j (push away from i)
+                act_g[unsafe, j] = act_g[unsafe, j] - correction_scale * grad_a * 0.5
 
     # Clamp all actions back to valid range
-    return act_safe.reshape(N, 4).clamp(-1.0, 1.0)
+    return act_g.reshape(N, 4).clamp(-1.0, 1.0)

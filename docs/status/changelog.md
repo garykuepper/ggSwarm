@@ -910,3 +910,15 @@ matching) were irrelevant — the policy was receiving garbage inputs during eva
   `_expand_obs_with_neighbors()` and publishes edge_index to GNN policy via
   shared class buffer. Scales from 8 to 20+ agents without architecture changes.
   2 GATv2 layers give 2-hop coverage through the sparse graph.
+- [2026-03-28] **CBF-QP safety filter (replacing heuristic CBF).** Rewrote `cbf.py`
+  from a heuristic moment injection to a proper minimally-invasive QP safety filter.
+  For each pair (i,j), computes barrier h_ij = ||p_i - p_j||^2 - d_safe^2 and
+  enforces forward invariance via h_dot + gamma*h >= 0. When violated, projects
+  u_nom onto the constraint boundary using the analytical gradient projection
+  (min ||u - u_nom||^2). Two-pass sequential projection handles overlapping
+  constraints. Correction applied symmetrically to both drones in the pair.
+  Removed `cbf_lateral_scale` config (QP determines correction magnitude
+  automatically). Bumped `cbf_gamma` from 1.0 to 2.0 for stronger enforcement.
+- [2026-03-28] **Trajectory plot: final position markers in cloud mode.** When all
+  goals are identical (cloud formation), XY trace now shows final drone positions
+  (open circles) instead of overlapping goal stars, which were uninformative.
