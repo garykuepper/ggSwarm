@@ -14,7 +14,7 @@ from isaaclab_assets import CRAZYFLIE_CFG  # isort: skip
 
 
 def compute_spawn_offsets(
-    num_agents: int, radius: float, z: float = 0.5
+    num_agents: int, radius: float, z: float = 0.7
 ) -> list[tuple[float, float, float]]:
     """Compute spawn positions arranged in a circle."""
     return [
@@ -87,7 +87,7 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     moment_scale = 0.01
 
     # spawn offsets — computed dynamically as circle of radius 0.3m
-    spawn_radius = 0.3  # meters, distance from env center to each drone
+    spawn_radius = 0.5  # meters, distance from env center to each drone
 
     # reward scales — hover (quadcopter reference)
     lin_vel_reward_scale = -0.05

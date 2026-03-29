@@ -198,6 +198,10 @@ class GgswarmEnv(DirectRLEnv):
                 self.cfg.cbf_d_safe,
                 self.cfg.cbf_gamma,
             )
+            # Sync MINCO state to post-CBF action so corrections are sticky —
+            # without this, MINCO overwrites CBF corrections every step.
+            if self.cfg.minco_enabled:
+                self._minco_pos.copy_(act)
 
         self._thrust[:, 0, 2] = (
             self.cfg.thrust_to_weight * self._robot_weight * (act[:, 0] + 1.0) / 2.0
