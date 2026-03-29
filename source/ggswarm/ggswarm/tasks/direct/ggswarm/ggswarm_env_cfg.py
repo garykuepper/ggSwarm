@@ -108,7 +108,7 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
 
     # cloud formation (Phase 3)
     cloud_cohesion_scale = 3.0        # reward for staying near group centroid
-    cloud_cohesion_sigma = 0.5        # tanh sharpness for cohesion
+    cloud_cohesion_sigma = 0.8        # tanh sharpness for KNN cohesion
     cloud_min_spacing = 0.50           # min distance to nearest neighbor (separation)
     cloud_separation_penalty = 10.0   # penalty for being too close (threshold-based)
     cloud_max_neighbor_dist = 1.0     # max distance to nearest neighbor before penalty

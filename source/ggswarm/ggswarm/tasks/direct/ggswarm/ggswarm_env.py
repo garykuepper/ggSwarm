@@ -85,6 +85,7 @@ class GgswarmEnv(DirectRLEnv):
             self._group_goal_local = torch.zeros(G, 3, device=device)  # [G, 3]
             self._cloud_centroid_dist = torch.zeros(G, device=device)  # [G]
             self._cloud_spacing_penalty = torch.zeros(G, A, device=device)  # [G, A]
+            self._cloud_cohesion_reward = torch.zeros(G, A, device=device)  # [G, A]
 
         # KNN edge buffer for GNN message passing (pre-allocated)
         K = min(self.cfg.num_neighbors, A - 1) if A > 1 else 0
@@ -415,7 +416,7 @@ class GgswarmEnv(DirectRLEnv):
 
         Three components:
         - Centroid-to-goal: shared reward for group centroid reaching target
-        - Cohesion: reward for staying near group centroid
+        - Cohesion: reward for staying near K-nearest neighbors (not centroid)
         - Spacing: penalty for nearest neighbor being too close or too far
 
         Returns:
@@ -424,6 +425,7 @@ class GgswarmEnv(DirectRLEnv):
         N = self.num_envs
         A = self.cfg.num_agents
         G = self._num_groups
+        K = min(self.cfg.num_neighbors, A - 1)
         pos_local = self._robot.data.root_pos_w - self._terrain.env_origins  # [N, 3]
         pos_grouped = pos_local.reshape(G, A, 3)
 
@@ -450,36 +452,42 @@ class GgswarmEnv(DirectRLEnv):
         # Broadcast to all drones in group: [G] -> [G, A]
         centroid_reward_broadcast = centroid_reward.unsqueeze(1).expand(G, A)
 
-        # --- Cohesion: reward for staying near group centroid ---
-        dist_to_centroid = torch.linalg.norm(pos_grouped - centroid, dim=2)  # [G, A]
-        cohesion_mapped = 1 - torch.tanh(dist_to_centroid / self.cfg.cloud_cohesion_sigma)
-        cohesion_reward = self.cfg.cloud_cohesion_scale * cohesion_mapped * self.step_dt  # [G, A]
-
-        # --- Spacing: penalty if nearest neighbor too far OR too close ---
+        # --- KNN cohesion + spacing (merged loop) ---
+        # Cohesion: reward for mean KNN distance being small (stay near neighbors)
+        # Spacing: penalty for nearest neighbor being too close or too far
+        self._cloud_cohesion_reward.zero_()  # [G, A]
         self._cloud_spacing_penalty.zero_()  # [G, A]
         for i in range(A):
             diff = pos_grouped - pos_grouped[:, i:i+1, :]  # [G, A, 3]
             dists = torch.linalg.norm(diff, dim=2)  # [G, A]
             dists[:, i] = float("inf")
-            nearest_dist = dists.min(dim=1).values  # [G]
 
-            # Too far: penalty when nearest neighbor > max_dist
+            # KNN cohesion: mean distance to K nearest neighbors
+            knn_dists, _ = torch.topk(dists, K, dim=1, largest=False)  # [G, K]
+            mean_knn = knn_dists.mean(dim=1)  # [G]
+            cohesion_mapped = 1 - torch.tanh(mean_knn / self.cfg.cloud_cohesion_sigma)
+            self._cloud_cohesion_reward[:, i] = (
+                self.cfg.cloud_cohesion_scale * cohesion_mapped * self.step_dt
+            )
+
+            # Spacing: nearest neighbor penalties
+            nearest_dist = knn_dists[:, 0]  # [G] — closest neighbor
             too_far = torch.clamp(nearest_dist - self.cfg.cloud_max_neighbor_dist, min=0.0)
-            # Too close: penalty when nearest neighbor < min_spacing
             too_close = torch.clamp(self.cfg.cloud_min_spacing - nearest_dist, min=0.0)
-
             self._cloud_spacing_penalty[:, i] = -(
                 self.cfg.cloud_spacing_penalty * too_far
                 + self.cfg.cloud_separation_penalty * too_close
             ) * self.step_dt
 
-        total = alpha * (centroid_reward_broadcast + cohesion_reward + self._cloud_spacing_penalty)  # [G, A]
+        total = alpha * (
+            centroid_reward_broadcast + self._cloud_cohesion_reward + self._cloud_spacing_penalty
+        )  # [G, A]
 
         # Log metrics
         if "log" not in self.extras:
             self.extras["log"] = {}
         self.extras["log"]["Metrics/centroid_to_goal_dist"] = self._cloud_centroid_dist.mean().item()
-        self.extras["log"]["Metrics/mean_dist_to_centroid"] = dist_to_centroid.mean().item()
+        self.extras["log"]["Metrics/mean_knn_dist"] = mean_knn.mean().item()
         self.extras["log"]["Metrics/formation_alpha"] = alpha
 
         return total.reshape(N)

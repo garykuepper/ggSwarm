@@ -940,3 +940,10 @@ matching) were irrelevant — the policy was receiving garbage inputs during eva
   reset (hard training signal). Collision count logged to TB as
   `Metrics/collision_pairs_per_step`. Trajectory plot shows collision radius as
   red line on KNN distance subplot.
+- [2026-03-29] **KNN-based cohesion (replacing centroid cohesion).** Switched cloud
+  formation cohesion from distance-to-group-centroid to mean K-nearest-neighbor
+  distance. Centroid cohesion doesn't scale — outer drones in a 20+ swarm can't
+  be near the centroid. KNN cohesion is local: each drone is rewarded for keeping
+  its K=2 nearest neighbors within range, forming a connected mesh that scales
+  to any swarm size. Merged cohesion and spacing into a single loop (no redundant
+  distance computation). Bumped `cloud_cohesion_sigma` from 0.5 to 0.8.
