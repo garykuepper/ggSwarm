@@ -69,7 +69,7 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
 
     # viewer camera
     viewer: ViewerCfg = ViewerCfg(
-        eye=(2.0, 2.0, 2.0),
+        eye=(1.5, 1.5, 1.5),
         lookat=(0.0, 0.0, 1.0),
         resolution=(1920, 1080),
     )
@@ -110,7 +110,7 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     cloud_cohesion_scale = 3.0        # reward for staying near group centroid
     cloud_cohesion_sigma = 0.8        # tanh sharpness for KNN cohesion
     cloud_min_spacing = 0.50           # min distance to nearest neighbor (separation)
-    cloud_separation_penalty = 10.0   # penalty for being too close (threshold-based)
+    cloud_separation_penalty = 20.0   # penalty for being too close (threshold-based)
     cloud_max_neighbor_dist = 1.0     # max distance to nearest neighbor before penalty
     cloud_spacing_penalty = 2.0       # penalty scale for straying too far
     cloud_centroid_goal_scale = 15.0  # centroid-to-goal reward (replaces per-drone in cloud)
@@ -128,7 +128,7 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
 
     # CBF safety shield (Phase 3)
     cbf_enabled = True                # collision avoidance barrier
-    cbf_d_safe = 0.30                 # min safe distance (m)
+    cbf_d_safe = 0.30                 # min safe distance (m) — safety floor
     cbf_gamma = 2.0                   # barrier decay rate (QP enforcement strength)
 
     # Virtual collision detection
