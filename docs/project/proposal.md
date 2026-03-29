@@ -186,20 +186,13 @@ This project employs a **Centralized Training, Decentralized Execution (CTDE)**
 reinforcement learning workflow within the Graph Neural Swarm Control (GNSC) 5-layer
 architecture:
 
-1. **(L1) Local Sensing:** ~~Simulated perception data (LiDAR/IMU) is collected
-   locally for each agent in the Isaac Lab environment.~~ Each agent observes its
-   own body-frame state and K-nearest neighbor relative positions.
-   `[Revised 2026-03-28]`
-2. **(L2) GNN Message Passing:** Information is aggregated within a ~~K-hop
-   neighborhood~~ fully-connected within-group graph using GATv2 to establish
-   spatial awareness. Sparse K-nearest edges will be used when scaling to 20+
-   agents. `[Revised 2026-03-28]`
-3. **(L3) Distributed Consensus:** Agents align on global formation objectives
-   through local peer interactions.
-4. **(L4) Runtime Safety Shields:** Control Barrier Functions (CBFs) are applied to
-   enforce hard safety constraints, ensuring zero inter-agent collisions.
-5. **(L5) Mission Execution:** The swarm executes high-level commands, such as
-   "Move to Goal" or "Change Formation Shape."
+| Layer | Name | Description |
+| :--- | :--- | :--- |
+| L1 | Local Sensing | ~~Simulated perception data (LiDAR/IMU) is collected locally for each agent in the Isaac Lab environment.~~ Each agent observes its own body-frame state and K-nearest neighbor relative positions. `[Revised 2026-03-28]` |
+| L2 | GNN Message Passing | Information is aggregated within a ~~K-hop neighborhood~~ fully-connected within-group graph using GATv2 to establish spatial awareness. Sparse K-nearest edges will be used when scaling to 20+ agents. `[Revised 2026-03-28]` |
+| L3 | Distributed Consensus | Agents align on global formation objectives through local peer interactions. |
+| L4 | Runtime Safety Shields | Control Barrier Functions (CBFs) are applied to enforce hard safety constraints, ensuring zero inter-agent collisions. |
+| L5 | Mission Execution | The swarm executes high-level commands, such as "Move to Goal" or "Change Formation Shape." |
 
 > **`[Revised 2026-03-28]` L1 Local Sensing:** The implementation uses an abstract
 > 12D observation vector (body-frame velocities, projected gravity, goal direction)
@@ -249,21 +242,21 @@ CBF safety shields (L4) enforce hard collision constraints separately from the r
 
 ## 9. Timeline/Resources
 
-| Weeks | Phase | Activity |
-| :---: | :---: | :--- |
-| 5–6 | Foundation | Install NVIDIA Isaac Lab; configure simulated multirotor assets; finalize graph connectivity logic. |
-| 7–8 | Brain Development | Train the GATv2 policy using Proximal Policy Optimization (PPO); test basic formation keeping in empty space. |
-| 9–10 | Muscle Refinement | Integrate MINCO trajectory optimization as a post-processing layer; implement SwarmRaft consensus logic. |
-| 11–12 | Stress Testing | Conduct simulated agent loss tests; benchmark swarm navigation in high-density obstacle environments. |
-| 13–15 | Showcase Prep | Finalize RTX Tiled Rendering; record HD demonstration; compile results into the final Testing Report. |
-| 16 | Delivery | Present at Capstone Festival; submit Portfolio and Learning Journals. |
+| Weeks | Dates | Phase | Activity |
+| :---: | :--- | :---: | :--- |
+| 5–6 | Feb 5 – Feb 17 | 1. Foundation | Install NVIDIA Isaac Lab; configure simulated multirotor assets; finalize graph connectivity logic. |
+| 7–8 | ~~Feb 18 – Mar 3~~ → Feb 25 – Mar 24 | 2. Brain Development | Train the GATv2 policy using PPO; test basic formation keeping in empty space. `[Revised 2026-03-28]` |
+| 9–11 | ~~Mar 4 – Mar 24~~ → Mar 25 – Apr 7 | 3. Muscle Refinement | Integrate MINCO trajectory optimization as a post-processing layer; implement SwarmRaft consensus logic. `[Revised 2026-03-28]` |
+| 12–13 | Apr 8 – Apr 14 | 4. Stress Testing | Conduct simulated agent loss tests; benchmark swarm navigation in high-density obstacle environments. |
+| 14–15 | Apr 14 – Apr 21 | 5. Showcase Prep | Finalize RTX Tiled Rendering; record HD demonstration; compile results into the final Testing Report. |
+| 16 | Apr 22 – Apr 24 | 6. Delivery | Present at Capstone Festival; submit Portfolio and Learning Journals. |
 
 ### Milestones
 
-* **M1 (Week 8):** Successful training of a GNN coordination policy for basic formation holding.
-* **M2 (Week 10):** Integration of trajectory refinement and fault-tolerant consensus.
-* **M3 (Week 14):** Validation of mission success rates (>95%) in cluttered environments.
-* **M4 (Week 15):** Completion of the high-fidelity 1080p visual showcase.
+* **M1 (~~Week 8~~ Week 11, Mar 25):** Successful training of a GNN coordination policy for basic formation holding. `[Revised 2026-03-28]`
+* **M2 (~~Week 10~~ Week 13, Apr 7):** Integration of trajectory refinement and fault-tolerant consensus. `[Revised 2026-03-28]`
+* **M3 (Week 14, Apr 14):** Validation of mission success rates (>95%) in cluttered environments.
+* **M4 (Week 15, Apr 21):** Completion of the high-fidelity 1080p visual showcase.
 
 ### Resources Needed
 
