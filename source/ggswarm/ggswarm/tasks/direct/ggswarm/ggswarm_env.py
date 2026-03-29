@@ -101,6 +101,10 @@ class GgswarmEnv(DirectRLEnv):
         if A > 1:
             self._formation_total_error = torch.zeros(G, device=device)  # [G]
 
+        # Virtual collision detection scratch buffer
+        if A > 1:
+            self._collision_count = torch.zeros(G, device=device)  # [G]
+
         # Body ID, mass, weight
         self._body_id = self._robot.find_bodies("body")[0]
         self._robot_mass = self._robot.root_physx_view.get_masses()[0].sum()
@@ -486,6 +490,35 @@ class GgswarmEnv(DirectRLEnv):
             self._robot.data.root_pos_w[:, 2] < 0.05,
             self._robot.data.root_pos_w[:, 2] > 2.0,
         )
+
+        # Virtual collision detection: check pairwise distances within swarm groups
+        if self.cfg.num_agents > 1 and self.cfg.collision_enabled:
+            A = self.cfg.num_agents
+            G = self._num_groups
+            pos_local = self._robot.data.root_pos_w - self._terrain.env_origins  # shape: [N, 3]
+            pos_g = pos_local.reshape(G, A, 3)  # shape: [G, A, 3]
+
+            # Check all pairs for collision
+            self._collision_count.zero_()  # shape: [G]
+            collided_group = self._collision_count > 0  # init false, shape: [G]
+            r = self.cfg.collision_radius
+            for i in range(A):
+                for j in range(i + 1, A):
+                    dist = torch.linalg.norm(
+                        pos_g[:, i] - pos_g[:, j], dim=1
+                    )  # shape: [G]
+                    pair_collided = dist < r  # shape: [G]
+                    self._collision_count += pair_collided.float()
+                    collided_group = collided_group | pair_collided
+
+            # Kill all drones in groups with collision
+            collided_flat = collided_group.unsqueeze(1).expand(G, A).reshape(-1)  # shape: [N]
+            died = died | collided_flat
+
+            # Log collision count
+            if "log" not in self.extras:
+                self.extras["log"] = {}
+            self.extras["log"]["Metrics/collision_pairs_per_step"] = self._collision_count.sum().item()
 
         # Collective resets: if any drone in a swarm group dies, all die
         if self.cfg.num_agents > 1 and self.cfg.collective_resets:

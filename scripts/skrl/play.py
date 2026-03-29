@@ -435,6 +435,7 @@ def main(
             env_origins=env_origins,
             target_spacing=base_env.cfg.formation_target_spacing if A > 1 else None,
             centroid=base_env.cfg.formation_centroid if A > 1 else None,
+            collision_radius=base_env.cfg.collision_radius if A > 1 else None,
         )
 
     # close the simulator

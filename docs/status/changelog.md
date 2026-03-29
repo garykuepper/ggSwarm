@@ -929,3 +929,14 @@ matching) were irrelevant — the policy was receiving garbage inputs during eva
   planning horizon T=0.10s. Provides C2-continuous actions — strictly superior
   to the EMA smoother it replaces. Pipeline: GNN → MINCO → CBF → physics.
   Targets ≥20% velocity jitter reduction (Objective O2).
+- [2026-03-29] **MINCO horizon tuned from 0.10s to 0.04s.** p3-18 (T=0.10s) was
+  too sluggish — ep_len 51, drones crashed because hover corrections were delayed.
+  T=0.04s (2 env steps) restored stability: p3-19 reward 46.3, ep_len 472, with
+  visibly smoother attitude oscillations than p3-17 (EMA baseline).
+- [2026-03-29] **Virtual collision detection and termination.** Since each drone
+  runs in its own env, physics collisions don't occur. Added virtual collision
+  check: pairwise distances within swarm groups are tested against
+  `collision_radius=0.10m` in `_get_dones`. Collision triggers collective group
+  reset (hard training signal). Collision count logged to TB as
+  `Metrics/collision_pairs_per_step`. Trajectory plot shows collision radius as
+  red line on KNN distance subplot.

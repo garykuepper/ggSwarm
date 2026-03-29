@@ -25,6 +25,7 @@ def generate_trajectory_plots(
     env_origins: torch.Tensor | None = None,
     target_spacing: float | None = None,
     centroid: tuple[float, float, float] | None = None,
+    collision_radius: float | None = None,
 ) -> Path:
     """Create a 2x2 trajectory summary and save as PNG.
 
@@ -39,6 +40,7 @@ def generate_trajectory_plots(
         goal_data: List of [num_agents, 3] tensors (goal position per step).
         env_origins: [num_agents, 3] tensor — subtracted to get local-frame positions.
         target_spacing: Target inter-drone spacing (m) — shown as horizontal line.
+        collision_radius: Body collision radius (m) — shown as red danger line.
 
     Returns:
         Path to the saved PNG file.
@@ -167,6 +169,9 @@ def generate_trajectory_plots(
         if target_spacing is not None:
             ax.axhline(target_spacing, color="green", linestyle="--", linewidth=1.2,
                        label=f"target {target_spacing}m")
+        if collision_radius is not None:
+            ax.axhline(collision_radius, color="red", linestyle="-", linewidth=1.5,
+                       alpha=0.8, label=f"collision {collision_radius}m")
         ax.axhline(0.0, color="black", linestyle=":", linewidth=0.5)
         ax.set_ylabel("Distance (m)")
         ax.set_title(f"K={K} Nearest Neighbor Distance")

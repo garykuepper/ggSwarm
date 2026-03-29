@@ -130,3 +130,7 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     cbf_enabled = True                # collision avoidance barrier
     cbf_d_safe = 0.30                 # min safe distance (m)
     cbf_gamma = 2.0                   # barrier decay rate (QP enforcement strength)
+
+    # Virtual collision detection
+    collision_radius = 0.10           # body collision radius (m) — terminates episode
+    collision_enabled = True          # enable virtual collision termination
