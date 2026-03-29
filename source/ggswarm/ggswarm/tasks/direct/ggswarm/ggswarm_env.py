@@ -74,6 +74,11 @@ class GgswarmEnv(DirectRLEnv):
         self._moment = torch.zeros(N, 1, 3, device=device)
         self._desired_pos_w = torch.zeros(N, 3, device=device)
 
+        # MINCO trajectory state (L3 layer)
+        self._minco_pos = torch.zeros(N, 4, device=device)
+        self._minco_vel = torch.zeros(N, 4, device=device)
+        self._minco_acc = torch.zeros(N, 4, device=device)
+
         # Cloud-mode scratch buffers (pre-allocated to avoid per-step allocation)
         G = self._num_groups
         if self._cloud_mode and A > 1:
@@ -153,8 +158,22 @@ class GgswarmEnv(DirectRLEnv):
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         self._actions = actions.clamp(-1.0, 1.0)
 
-        # EMA smoothing (Phase 3)
-        if self.cfg.smoothing_enabled:
+        # MINCO minimum-jerk smoothing (L3 layer — replaces EMA)
+        if self.cfg.minco_enabled:
+            from ggswarm.minco import apply_minco  # noqa: PLC0415
+
+            act = apply_minco(
+                self._actions,
+                self._minco_pos,
+                self._minco_vel,
+                self._minco_acc,
+                self.step_dt,
+                self.cfg.minco_horizon,
+                self.cfg.minco_max_vel,
+                self.cfg.minco_max_acc,
+            )
+        elif self.cfg.smoothing_enabled:
+            # Legacy EMA fallback
             a = self.cfg.smoothing_alpha
             self._smoothed_actions = a * self._actions + (1 - a) * self._smoothed_actions
             act = self._smoothed_actions
@@ -530,6 +549,9 @@ class GgswarmEnv(DirectRLEnv):
 
         self._actions[env_ids] = 0.0
         self._smoothed_actions[env_ids] = 0.0
+        self._minco_pos[env_ids] = 0.0
+        self._minco_vel[env_ids] = 0.0
+        self._minco_acc[env_ids] = 0.0
 
         # Sample new goal positions
         if self.cfg.num_agents > 1 and self._formation_offsets is not None:

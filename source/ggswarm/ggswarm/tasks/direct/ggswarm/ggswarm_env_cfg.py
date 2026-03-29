@@ -116,9 +116,15 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     cloud_centroid_goal_scale = 15.0  # centroid-to-goal reward (replaces per-drone in cloud)
     cloud_centroid_goal_sigma = 0.8   # tanh sharpness for centroid-to-goal distance
 
-    # action smoothing (Phase 3 — EMA)
-    smoothing_enabled = True          # EMA on policy actions
+    # action smoothing (Phase 3 — EMA, legacy fallback)
+    smoothing_enabled = True          # EMA on policy actions (used when minco_enabled=False)
     smoothing_alpha = 0.3             # 0=full smooth, 1=no smooth
+
+    # MINCO trajectory smoothing (L3 layer — replaces EMA)
+    minco_enabled = True              # minimum-jerk trajectory filter
+    minco_horizon = 0.10              # planning horizon T (seconds)
+    minco_max_vel = 5.0               # velocity clamp (action-units/s)
+    minco_max_acc = 25.0              # acceleration clamp (action-units/s²)
 
     # CBF safety shield (Phase 3)
     cbf_enabled = True                # collision avoidance barrier

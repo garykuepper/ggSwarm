@@ -922,3 +922,10 @@ matching) were irrelevant — the policy was receiving garbage inputs during eva
 - [2026-03-28] **Trajectory plot: final position markers in cloud mode.** When all
   goals are identical (cloud formation), XY trace now shows final drone positions
   (open circles) instead of overlapping goal stars, which were uninformative.
+- [2026-03-28] **MINCO minimum-jerk trajectory filter (L3 layer).** Implemented
+  single-segment minimum-jerk (s=3) trajectory optimization as a post-policy,
+  pre-CBF filter. At each step, computes the unique 5th-order polynomial that
+  minimizes ∫|jerk|²dt from current state (pos, vel, acc) to GNN target over
+  planning horizon T=0.10s. Provides C2-continuous actions — strictly superior
+  to the EMA smoother it replaces. Pipeline: GNN → MINCO → CBF → physics.
+  Targets ≥20% velocity jitter reduction (Objective O2).
