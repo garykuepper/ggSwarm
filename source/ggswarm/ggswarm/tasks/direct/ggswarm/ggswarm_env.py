@@ -550,6 +550,9 @@ class GgswarmEnv(DirectRLEnv):
             self._robot.data.root_pos_w[:, 2] < 0.05,
             self._robot.data.root_pos_w[:, 2] > 2.0,
         )
+        # Don't count dropped-out drones as dying (they fall but are already "dead")
+        if self.cfg.dropout_enabled:
+            died = died & self._agent_alive
 
         # Virtual collision detection: check pairwise distances within swarm groups
         if self.cfg.num_agents > 1 and self.cfg.collision_enabled:
