@@ -26,14 +26,17 @@ components are config-gated and do not require retraining.
 
 ### Full L2-L4 Stack (as shipped)
 
-```text
-GNN Policy (L2) → raw actions [N, 4]
-        ↓
-MINCO min-jerk filter (L3) → smooth actions [N, 4]
-        ↓
-CBF Safety Filter (L4) → safe actions [N, 4]
-        ↓ (MINCO state synced to post-CBF output)
-Thrust/Moment Mapping → Physics
+```mermaid
+flowchart TD
+    GNN["GNN Policy (L2)<br/>raw actions [N, 4]"] --> MINCO["MINCO min-jerk (L3)<br/>smooth actions [N, 4]"]
+    MINCO --> CBF["CBF Safety Filter (L4)<br/>safe actions [N, 4]"]
+    CBF -->|"sync _minco_pos"| MINCO
+    CBF --> TM["Thrust/Moment Mapping<br/>→ Physics"]
+
+    style GNN fill:#4a90d9,color:#fff
+    style MINCO fill:#50b86c,color:#fff
+    style CBF fill:#e74c3c,color:#fff
+    style TM fill:#8e44ad,color:#fff
 ```
 
 ### GATv2 GNN Policy (L2)

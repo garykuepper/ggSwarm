@@ -28,6 +28,16 @@ the Isaac Lab quadcopter reference. Key architectural decisions:
 
 ### Sub-phases
 
+```mermaid
+flowchart LR
+    A["2A: Hover<br/>1 drone, goal tracking"] -->|"ep_len > 450"| B["2B: Formation<br/>3 drones, group goals"]
+    B -->|"formation > 1.0"| C["2C: Scalability<br/>K-nearest, train 3 → deploy N"]
+
+    style A fill:#3498db,color:#fff
+    style B fill:#2ecc71,color:#fff
+    style C fill:#f39c12,color:#fff
+```
+
 | Sub-phase | Task ID | Description | Status |
 | :--- | :--- | :--- | :--- |
 | 2A: Hover | `ggswarm-v0` (num_agents=1) | Single drone hover to goal | **PASS** (p2a-1 through p2a-4) |

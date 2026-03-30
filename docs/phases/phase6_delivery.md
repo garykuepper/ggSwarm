@@ -1,6 +1,6 @@
 # Phase 6: Delivery
 
-**Timeline:** Apr 22 -- Apr 24 (Week 16)  |  **Gate:** Final -- Capstone Festival presentation and all submissions
+**Timeline:** Apr 21 -- Apr 24  |  **Gate:** Final -- Capstone Festival presentation and all submissions
 
 ## 1. Goals
 
@@ -15,7 +15,24 @@
 
 ## 2. Tasks
 
-No new code. Three-day sprint converting Phase 5 results into deliverables.
+```mermaid
+gantt
+    title Delivery Sprint (Apr 21-24)
+    dateFormat YYYY-MM-DD
+    section Documentation
+        README + changelog polish    :d1, 2026-04-21, 1d
+        Reproducibility verification :d2, after d1, 1d
+        Git tag v1.0.0-capstone      :milestone, after d2, 0d
+    section Presentation
+        Poster / slide deck          :p1, 2026-04-22, 1d
+        Demo video export            :p2, 2026-04-22, 1d
+        Live demo prep               :p3, after p1, 1d
+    section Festival
+        Capstone presentation        :f1, 2026-04-24, 1d
+        Portfolio + Journal submit   :f2, 2026-04-24, 1d
+```
+
+No new code. Four-day sprint converting Phase 5 results into deliverables.
 
 **Day 1 (Apr 22): Documentation and repo polish**
 

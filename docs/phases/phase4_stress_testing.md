@@ -13,6 +13,26 @@
 
 ## 2. Execution Steps (dependency order)
 
+```mermaid
+flowchart LR
+    S1["Step 1<br/>Polygon Training"] --> S2["Step 2<br/>Formation Presets"]
+    S2 --> S3["Step 3<br/>SwarmRaft Dropout"]
+    S1 --> S4["Step 4<br/>Scale Testing"]
+    S3 --> S5["Step 5<br/>Forest Navigation"]
+    S1 --> S6["Step 6<br/>MINCO Validation"]
+    S3 & S4 & S5 & S6 --> S7["Step 7<br/>Eval Suite"]
+    S7 --> M3["M3 Gate<br/>Apr 13"]
+
+    style S1 fill:#3498db,color:#fff
+    style S2 fill:#2ecc71,color:#fff
+    style S3 fill:#f39c12,color:#fff
+    style S4 fill:#9b59b6,color:#fff
+    style S5 fill:#e74c3c,color:#fff
+    style S6 fill:#1abc9c,color:#fff
+    style S7 fill:#34495e,color:#fff
+    style M3 fill:#c0392b,color:#fff
+```
+
 ### Step 1: Polygon Formation Training (p4-1, p4-2)
 
 Foundation for all Phase 4 work. Policy learns "go to assigned slot."
@@ -102,10 +122,19 @@ episode length, success rate. Produce data tables for Testing Report (Phase 5).
 Train once in polygon mode, play any shape. Core idea: policy learns
 "go to assigned goal slot" — the slot coordinates determine the shape.
 
-```text
-Training: polygon(8, radius) → octagon slots
-Play:     grid(8, spacing)   → 3×3 grid slots (swap _desired_pos_w)
-Play:     letter("G", 20)    → letter G with 20 drones
+```mermaid
+flowchart LR
+    Train["Train: polygon(8)"] --> Oct["Octagon slots"]
+    Oct --> Deploy
+
+    subgraph Deploy ["Play: swap _desired_pos_w"]
+        G["grid(8)"] --> Grid["3×3 Grid"]
+        T["triangle_mesh(8)"] --> Tri["Hex Lattice"]
+        L["letter('G', 20)"] --> Let["Letter G"]
+    end
+
+    style Train fill:#3498db,color:#fff
+    style Oct fill:#2ecc71,color:#fff
 ```
 
 Switchable mid-episode via `--formation` play.py argument.
@@ -114,10 +143,14 @@ Switchable mid-episode via `--formation` play.py argument.
 
 When a drone drops out, recompute formation for N-1 alive agents:
 
-```text
-8 alive: polygon(8) → octagon
-7 alive: polygon(7) → heptagon  (one drone killed)
-6 alive: polygon(6) → hexagon   (two drones killed)
+```mermaid
+flowchart LR
+    A8["8 alive<br/>polygon(8) → Octagon"] -->|"kill 1"| A7["7 alive<br/>polygon(7) → Heptagon"]
+    A7 -->|"kill 1"| A6["6 alive<br/>polygon(6) → Hexagon"]
+
+    style A8 fill:#2ecc71,color:#fff
+    style A7 fill:#f39c12,color:#fff
+    style A6 fill:#e74c3c,color:#fff
 ```
 
 ### Forest Navigation (Moving Centroid + CBF Obstacles)
@@ -144,14 +177,17 @@ in the CBF barrier computation. CBF already enforces
 center positions as immovable agents gives free obstacle avoidance with
 zero retraining. MINCO smooths the avoidance maneuvers.
 
-```text
-Moving centroid (path through forest)
-    ↓
-Formation tracking pulls drones forward
-    ↓
-CBF repels drones from cylinders (same math as inter-drone barriers)
-    ↓
-MINCO smooths the avoidance maneuvers
+```mermaid
+flowchart TD
+    MC["Moving Centroid<br/>(path through forest)"] --> FT["Formation Tracking<br/>pulls drones forward"]
+    FT --> CBF["CBF Obstacle Avoidance<br/>cylinders = virtual drones"]
+    CBF --> MINCO["MINCO Smoothing<br/>smooth avoidance maneuvers"]
+    MINCO --> Physics["Physics"]
+
+    style MC fill:#3498db,color:#fff
+    style FT fill:#2ecc71,color:#fff
+    style CBF fill:#e74c3c,color:#fff
+    style MINCO fill:#f39c12,color:#fff
 ```
 
 **Forest layout:** 10-20 cylinder prims at random XY positions along the

@@ -1,6 +1,6 @@
 # Phase 5: Showcase Prep
 
-**Timeline:** Apr 14 -- Apr 21 (Week 15)  |  **Gate:** M4 -- HD showcase and Testing Report delivered
+**Timeline:** Apr 14 -- Apr 20  |  **Gate:** M4 -- HD showcase and Testing Report delivered
 
 ## 1. Goals
 
@@ -12,6 +12,22 @@
 | P5.4 | Presentation-ready repository | Clean README, reproducible commands |
 
 ## 2. Tasks
+
+```mermaid
+flowchart LR
+    Setup["Camera Setup<br/>angles, lighting"] --> Record["Record Demos"]
+    Record --> R1["Formation Hover<br/>8 agents, polygon"]
+    Record --> R2["Scale Demo<br/>20 agents"]
+    Record --> R3["Agent Loss<br/>octagon → heptagon"]
+    Record --> R4["Forest Navigation<br/>20 agents + obstacles"]
+    R1 & R2 & R3 & R4 --> Edit["Compile Video<br/>+ Testing Report"]
+    Edit --> M4["M4 Gate<br/>Apr 20"]
+
+    style Setup fill:#3498db,color:#fff
+    style Record fill:#2ecc71,color:#fff
+    style Edit fill:#f39c12,color:#fff
+    style M4 fill:#c0392b,color:#fff
+```
 
 No new environment or policy code. All work is recording, documentation,
 and polish.
