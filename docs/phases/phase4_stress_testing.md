@@ -1,6 +1,6 @@
 # Phase 4: Stress Testing
 
-**Timeline:** Apr 8 -- Apr 14 (Week 14)  |  **Gate:** M3 -- Mission success validation
+**Timeline:** Mar 30 -- Apr 13  |  **Gate:** M3 -- Mission success validation by Apr 13
 
 ## 1. Goals
 
@@ -134,7 +134,7 @@ tensorboard --logdir logs/skrl/ggswarm
 
 ## 4. Results
 
-Phase 4 has not started. Scheduled: Apr 8 -- Apr 14.
+Phase 4 has not started. Scheduled: Mar 30 -- Apr 13.
 
 ---
 

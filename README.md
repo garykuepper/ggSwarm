@@ -112,11 +112,11 @@ tensorboard --logdir logs/skrl/ggswarm
 | Phase | Timeline | Gate | Status |
 | :--- | :--- | :--- | :--- |
 | 1. Foundation | Feb 5 - Feb 17 | - | Complete |
-| 2. Brain Development | Feb 25 - Mar 25 | M1: Formation control | Complete |
-| 3. Muscle Refinement | Mar 25 - Apr 7 | M2: Logic integration | **Complete (9 days early)** |
-| 4. Stress Testing | Apr 8 - Apr 14 | M3: Mission validation | Next |
-| 5. Showcase Prep | Apr 14 - Apr 21 | M4: HD showcase | - |
-| 6. Delivery | Apr 22 - Apr 24 | **Final: Apr 24** | - |
+| 2. Brain Development | Feb 25 - Mar 24 | M1 (Mar 25) | Complete |
+| 3. Muscle Refinement | Mar 25 - Mar 29 | M2 (Mar 29) | **Complete (9 days early)** |
+| 4. Stress Testing | Mar 30 - Apr 13 | M3 (Apr 13) | Next |
+| 5. Showcase Prep | Apr 14 - Apr 20 | M4 (Apr 20) | - |
+| 6. Delivery | Apr 21 - Apr 24 | **Final: Apr 24** | - |
 
 Full timeline: [`docs/project/proposal.md`](docs/project/proposal.md#7-timeline-and-milestones)
 | Progress: [`docs/status/weekly_updates.md`](docs/status/weekly_updates.md)

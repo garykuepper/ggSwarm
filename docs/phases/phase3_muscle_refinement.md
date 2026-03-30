@@ -1,6 +1,6 @@
 # Phase 3: Muscle Refinement
 
-**Timeline:** Mar 27 -- Apr 7 (Weeks 12--13)  |  **Gate:** M2 -- Logic integration complete by Apr 7
+**Timeline:** Mar 25 -- Mar 29 (Weeks 9--11)  |  **Gate:** M2 -- Logic integration complete by ~~Apr 7~~ Mar 29
 
 **Status: COMPLETE** (2026-03-29, 9 days ahead of M2 gate)
 

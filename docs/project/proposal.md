@@ -246,17 +246,17 @@ CBF safety shields (L4) enforce hard collision constraints separately from the r
 | :---: | :--- | :---: | :--- |
 | 5–6 | Feb 5 – Feb 17 | 1. Foundation | Install NVIDIA Isaac Lab; configure simulated multirotor assets; finalize graph connectivity logic. |
 | 7–8 | ~~Feb 18 – Mar 3~~ → Feb 25 – Mar 24 | 2. Brain Development | Train the GATv2 policy using PPO; test basic formation keeping in empty space. `[Revised 2026-03-28]` |
-| 9–11 | ~~Mar 4 – Mar 24~~ → Mar 25 – Apr 7 | 3. Muscle Refinement | Integrate MINCO trajectory optimization as a post-processing layer; implement SwarmRaft consensus logic. `[Revised 2026-03-28]` |
-| 12–13 | Apr 8 – Apr 14 | 4. Stress Testing | Conduct simulated agent loss tests; benchmark swarm navigation in high-density obstacle environments. |
-| 14–15 | Apr 14 – Apr 21 | 5. Showcase Prep | Finalize RTX Tiled Rendering; record HD demonstration; compile results into the final Testing Report. |
-| 16 | Apr 22 – Apr 24 | 6. Delivery | Present at Capstone Festival; submit Portfolio and Learning Journals. |
+| 9–11 | ~~Mar 4 – Mar 24~~ → ~~Mar 25 – Apr 7~~ → Mar 25 – Mar 29 | 3. Muscle Refinement | Integrate MINCO trajectory optimization as a post-processing layer; implement SwarmRaft consensus logic. `[Revised 2026-03-29: completed 9 days early]` |
+| 12–13 | ~~Apr 8 – Apr 14~~ → Mar 30 – Apr 13 | 4. Stress Testing | Conduct simulated agent loss tests; benchmark swarm navigation in high-density obstacle environments. `[Revised 2026-03-29]` |
+| 14–15 | ~~Apr 14 – Apr 21~~ → Apr 14 – Apr 20 | 5. Showcase Prep | Finalize RTX Tiled Rendering; record HD demonstration; compile results into the final Testing Report. `[Revised 2026-03-29]` |
+| 16 | ~~Apr 22 – Apr 24~~ → Apr 21 – Apr 24 | 6. Delivery | Present at Capstone Festival; submit Portfolio and Learning Journals. `[Revised 2026-03-29]` |
 
 ### Milestones
 
 * **M1 (~~Week 8~~ Week 11, Mar 25):** Successful training of a GNN coordination policy for basic formation holding. `[Revised 2026-03-28]`
-* **M2 (~~Week 10~~ Week 13, Apr 7):** Integration of trajectory refinement and fault-tolerant consensus. `[Revised 2026-03-28]`
-* **M3 (Week 14, Apr 14):** Validation of mission success rates (>95%) in cluttered environments.
-* **M4 (Week 15, Apr 21):** Completion of the high-fidelity 1080p visual showcase.
+* **M2 (~~Week 10~~ ~~Week 13, Apr 7~~ Mar 29):** Integration of trajectory refinement and fault-tolerant consensus. `[Revised 2026-03-29: completed 9 days early]`
+* **M3 (~~Week 14, Apr 14~~ Apr 13):** Validation of mission success rates (>95%) in cluttered environments. `[Revised 2026-03-29]`
+* **M4 (~~Week 15, Apr 21~~ Apr 20):** Completion of the high-fidelity 1080p visual showcase. `[Revised 2026-03-29]`
 
 ### Resources Needed
 

@@ -2,16 +2,14 @@
 
 Baseline timeline is in the [Proposal](../project/proposal.md#7-timeline-and-milestones)
 
-
-| Weeks | Dates                                | Phase                | Activity                                                                                              | Milestone                                        |
-| ----- | ------------------------------------ | -------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| 5–6   | Feb 5 – Feb 17                       | 1. Foundation        | Install NVIDIA Isaac Lab; configure simulated multirotor assets; finalize graph connectivity logic.   | -                                                |
-| 7–8   | ~~Feb 18 – Mar 3~~ → Feb 25 – Mar 24 | 2. Brain Development | Train GATv2 with MAPPO; test formation in empty space.                                                | ~~M1 Week 8~~ → M1 Week 11                       |
-| 9–11  | ~~Mar 4 – Mar 24~~ → Mar 25 – Apr 7  | 3. Muscle Refinement | Integrate MINCO post-processing and SwarmRaft consensus logic.                                        | ~~M2 Week 11 (3/24)~~ → M2 Week 13 (4/7)         |
-| 12–13 | Apr 8 – Apr 14                       | 4. Stress Testing    | Conduct simulated agent loss tests; benchmark swarm navigation in high-density obstacle environments. | M3 (Week 14, 4/14): Mission success validation   |
-| 14–15 | Apr 14 – Apr 21                      | 5. Showcase Prep     | Finalize RTX tiled rendering; record HD demo; compile results.                                        | M4 (Week 15, 4/21): HD showcase + Testing Report |
-| 16    | Apr 22 – Apr 24                      | 6. Delivery          | Present at Capstone Festival; submit Portfolio and Learning Journals.                                 | **Final Presentation due 4/24/26**               |
-
+| Weeks | Dates | Phase | Activity | Milestone |
+| :--- | :--- | :--- | :--- | :--- |
+| 5–6 | Feb 5 – Feb 17 | 1. Foundation | Isaac Lab setup, env implementation | - |
+| 7–8 | Feb 25 – Mar 24 | 2. Brain Development | PPO hover + formation control | M1 (Mar 25): **Complete** |
+| 9–11 | Mar 25 – Mar 29 | 3. Muscle Refinement | MINCO, CBF, SwarmRaft | M2 (Mar 29): **Complete, 9 days early** |
+| 12–13 | Mar 30 – Apr 13 | 4. Stress Testing | Agent loss, obstacles, scale benchmarks | M3 (Apr 13): Mission validation |
+| 14–15 | Apr 14 – Apr 20 | 5. Showcase Prep | RTX rendering, HD demo, Testing Report | M4 (Apr 20): HD showcase |
+| 16 | Apr 21 – Apr 24 | 6. Delivery | Capstone Festival, submissions | **Final: Apr 24** |
 
 ---
 
