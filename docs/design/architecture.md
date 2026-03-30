@@ -12,37 +12,47 @@ and virtual collision detection.
 
 ## 2. GNSC 5-Layer Architecture
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│ L5: Mission Execution                                       │
-│     Thrust/moment mapping → physics                         │
-├─────────────────────────────────────────────────────────────┤
-│ L4: Runtime Safety Shields (CBF)                            │
-│     Pairwise barrier constraints, clamped corrections       │
-│     MINCO state synced to post-CBF output                   │
-├─────────────────────────────────────────────────────────────┤
-│ L3: Distributed Consensus (MINCO + SwarmRaft)               │
-│     Min-jerk trajectory filter (T=0.04s)                    │
-│     Agent dropout with alive mask                           │
-├─────────────────────────────────────────────────────────────┤
-│ L2: GNN Message Passing (GATv2)                             │
-│     2-layer GATv2, K=2 sparse edges, edge cache for PPO    │
-├─────────────────────────────────────────────────────────────┤
-│ L1: Local Sensing                                           │
-│     12D body-frame obs + K*3 neighbor relative positions    │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+block-beta
+    columns 1
+    block:L5["L5: Mission Execution"]
+        L5a["Thrust/moment mapping → physics"]
+    end
+    block:L4["L4: Runtime Safety Shields (CBF)"]
+        L4a["Pairwise barrier constraints"]
+        L4b["Clamped corrections (MAX=0.15)"]
+        L4c["MINCO state synced to post-CBF"]
+    end
+    block:L3["L3: Distributed Consensus"]
+        L3a["MINCO min-jerk filter (T=0.04s)"]
+        L3b["SwarmRaft agent dropout"]
+    end
+    block:L2["L2: GNN Message Passing"]
+        L2a["2-layer GATv2, K=2 sparse edges"]
+        L2b["Edge cache for PPO replay"]
+    end
+    block:L1["L1: Local Sensing"]
+        L1a["12D body-frame + K×3 neighbor rel_pos"]
+    end
+
+    L1 --> L2 --> L3 --> L4 --> L5
 ```
 
 ## 3. Action Pipeline
 
-```text
-GNN Policy (L2) → raw actions [N, 4]
-        ↓
-MINCO min-jerk filter (L3) → smooth C2-continuous actions
-        ↓
-CBF Safety Filter (L4) → safe actions (barrier-constrained)
-        ↓  ← MINCO state synced here (corrections persist)
-Thrust/Moment Mapping (L5) → physics forces/torques
+```mermaid
+flowchart TD
+    A["GNN Policy (L2)<br/>raw actions [N, 4]"] --> B["MINCO min-jerk filter (L3)<br/>smooth C2-continuous actions"]
+    B --> C["CBF Safety Filter (L4)<br/>safe actions (barrier-constrained)"]
+    C -->|"sync _minco_pos"| B
+    C --> D["Thrust/Moment Mapping (L5)<br/>physics forces/torques"]
+    D --> E["Isaac Sim Physics"]
+
+    style A fill:#4a90d9,color:#fff
+    style B fill:#50b86c,color:#fff
+    style C fill:#e74c3c,color:#fff
+    style D fill:#8e44ad,color:#fff
+    style E fill:#555,color:#fff
 ```
 
 ### Action Contract
@@ -72,21 +82,21 @@ positions (K*3D), for a total observation of 18D (K=2).
 
 2-layer Graph Attention Network v2 with K=2 nearest neighbor sparse edges.
 
-```text
-Per-drone obs (18D)     K-nearest edges (bidirectional)
-        |                       |
-        v                       v
-   Node encoder          Edge construction
-   Linear(18, 64)        from _expand_obs_with_neighbors
-        |                       |
-        +--------> GATv2Conv <--+
-                   (64→64, heads=2)
-                       |
-                   GATv2Conv
-                   (64→64, heads=2)
-                       |
-                  Action head        Value head
-                  Linear(64,4)       Linear(64,64,1)
+```mermaid
+flowchart TD
+    Obs["Per-drone obs (18D)"] --> Enc["Node Encoder<br/>Linear(18, 64)"]
+    Edges["K-nearest edges<br/>(bidirectional)"] --> G1
+    Enc --> G1["GATv2Conv<br/>(64→64, heads=2)"]
+    G1 --> G2["GATv2Conv<br/>(64→64, heads=2)"]
+    G2 --> Act["Action Head<br/>Linear(64, 4)"]
+    G2 --> Val["Value Head<br/>Linear(64, 64, 1)"]
+
+    style Obs fill:#4a90d9,color:#fff
+    style Edges fill:#f39c12,color:#fff
+    style G1 fill:#50b86c,color:#fff
+    style G2 fill:#50b86c,color:#fff
+    style Act fill:#e74c3c,color:#fff
+    style Val fill:#8e44ad,color:#fff
 ```
 
 - Sparse KNN edges: 32 per group (A=8, K=2, bidirectional)
@@ -124,10 +134,17 @@ Simulated agent failure for fault recovery training.
 
 QP-inspired Control Barrier Function for pairwise collision avoidance.
 
-```text
-h_ij = ||p_i - p_j||^2 - d_safe^2
-Constraint: h_dot_ij + gamma * h_ij >= 0
-Correction: clamped to MAX=0.15 along normalized escape direction
+```mermaid
+flowchart LR
+    H["h_ij = ||p_i - p_j||² - d_safe²"] --> Check{"h_dot + γ·h < 0?"}
+    Check -->|No| Safe["u* = u_nom<br/>(no change)"]
+    Check -->|Yes| Project["Project onto boundary<br/>clamped MAX=0.15"]
+    Project --> Both["Symmetric correction<br/>to both drones"]
+
+    style H fill:#f39c12,color:#fff
+    style Check fill:#e74c3c,color:#fff
+    style Safe fill:#50b86c,color:#fff
+    style Project fill:#e74c3c,color:#fff
 ```
 
 - Symmetric correction to both drones in pair
@@ -155,15 +172,24 @@ Scales to any swarm size. Merged with spacing penalty into single loop.
 
 One Crazyflie per env. N consecutive envs form a swarm group:
 
-```text
-N = num_envs (e.g. 4096)
-A = num_agents (e.g. 8)
-G = N / A (e.g. 512 groups)
+```mermaid
+flowchart LR
+    subgraph G0["Group 0"]
+        E0["env 0"] ~~~ E1["env 1"] ~~~ E2["env 2"] ~~~ E7["... env 7"]
+    end
+    subgraph G1["Group 1"]
+        E8["env 8"] ~~~ E9["env 9"] ~~~ E10["env 10"] ~~~ E15["... env 15"]
+    end
+    subgraph GN["Group G-1"]
+        EN["..."] ~~~ EN1["env N-1"]
+    end
 
-Group 0: envs [0, 1, 2, 3, 4, 5, 6, 7]
-Group 1: envs [8, 9, 10, 11, 12, 13, 14, 15]
-...
+    style G0 fill:#4a90d9,color:#fff
+    style G1 fill:#50b86c,color:#fff
+    style GN fill:#f39c12,color:#fff
 ```
+
+`N = num_envs (4096), A = num_agents (8), G = N/A (512 groups)`
 
 - Observations expanded with neighbor positions within group
 - Formation rewards computed within group
