@@ -13,29 +13,20 @@ and virtual collision detection.
 ## 2. GNSC 5-Layer Architecture
 
 ```mermaid
-block-beta
-    columns 1
-    block:L5["L5: Mission Execution"]
-        L5a["Thrust/moment mapping → physics"]
-    end
-    block:L4["L4: Runtime Safety Shields (CBF)"]
-        L4a["Pairwise barrier constraints"]
-        L4b["Clamped corrections (MAX=0.15)"]
-        L4c["MINCO state synced to post-CBF"]
-    end
-    block:L3["L3: Distributed Consensus"]
-        L3a["MINCO min-jerk filter (T=0.04s)"]
-        L3b["SwarmRaft agent dropout"]
-    end
-    block:L2["L2: GNN Message Passing"]
-        L2a["2-layer GATv2, K=2 sparse edges"]
-        L2b["Edge cache for PPO replay"]
-    end
-    block:L1["L1: Local Sensing"]
-        L1a["12D body-frame + K×3 neighbor rel_pos"]
-    end
+flowchart BT
+    L1["<b>Layer 1: Local Sensing</b><br/>12D body-frame + K×3 neighbor rel_pos"]
+    L2["<b>Layer 2: GNN Message Passing</b><br/>2-layer GATv2, K=2 sparse edges, edge cache"]
+    L3["<b>Layer 3: Distributed Consensus</b><br/>MINCO min-jerk filter (T=0.04s) + SwarmRaft dropout"]
+    L4["<b>Layer 4: Runtime Safety Shields</b><br/>CBF barrier constraints, clamped corrections, MINCO sync"]
+    L5["<b>Layer 5: Mission Execution</b><br/>Thrust/moment mapping → physics"]
 
     L1 --> L2 --> L3 --> L4 --> L5
+
+    style L1 fill:#3498db,color:#fff
+    style L2 fill:#2ecc71,color:#fff
+    style L3 fill:#f39c12,color:#fff
+    style L4 fill:#e74c3c,color:#fff
+    style L5 fill:#8e44ad,color:#fff
 ```
 
 ## 3. Action Pipeline
