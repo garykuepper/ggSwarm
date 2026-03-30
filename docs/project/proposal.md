@@ -189,7 +189,7 @@ architecture:
 | Layer | Name | Description |
 | :--- | :--- | :--- |
 | L1 | Local Sensing | ~~Simulated perception data (LiDAR/IMU) is collected locally for each agent in the Isaac Lab environment.~~ Each agent observes its own body-frame state and K-nearest neighbor relative positions. `[Revised 2026-03-28]` |
-| L2 | GNN Message Passing | Information is aggregated within a ~~K-hop neighborhood~~ fully-connected within-group graph using GATv2 to establish spatial awareness. Sparse K-nearest edges will be used when scaling to 20+ agents. `[Revised 2026-03-28]` |
+| L2 | GNN Message Passing | Information is aggregated within a K-hop neighborhood graph using GATv2 to establish spatial awareness. Sparse K-nearest edges will be used when scaling to 20+ agents. |
 | L3 | Distributed Consensus | Agents align on global formation objectives through local peer interactions. |
 | L4 | Runtime Safety Shields | Control Barrier Functions (CBFs) are applied to enforce hard safety constraints, ensuring zero inter-agent collisions. |
 | L5 | Mission Execution | The swarm executes high-level commands, such as "Move to Goal" or "Change Formation Shape." |
@@ -199,11 +199,6 @@ architecture:
 > plus K-nearest neighbor relative positions (6D for K=2). This is sensor-agnostic —
 > the observation could come from any sensing modality. LiDAR may be added in Phase 4
 > for obstacle avoidance if needed.
->
-> **`[Revised 2026-03-28]` L2 GNN Message Passing:** For A=8 drones per group,
-> fully-connected within-group edges (56 per group) are used. 2 GATv2 layers with
-> residual connections and LayerNorm give full group coverage. Will transition to
-> sparse K-nearest edges when scaling to 20+ agents.
 
 ---
 
@@ -245,8 +240,8 @@ CBF safety shields (L4) enforce hard collision constraints separately from the r
 | Weeks | Dates | Phase | Activity |
 | :---: | :--- | :---: | :--- |
 | 5–6 | Feb 5 – Feb 17 | 1. Foundation | Install NVIDIA Isaac Lab; configure simulated multirotor assets; finalize graph connectivity logic. |
-| 7–8 | ~~Feb 18 – Mar 3~~ → Feb 25 – Mar 24 | 2. Brain Development | Train the GATv2 policy using PPO; test basic formation keeping in empty space. `[Revised 2026-03-28]` |
-| 9–11 | ~~Mar 4 – Mar 24~~ → ~~Mar 25 – Apr 7~~ → Mar 25 – Mar 29 | 3. Muscle Refinement | Integrate MINCO trajectory optimization as a post-processing layer; implement SwarmRaft consensus logic. `[Revised 2026-03-29: completed 9 days early]` |
+| 7–8 | ~~Feb 18 – Mar 3~~ → Feb 25 – Mar 24 | 2. Brain Development | Train the GATv2 policy using PPO; test basic formation keeping in empty space. `[Revised 2026-03-20]` |
+| 9–11 | ~~Mar 4 – Mar 24~~ →  Mar 25 – Mar 29 | 3. Muscle Refinement | Integrate MINCO trajectory optimization as a post-processing layer; implement SwarmRaft consensus logic. `[Revised 2026-03-24]` |
 | 12–13 | ~~Apr 8 – Apr 14~~ → Mar 30 – Apr 13 | 4. Stress Testing | Conduct simulated agent loss tests; benchmark swarm navigation in high-density obstacle environments. `[Revised 2026-03-29]` |
 | 14–15 | ~~Apr 14 – Apr 21~~ → Apr 14 – Apr 20 | 5. Showcase Prep | Finalize RTX Tiled Rendering; record HD demonstration; compile results into the final Testing Report. `[Revised 2026-03-29]` |
 | 16 | ~~Apr 22 – Apr 24~~ → Apr 21 – Apr 24 | 6. Delivery | Present at Capstone Festival; submit Portfolio and Learning Journals. `[Revised 2026-03-29]` |
@@ -254,7 +249,7 @@ CBF safety shields (L4) enforce hard collision constraints separately from the r
 ### Milestones
 
 * **M1 (~~Week 8~~ Week 11, Mar 25):** Successful training of a GNN coordination policy for basic formation holding. `[Revised 2026-03-28]`
-* **M2 (~~Week 10~~ ~~Week 13, Apr 7~~ Mar 29):** Integration of trajectory refinement and fault-tolerant consensus. `[Revised 2026-03-29: completed 9 days early]`
+* **M2 (~~Week 10~~ ~~Week 13, Apr 7~~ Mar 29):** Integration of trajectory refinement and fault-tolerant consensus. `[Revised 2026-03-29]`
 * **M3 (~~Week 14, Apr 14~~ Apr 13):** Validation of mission success rates (>95%) in cluttered environments. `[Revised 2026-03-29]`
 * **M4 (~~Week 15, Apr 21~~ Apr 20):** Completion of the high-fidelity 1080p visual showcase. `[Revised 2026-03-29]`
 
