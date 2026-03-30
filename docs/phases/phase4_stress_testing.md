@@ -2,139 +2,147 @@
 
 **Timeline:** Mar 30 -- Apr 13  |  **Gate:** M3 -- Mission success validation by Apr 13
 
-## 1. Goals
+## 1. Objectives Alignment
 
-| ID | Goal | Success Criteria |
+| Proposal Objective | Target | Phase 4 Approach |
 | :--- | :--- | :--- |
-| P4.1 | Polygon-mode SwarmRaft demo | Octagon → heptagon transition visible on drone kill; formation re-syncs in < 2.0 s |
-| P4.2 | Steady-state hover | Drones hold position once formation converges; velocity penalties tuned to minimize drift |
-| P4.3 | Zero inter-agent collisions | 0 collisions over 100 evaluation episodes (with CBF) |
-| P4.4 | Swarm scales to 10+ agents | Formation maintained with train-8 / deploy-N via K-nearest |
-| P4.5 | Obstacle environment testing | Benchmark swarm navigation in cluttered environments |
-| P4.6 | Testing Report data produced | Metrics covering nominal, agent-loss, scale, and obstacle scenarios |
+| O1: Formation error | < 0.3m steady-state | Polygon-mode training with rigid slot tracking |
+| O2: Velocity jitter reduction | >= 20% vs raw GNN | MINCO A/B comparison (play with/without) |
+| O3: SwarmRaft recovery | < 2.0s gap-fill | Polygon dropout: octagon → heptagon transition |
+| O4: 20+ agent HD demo | 20+ in obstacles | Train 8, deploy 20 via KNN + static obstacles |
 
-## 2. Tasks
+## 2. Execution Steps (dependency order)
 
-### P4.1 Polygon-Mode SwarmRaft
+### Step 1: Polygon Formation Training (p4-1, p4-2)
 
-Phase 3 implemented SwarmRaft in cloud mode (KNN cohesion, no rigid slots).
-Phase 4 upgrades to polygon mode for a compelling visual demo:
+Foundation for all Phase 4 work. Policy learns "go to assigned slot."
 
-- Switch `formation_mode="polygon"` with `dropout_enabled=True`
-- Add **dynamic slot recomputation** on dropout: when a drone dies, recompute
-  `_formation_offsets` for A-1 alive agents (new polygon with fewer vertices)
-- Reassign `_desired_pos_w` for surviving drones to new slot positions
-- Train from scratch with polygon formation + dropout
-- Target: octagon (8) → heptagon (7) → hexagon (6) visible transition
+- Switch `formation_mode="polygon"`, `dropout_enabled=False`
+- Velocity penalties bumped to -0.2 (steady-state hover)
+- Train 1000 iterations, verify formation error < 0.3m
+- Verify drones hold still once in position
 
-### P4.2 Steady-State Hover
+**Success gate:** 8 drones form octagon, hold position, ep_len >= 400.
 
-Drones currently micro-drift because velocity penalties are weak (-0.05).
-Tune to stop drones once formation converges:
+### Step 2: Formation Presets Module
 
-- Increase `lin_vel_reward_scale` from -0.05 to -0.2 or higher
-- Increase `ang_vel_reward_scale` from -0.05 to -0.2 or higher
-- Alternatively: conditional velocity penalty (only penalize heavily after
-  formation converged) to avoid slowing initial goal-seeking
-- Retrain and verify: drones should hover still once in position
+New `formations.py` with switchable geometry presets:
 
-### P4.3 Collision Testing
+- `polygon(N, radius)` — regular N-gon (training default)
+- `grid(N, spacing)` — rectangular grid
+- `triangle_mesh(N, spacing)` — equilateral triangle lattice
+- `letter(char, N, size)` — letter outlines (G, A, S, etc.)
 
-Validate Phase 3's CBF + collision termination under stress:
+Each returns `[N, 3]` offsets from centroid. Train once with polygon,
+swap to any shape at play time — policy tracks new goals without retraining.
 
-- Dense formation scenarios (target_spacing 0.3m)
-- 100-episode evaluation runs
-- Verify zero collisions with CBF + MINCO-CBF sync
+Add `--formation` arg to `play.py` for shape switching.
 
-### P4.4 Scale Benchmarking
+### Step 3: Polygon SwarmRaft Dropout (p4-3, p4-4)
 
-Sweep `--num_agents` (8, 10, 15, 20) using the K-nearest deployment:
+Enable dropout on polygon-trained checkpoint:
 
-- All use the same checkpoint (trained with 8 agents)
-- Record: formation error, KNN distances, VRAM usage, steps/second
-- Verify KNN-based cohesion scales correctly (no centroid dependency)
+- `dropout_enabled=True`, retrain or fine-tune
+- Dynamic slot recomputation: `_formation_offsets` recalculated for A-1
+- Verify: octagon → heptagon visible transition within 2.0s (100 steps)
+- Dead drone excluded from all computations (Phase 3 alive mask)
 
-### P4.5 Obstacle Environments
+**Success gate:** Formation error returns to < 0.3m within 100 steps after dropout.
 
-Benchmark swarm navigation in cluttered environments:
+### Step 4: Scale Testing (O4)
 
-- Add static obstacles to the terrain
-- Verify CBF prevents obstacle collisions
-- Measure mission success rate
+Deploy 8-agent checkpoint at higher agent counts:
 
-### P4.6 Evaluation Suite
+- Test at 10, 15, 20 agents with same checkpoint
+- KNN obs + polygon offsets auto-scale (different N-gon geometry)
+- Record: formation error, KNN distances, collision count
+- If 20 fails: retrain at 16 as fallback
 
-Run 25 episodes each across scenarios:
+**Success gate:** 20 agents maintain formation without collisions.
 
-- Nominal (8 agents, cloud hover)
-- Polygon formation (8 agents, polygon hover)
-- Agent loss (8 agents, kill 1 at random step)
-- Scale (10, 15 agents, cloud hover)
-- Dense formation (8 agents, target_spacing 0.3m)
+### Step 5: Static Obstacle Environment (O4)
 
-## 3. Design Integration
+Add static cylinder obstacles to terrain:
 
-Phase 4 builds on Phase 3's complete L1-L5 stack:
+- Random placement of 5-10 cylinders per env
+- Extend CBF to include drone-obstacle barrier constraints
+- Or: add obstacle positions to observations for policy-based avoidance
+- Record success rate over 100 episodes
+
+**Success gate:** > 95% success rate navigating through obstacles.
+
+### Step 6: O2 Validation (MINCO Jitter Comparison)
+
+A/B test with same checkpoint:
+
+- Play 500 steps with `minco_enabled=True` → measure `std(lin_vel)`
+- Play 500 steps with `minco_enabled=False` → measure `std(lin_vel)`
+- Compute percent reduction
+
+**Success gate:** >= 20% jitter reduction with MINCO.
+
+### Step 7: Evaluation Suite + Testing Report Data
+
+Systematic evaluation across all scenarios:
+
+- Nominal polygon (8 agents, 25 episodes)
+- Formation shapes (grid, triangle, letter_G at 16-20 agents)
+- Agent loss (8 agents, kill 1, 25 episodes)
+- Scale (10, 15, 20 agents, 25 episodes each)
+- Obstacles (8 agents, static cylinders, 100 episodes)
+- Dense formation (8 agents, target_spacing 0.3m, 25 episodes)
+
+Collect: formation error, collision count, gap-fill latency, velocity jitter,
+episode length, success rate. Produce data tables for Testing Report (Phase 5).
+
+## 3. New Components
+
+### Formation Geometry System (`formations.py`)
+
+Train once in polygon mode, play any shape. Core idea: policy learns
+"go to assigned goal slot" — the slot coordinates determine the shape.
 
 ```text
-Phase 3 Stack (GNN + MINCO + CBF + SwarmRaft + Collision Detection)
-    |
-    +-- P4.1: Polygon SwarmRaft (new formation_mode + dynamic offsets)
-    +-- P4.2: Velocity Penalty Tuning (config change + retrain)
-    +-- P4.3: CBF Collision Stress Test (eval only)
-    +-- P4.4: Scale Benchmark (eval only, deploy-N)
-    +-- P4.5: Obstacle Environments (terrain config)
-    +-- P4.6: Evaluation Suite (data collection)
-    |
-    v
-Testing Report Data → M3 Gate (Apr 14)
+Training: polygon(8, radius) → octagon slots
+Play:     grid(8, spacing)   → 3×3 grid slots (swap _desired_pos_w)
+Play:     letter("G", 20)    → letter G with 20 drones
 ```
 
-### Key Phase 3 Components Available
+Switchable mid-episode via `--formation` play.py argument.
 
-| Component | Status | File |
-| :--- | :--- | :--- |
-| GATv2 GNN (L2) | Done | `gnn_policy.py` |
-| MINCO min-jerk (L3) | Done | `minco.py` |
-| SwarmRaft dropout (L3) | Done | `ggswarm_env.py` |
-| CBF safety shield (L4) | Done | `cbf.py` |
-| Virtual collision detection | Done | `ggswarm_env.py` |
-| KNN-based cohesion | Done | `ggswarm_env.py` |
-| MINCO-CBF state sync | Done | `ggswarm_env.py` |
+### Dynamic Slot Recomputation (SwarmRaft + Polygon)
 
-### Commands
+When a drone drops out, recompute formation for N-1 alive agents:
 
-```powershell
-# Nominal evaluation (8 agents)
-python scripts/skrl/play.py --task ggswarm-v0 --num_agents 8 --num_envs 8 `
-  --policy gnn --checkpoint <path> --trajectories --play_length 500
-
-# Scale test (15 agents, same checkpoint)
-python scripts/skrl/play.py --task ggswarm-v0 --num_agents 15 --num_envs 15 `
-  --policy gnn --checkpoint <path> --trajectories
-
-# Polygon formation with dropout
-python scripts/skrl/play.py --task ggswarm-v0 --num_agents 8 --num_envs 8 `
-  --policy gnn --checkpoint <path> --trajectories --play_length 1000
-
-# TensorBoard
-tensorboard --logdir logs/skrl/ggswarm
+```text
+8 alive: polygon(8) → octagon
+7 alive: polygon(7) → heptagon  (one drone killed)
+6 alive: polygon(6) → hexagon   (two drones killed)
 ```
 
-### Pass Criteria
+### Static Obstacles
 
-| Criterion | Threshold | Proposal Objective |
+Cylinder prims added to terrain in `_setup_scene`. CBF extended with
+drone-obstacle barrier constraints (obstacle positions as fixed "drones"
+in the barrier computation).
+
+## 4. Pass Criteria (M3 Gate)
+
+| Criterion | Threshold | Objective |
 | :--- | :--- | :--- |
+| Formation error (polygon, steady-state) | < 0.3m | O1 |
+| Velocity jitter reduction (MINCO vs raw) | >= 20% | O2 |
+| Gap-fill latency after dropout | < 2.0s (100 steps) | O3 |
+| Scale test (20 agents) | Formation maintained | O4 |
+| Obstacle success rate | > 95% / 100 episodes | O4 |
 | Inter-agent collision rate | 0 / 100 episodes | O1 |
-| Gap-fill latency (median) | < 2.0 s (100 steps) | O3 |
-| Formation error, nominal | < 0.5 m | O1 |
-| Scale test (15 agents) | Formation maintained | O4 |
-| Velocity jitter reduction | ≥ 20% vs raw GNN | O2 |
-| Steady-state hover drift | < 0.05 m/s mean velocity | New |
+| Steady-state hover drift | < 0.05 m/s mean velocity | O2 |
 
-## 4. Results
+## 5. Results
 
-Phase 4 has not started. Scheduled: Mar 30 -- Apr 13.
+Phase 4 in progress. Started Mar 30.
+
+- **p4-1:** Polygon mode + velocity -0.2 + MINCO/CBF. Training...
 
 ---
 
@@ -142,3 +150,4 @@ Phase 4 has not started. Scheduled: Mar 30 -- Apr 13.
 
 - [Phase 3: Muscle Refinement](phase3_muscle_refinement.md)
 - [Architecture](../design/architecture.md)
+- [Proposal Objectives](../project/proposal.md)
