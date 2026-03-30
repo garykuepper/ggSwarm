@@ -15,6 +15,54 @@ Baseline timeline is in the [Proposal](../project/proposal.md#7-timeline-and-mil
 
 ---
 
+## Week 13 Update (2026-03-29) — Phase 3 Complete
+
+- **PHASE 3 COMPLETE. M2 gate met 9 days early.**
+  Implemented all L2-L4 layers: GATv2 GNN with K-hop sparse edges, MINCO
+  minimum-jerk trajectory filter, CBF-QP safety shield, SwarmRaft agent
+  dropout, virtual collision detection, and KNN-based cohesion. 13 training
+  runs (p3-14 through p3-26) across one session.
+
+- **CBF-QP safety filter (L4):** Rewrote from heuristic moment injection to
+  proper barrier constraint enforcement. p3-16 unclamped corrections caused
+  drone tumbling (ep_len 18). p3-17 fixed with clamped corrections (_MAX=0.15):
+  reward 65.3, ep_len 463.
+
+- **MINCO minimum-jerk filter (L3):** Single-segment min-jerk trajectory
+  optimization. p3-18 (T=0.10s) too sluggish — drones crashed (ep_len 51).
+  p3-19 (T=0.04s) restored stability: reward 46.3, ep_len 472, visibly
+  smoother attitude than EMA baseline.
+
+- **Critical fix: MINCO-CBF state sync.** MINCO was overwriting CBF corrections
+  every step. Syncing `_minco_pos` to post-CBF output made corrections sticky.
+  p3-23: all 8 drones survive full 500 steps, KNN floor at 0.25m.
+
+- **Virtual collision detection:** Pairwise distance check (r=0.10m) triggers
+  collective group reset. Strongest training signal for separation learning.
+  p3-21 (1000 iter): KNN floor raised to 0.20m.
+
+- **KNN-based cohesion:** Replaced centroid cohesion (doesn't scale to 20+
+  drones) with mean K-nearest neighbor distance reward. Merged with spacing
+  penalty into single loop. p3-22: KNN range widened to 0.3-0.8m.
+
+- **SwarmRaft agent dropout (L3 consensus):** `_agent_alive` mask, random
+  dropout at step 100-250, dead drones excluded from all computations.
+  p3-25 revealed dead drone cascade-crash bug (falls → triggers group reset).
+  p3-26 fixed: reward 19.6, ep_len 332, 7/8 drones survive after dropout.
+
+- **Best overall run: p3-24** — reward 36.4, ep_len 242, KNN 0.3-0.6m.
+  All 8 drones survive full 500-step episode. Smooth attitude (+/-2 deg).
+  Combines: MINCO + CBF sync + collision termination + KNN cohesion +
+  separation penalty 20 + spawn radius 0.5m + random Z spawn.
+
+- **Phase 4 (Stress Testing) planned:** Polygon-mode SwarmRaft (octagon →
+  heptagon visual demo), steady-state hover (velocity penalty tuning),
+  obstacle environments, scale benchmarking, M3 validation.
+
+- **Timeline:** M2 gate Apr 7 — met 9 days early. 26 days remain to deadline.
+
+---
+
 ## Week 12 Update (2026-03-27)
 
 - **FRESH START + FORMATION IN ONE DAY.**

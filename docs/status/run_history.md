@@ -93,6 +93,19 @@ or relaunching (Rule 23). Full assessment workflow: [`docs/ops/post_train_analys
 | p3-11 | 2026-03-27_22-36-52 | 4.3 | 60 | 0.17 | 0.5–1.5m but crashes | CBF lateral moments (scale 0.5) | FAIL |
 | p3-12 | 2026-03-28_09-28-26 | 97.2 | 479 | 0.23 | Collapses to ~0m | CBF lateral scale 0.15 | WARN |
 | p3-13 | 2026-03-28 (p4 subdir) | — | — | — | — | L2 fix: proper GNN edges | pending |
+| p3-14 | 2026-03-28_10-28-26 | — | — | — | — | FC edges during collection | pending |
+| p3-15 | 2026-03-28_16-25-29 | 61.9 | 431 | — | 0.10-0.50m | K-hop sparse + edge cache | PASS |
+| p3-16 | 2026-03-28_17-15-47 | -14.5 | 18 | 0.70 | — | CBF-QP (unclamped) | FAIL |
+| p3-17 | 2026-03-28_17-58-29 | 65.3 | 463 | 0.29 | 0.10-0.50m | CBF-QP fix (clamped 0.15) | PASS |
+| p3-18 | 2026-03-28_20-22-22 | 2.6 | 51 | 0.24 | — | MINCO T=0.10s | FAIL |
+| p3-19 | 2026-03-29_01-24-49 | 46.3 | 472 | 0.24 | 0.15-0.60m | MINCO T=0.04s | PASS |
+| p3-20 | 2026-03-29_02-00-50 | 17.5 | 99 | 0.23 | 0.15-0.40m | Collision termination (500 iter) | Learning |
+| p3-21 | 2026-03-29_08-03-19 | 22.8 | 131 | 0.13 | 0.20-0.50m | Collision termination (1000 iter) | PASS |
+| p3-22 | 2026-03-29_11-10-15 | 17.0 | 111 | 0.16 | 0.30-0.80m | KNN cohesion (replaces centroid) | PASS |
+| p3-23 | 2026-03-29_12-20-33 | 19.0 | 109 | 0.15 | 0.25-0.60m | MINCO-CBF sync + spawn 0.5m | PASS |
+| p3-24 | 2026-03-29_13-29-35 | 36.4 | 242 | 0.16 | 0.30-0.60m | Separation penalty 20 + random Z | **BEST** |
+| p3-25 | 2026-03-29_14-30-20 | 12.3 | 132 | 0.32 | — | SwarmRaft dropout (death bug) | FAIL |
+| p3-26 | 2026-03-29_17-13-15 | 19.6 | 332 | 0.26 | 0.30-0.60m | SwarmRaft fixed (dead drone excl) | PASS |
 
 > **p3-5 (2026-03-27):** Root cause identified — all drones in cloud mode shared same
 > `_desired_pos_w`, per-drone goal reward (15.0) pulled them all to one point.
@@ -112,6 +125,42 @@ or relaunching (Rule 23). Full assessment workflow: [`docs/ops/post_train_analys
 
 > **p3-13 (2026-03-28):** L2 fix — proper within-group fully-connected edges in GATv2.
 > First run with actual GNN message passing. Results pending.
+
+> **p3-15 (2026-03-28):** K-hop sparse edges with edge cache for PPO replay. Baseline
+> for all subsequent Phase 3 work. Reward 61.9, ep_len 431, stable hover + cloud formation.
+
+> **p3-16 (2026-03-28):** CBF-QP rewrite — unclamped gradient projection caused massive
+> corrections that flipped drones. ep_len 18, reward -14.5. Root cause: correction_scale
+> unbounded when drones are close.
+
+> **p3-17 (2026-03-28):** CBF-QP fix — clamped corrections to MAX=0.15, normalized escape
+> direction. Restored to baseline quality. Best non-collision run.
+
+> **p3-18 (2026-03-28):** MINCO min-jerk filter at T=0.10s (5 env steps). Too sluggish —
+> drones couldn't respond to hover corrections fast enough. ep_len 51.
+
+> **p3-19 (2026-03-29):** MINCO T=0.04s (2 env steps). Responsive enough for hover,
+> visibly smoother attitude (+/-15 deg vs +/-30 deg). Lower reward than EMA but better
+> quality behavior.
+
+> **p3-20/21 (2026-03-29):** Virtual collision detection (r=0.10m). Group resets on
+> collision create strong separation signal. 500 iter not enough; 1000 iter shows KNN
+> floor rising to 0.20m. Policy actively learning to avoid close approaches.
+
+> **p3-22 (2026-03-29):** KNN cohesion replacing centroid cohesion. KNN range widened
+> to 0.3-0.8m (centroid version was 0.2-0.5m). Drones spread more naturally.
+
+> **p3-23 (2026-03-29):** MINCO-CBF state sync — syncing _minco_pos to post-CBF output
+> makes safety corrections persistent. All 8 drones survive full 500 steps. KNN floor 0.25m.
+
+> **p3-24 (2026-03-29):** Best overall. Separation penalty 20 (2x) + random spawn Z.
+> Reward 36.4, ep_len 242. KNN 0.3-0.6m centered on 0.5m target. Attitude +/-2 deg.
+
+> **p3-25 (2026-03-29):** SwarmRaft dropout — dead drone fell (thrust=0), hit z<0.05,
+> triggered collective group reset. Death bug: dead drones cascade-crash alive group.
+
+> **p3-26 (2026-03-29):** SwarmRaft fixed — `died & _agent_alive` excludes dead drones
+> from altitude check. 7/8 survive after dropout. KNN topology self-heals.
 
 ---
 

@@ -114,6 +114,11 @@ args_cli, hydra_args = parser.parse_known_args()
 # always enable cameras to record video
 if args_cli.video:
     args_cli.enable_cameras = True
+# Sync play_length and video_length — use the larger value for both
+if args_cli.video:
+    max_len = max(args_cli.play_length, args_cli.video_length)
+    args_cli.play_length = max_len
+    args_cli.video_length = max_len
 
 # clear out sys.argv for Hydra
 sys.argv = [sys.argv[0]] + hydra_args
