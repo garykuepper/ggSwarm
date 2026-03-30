@@ -69,7 +69,7 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
 
     # viewer camera
     viewer: ViewerCfg = ViewerCfg(
-        eye=(1.5, 1.5, 1.5),
+        eye=(2.0, 2.0, 2.0),
         lookat=(0.0, 0.0, 1.0),
         resolution=(1920, 1080),
     )
