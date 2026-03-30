@@ -90,14 +90,14 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     spawn_radius = 0.5  # meters, distance from env center to each drone
 
     # reward scales — hover (quadcopter reference)
-    lin_vel_reward_scale = -0.05
-    ang_vel_reward_scale = -0.05
+    lin_vel_reward_scale = -0.2
+    ang_vel_reward_scale = -0.2
     distance_to_goal_reward_scale = 15.0
     distance_to_goal_sigma = 0.8
 
     # formation (Phase 2B/2C/3)
     num_neighbors = 2                 # K-nearest neighbors in obs (fixed obs size)
-    formation_mode = "cloud"          # "polygon" (rigid slots) or "cloud" (boids-like)
+    formation_mode = "polygon"        # "polygon" (rigid slots) or "cloud" (boids-like)
     formation_target_spacing = 0.5    # target inter-drone distance (m) — polygon mode
     formation_reward_scale = 2.0      # formation reward scale — polygon mode
     formation_reward_sigma = 0.3      # tanh sharpness — polygon mode
@@ -136,7 +136,7 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     collision_enabled = True          # enable virtual collision termination
 
     # SwarmRaft agent dropout (L3 consensus)
-    dropout_enabled = True            # enable random agent dropout during training
+    dropout_enabled = False           # enable random agent dropout during training
     dropout_step_min = 100            # earliest step to trigger dropout
     dropout_step_max = 250            # latest step to trigger dropout
     dropout_count = 1                 # agents to kill per group
