@@ -86,8 +86,8 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     thrust_to_weight = 1.9
     moment_scale = 0.01
 
-    # spawn offsets — computed dynamically as circle of radius 0.3m
-    spawn_radius = 0.5  # meters, distance from env center to each drone
+    # spawn offsets — computed dynamically as circle of radius
+    spawn_radius = 0.8  # meters, distance from env center to each drone
 
     # reward scales — hover (quadcopter reference)
     lin_vel_reward_scale = -0.2
