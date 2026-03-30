@@ -197,6 +197,10 @@ def main(
         args_cli.device if args_cli.device is not None else env_cfg.sim.device
     )
 
+    # Extend episode length to match play_length so no mid-play resets
+    if args_cli.play_length:
+        env_cfg.episode_length_s = args_cli.play_length * env_cfg.decimation * env_cfg.sim.dt + 1.0
+
     # Apply num_agents and expand observation space for formation
     env_cfg.num_agents = args_cli.num_agents
     if args_cli.num_agents > 1:
@@ -389,12 +393,18 @@ def main(
         if args_cli.trajectories:
             base_env = env.unwrapped
             A = base_env.cfg.num_agents
-            pos = base_env._robot.data.root_pos_w[:A]    # [A, 3]
-            quat = base_env._robot.data.root_quat_w[:A]  # [A, 4]
-            goal = base_env._desired_pos_w[:A]            # [A, 3]
-            traj_pos.append(pos.detach().cpu().clone())
-            traj_quat.append(quat.detach().cpu().clone())
-            traj_goal.append(goal.detach().cpu().clone())
+            pos = base_env._robot.data.root_pos_w[:A].detach().cpu().clone()    # [A, 3]
+            quat = base_env._robot.data.root_quat_w[:A].detach().cpu().clone()  # [A, 4]
+            goal = base_env._desired_pos_w[:A].detach().cpu().clone()            # [A, 3]
+            # Mask out dead drones with NaN so plots skip them cleanly
+            if base_env.cfg.dropout_enabled:
+                dead = ~base_env._agent_alive[:A].cpu()
+                pos[dead] = float("nan")
+                quat[dead] = float("nan")
+                goal[dead] = float("nan")
+            traj_pos.append(pos)
+            traj_quat.append(quat)
+            traj_goal.append(goal)
 
         timestep += 1
         if args_cli.video and timestep >= args_cli.video_length:

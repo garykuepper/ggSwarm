@@ -260,7 +260,7 @@ class GgswarmEnv(DirectRLEnv):
         if self.cfg.num_agents > 1:
             obs = self._expand_obs_with_neighbors(obs)
 
-        # Draw altitude lines (first swarm group)
+        # Draw altitude lines + KNN neighbor connections (first swarm group)
         if self._debug_draw is not None:
             self._debug_draw.clear_lines()
             import colorsys  # noqa: PLC0415
@@ -269,10 +269,32 @@ class GgswarmEnv(DirectRLEnv):
             colors = [(*colorsys.hsv_to_rgb(i / A, 0.9, 0.9), 0.9) for i in range(A)]
             for i in range(A):
                 pos = self._robot.data.root_pos_w[i].cpu().tolist()
+                # Altitude line
                 self._debug_draw.draw_lines(
                     [pos], [[pos[0], pos[1], 0.0]],
                     [colors[i % len(colors)]], [1.0],
                 )
+
+            # KNN neighbor connections (white lines between neighbors)
+            if self.cfg.num_agents > 1 and hasattr(self, "_knn_edge_index"):
+                K = min(self.cfg.num_neighbors, A - 1)
+                edge_color = (1.0, 1.0, 1.0, 0.6)
+                for i in range(A):
+                    if self.cfg.dropout_enabled and not self._agent_alive[i]:
+                        continue
+                    pos_i = self._robot.data.root_pos_w[i].cpu().tolist()
+                    for k in range(K):
+                        # Read from edge_index: first A*K entries are forward edges
+                        edge_idx = i * K + k
+                        j = int(self._knn_edge_index[1, edge_idx])
+                        if j >= A:
+                            continue
+                        if self.cfg.dropout_enabled and not self._agent_alive[j]:
+                            continue
+                        pos_j = self._robot.data.root_pos_w[j].cpu().tolist()
+                        self._debug_draw.draw_lines(
+                            [pos_i], [pos_j], [edge_color], [2.0],
+                        )
 
         return {"policy": obs}
 
