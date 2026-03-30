@@ -120,11 +120,51 @@ When a drone drops out, recompute formation for N-1 alive agents:
 6 alive: polygon(6) → hexagon   (two drones killed)
 ```
 
-### Static Obstacles
+### Forest Navigation (Moving Centroid + CBF Obstacles)
 
-Cylinder prims added to terrain in `_setup_scene`. CBF extended with
-drone-obstacle barrier constraints (obstacle positions as fixed "drones"
-in the barrier computation).
+The swarm navigates through a "cluttered forest" of static cylinders
+using two mechanisms — no retraining needed:
+
+**Moving centroid goal:** The group centroid (`_group_goal_local`) moves
+along a predefined path each step (e.g., constant velocity in +X).
+The formation tracking reward naturally pulls the swarm forward. The
+policy already learned "go to your slot around the centroid" — if the
+centroid moves smoothly, the drones follow in formation.
+
+```text
+Step 0:   centroid at (0, 0, 1.0)  → drones form octagon here
+Step 100: centroid at (2, 0, 1.0)  → drones track to new position
+Step 200: centroid at (4, 0, 1.0)  → swarm moved 4m through forest
+...
+```
+
+**CBF obstacle avoidance:** Treat each cylinder as a fixed virtual drone
+in the CBF barrier computation. CBF already enforces
+`||p_i - p_j||^2 > d_safe^2` between drone pairs — adding cylinder
+center positions as immovable agents gives free obstacle avoidance with
+zero retraining. MINCO smooths the avoidance maneuvers.
+
+```text
+Moving centroid (path through forest)
+    ↓
+Formation tracking pulls drones forward
+    ↓
+CBF repels drones from cylinders (same math as inter-drone barriers)
+    ↓
+MINCO smooths the avoidance maneuvers
+```
+
+**Forest layout:** 10-20 cylinder prims at random XY positions along the
+path, with gaps of 2-3m between trunks (wide enough for the swarm to
+pass through while requiring formation deformation). Cylinders spawned
+in `_setup_scene` as static rigid bodies.
+
+**Implementation files:**
+
+- `ggswarm_env.py` (`_setup_scene`): spawn cylinder prims
+- `cbf.py`: add obstacle positions as virtual agents in barrier loop
+- `ggswarm_env.py` (`_pre_physics_step`): advance centroid along path
+- `play.py`: `--forest` flag to enable obstacle terrain + moving goal
 
 ## 4. Pass Criteria (M3 Gate)
 
