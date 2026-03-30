@@ -462,3 +462,7 @@ if __name__ == "__main__":
     main()
     # close sim app
     simulation_app.close()
+    # Force exit — Isaac Sim viewer can linger after close
+    import sys  # noqa: PLC0415, E402
+
+    sys.exit(0)
