@@ -241,6 +241,25 @@ Phase 4 in progress. Started Mar 30.
   All 8 survive full episode. KNN stable at 0.4-0.5m.
 - **p4-3:** Same config, 500 iter (confirmed 1000 unnecessary). Reward 56.4,
   ep_len 251. Baseline polygon checkpoint.
+- **p4-4:** Triangle mesh training shape (more varied geometry). Reward 62.9,
+  ep_len 279. Better generalization to grid/letter formations at play time.
+- **p4-5:** Triangle + SwarmRaft dropout (500 iter). Reward 11.9, ep_len 125.
+  Dynamic slot recomputation working.
+- **p4-6:** Triangle + dropout (1000 iter). Reward 17.3, ep_len 145.
+  Late dropout (step 200-350): clean octagon → heptagon transition visible.
+  Recovery time ~1.0s (50 steps) — passes O3 target of < 2.0s.
+
+### Key Results
+
+- **Formation presets work:** Train with triangle mesh, play as polygon/grid/letter_G
+  without retraining. `--formation` flag switches shapes at play time.
+- **Nearest-slot assignment critical:** Greedy matching eliminates path crossings
+  at scale. Without it, 16+ agents collide during reorganization.
+- **Dynamic spawn radius:** `min_spawn_spacing / (2*sin(π/N))` auto-scales for
+  any agent count. 8 agents → 0.98m, 20 agents → 2.39m.
+- **SwarmRaft recovery:** ~1.0s after dropout. KNN topology shift visible in
+  trajectory plots. 7/7 surviving drones maintain formation.
+- **500 iterations sufficient:** TB learning curve plateaus by step ~5000.
 
 ### Findings
 
