@@ -39,6 +39,8 @@ parser.add_argument("--checkpoint", type=str, required=True)
 parser.add_argument("--num_agents", type=int, default=8)
 parser.add_argument("--output_dir", type=str, default="videos/showcase")
 parser.add_argument("--prefix", type=str, default="ggswarm-showcase")
+parser.add_argument("--test", action="store_true", default=False,
+                    help="Quick 5s test run — one scene, polygon formation only.")
 
 from isaaclab.app import AppLauncher
 
@@ -78,11 +80,16 @@ SCENES = [
 ]
 
 
-def get_scene_at_step(step: int, dt: float) -> tuple[dict, float]:
+TEST_SCENES = [
+    {"name": "test_polygon", "duration_s": 5.0, "camera": "orbit", "formation": "polygon"},
+]
+
+
+def get_scene_at_step(step: int, dt: float, scene_list: list) -> tuple[dict, float]:
     """Return the active scene and progress (0-1) within it."""
     elapsed = step * dt
     cumulative = 0.0
-    for scene in SCENES:
+    for scene in scene_list:
         if elapsed < cumulative + scene["duration_s"]:
             progress = (elapsed - cumulative) / scene["duration_s"]
             return scene, progress
@@ -104,7 +111,8 @@ def main():
     env_cfg.formation_centroid = (0.0, 0.0, 1.0)
 
     # Long episode for full showcase
-    total_duration = sum(s["duration_s"] for s in SCENES)
+    scenes = TEST_SCENES if args_cli.test else SCENES
+    total_duration = sum(s["duration_s"] for s in scenes)
     env_cfg.episode_length_s = total_duration + 5.0
 
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array")
@@ -206,7 +214,7 @@ def main():
     print(f"[SHOWCASE] Running {total_steps} steps ({total_duration:.0f}s)...")
 
     for step in range(total_steps):
-        scene, progress = get_scene_at_step(step, dt)
+        scene, progress = get_scene_at_step(step, dt, scenes)
 
         # Scene change events
         if scene["name"] != prev_scene_name:
