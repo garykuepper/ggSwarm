@@ -39,8 +39,6 @@ parser.add_argument("--checkpoint", type=str, required=True)
 parser.add_argument("--num_agents", type=int, default=8)
 parser.add_argument("--output_dir", type=str, default="videos/showcase")
 parser.add_argument("--prefix", type=str, default="ggswarm-showcase")
-parser.add_argument("--headless", action="store_true", default=False)
-parser.add_argument("--disable_fabric", action="store_true", default=False)
 
 from isaaclab.app import AppLauncher
 
@@ -112,47 +110,42 @@ def main():
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array")
     base_env = env.unwrapped
 
-    # --- Load trained policy ---
-    from skrl.agents.torch.ppo import PPO
+    # --- Load trained policy (same pattern as play.py) ---
+    from skrl.agents.torch.ppo import PPO, PPO_DEFAULT_CONFIG
+    from skrl.memories.torch import RandomMemory
+    from skrl.resources.preprocessors.torch import RunningStandardScaler
+
+    from ggswarm.gnn_policy import GgswarmGNNPolicy
 
     A = args_cli.num_agents
     device = base_env.device
 
-    # Load agent
-    from ggswarm.gnn_policy import GgswarmGNNPolicy
-
-    agent_cfg = {
-        "rollouts": 24,
-        "learning_epochs": 8,
-        "mini_batches": 4,
-        "discount_factor": 0.99,
-        "lambda": 0.95,
-        "learning_rate": 3e-4,
-        "random_timesteps": 0,
-        "learning_starts": 0,
-        "state_preprocessor": None,
-        "state_preprocessor_kwargs": {},
-        "value_preprocessor": None,
-        "value_preprocessor_kwargs": {},
-    }
-
-    obs_space = env.observation_space
-    act_space = env.action_space
-
-    models = {}
-    models["policy"] = GgswarmGNNPolicy(
-        observation_space=obs_space,
-        action_space=act_space,
+    memory = RandomMemory(memory_size=24, num_envs=env.num_envs, device=device)
+    gnn_model = GgswarmGNNPolicy(
+        observation_space=env.observation_space,
+        action_space=env.action_space,
         device=device,
+        num_neighbors=env_cfg.num_neighbors,
+        num_agents=A,
     )
-    models["value"] = models["policy"]
+    GgswarmGNNPolicy.init_edge_cache(memory_size=24, num_envs=env.num_envs)
+    models = {"policy": gnn_model, "value": gnn_model}
+
+    ppo_cfg = PPO_DEFAULT_CONFIG.copy()
+    ppo_cfg.update({
+        "state_preprocessor": RunningStandardScaler,
+        "state_preprocessor_kwargs": {"size": env.observation_space, "device": device},
+        "value_preprocessor": RunningStandardScaler,
+        "value_preprocessor_kwargs": {"size": 1, "device": device},
+    })
 
     agent = PPO(
         models=models,
-        memory=None,
-        observation_space=obs_space,
-        action_space=act_space,
+        memory=memory,
+        observation_space=env.observation_space,
+        action_space=env.action_space,
         device=device,
+        cfg=ppo_cfg,
     )
     agent.load(args_cli.checkpoint)
     agent.set_running_mode("eval")
