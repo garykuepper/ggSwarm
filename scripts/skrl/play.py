@@ -472,6 +472,37 @@ def main(
             collision_radius=base_env.cfg.collision_radius if A > 1 else None,
         )
 
+        # Save trajectory data as CSV for post-processing
+        import csv  # noqa: PLC0415
+
+        pos = torch.stack(traj_pos)  # [T, A, 3]
+        goal = torch.stack(traj_goal) if traj_goal else None  # [T, A, 3]
+        if env_origins is not None:
+            pos = pos - env_origins.unsqueeze(0)
+            if goal is not None:
+                goal = goal - env_origins.unsqueeze(0)
+        T = pos.shape[0]
+
+        csv_path = os.path.join(traj_dir, "trajectory_data.csv")
+        with open(csv_path, "w", newline="") as f:
+            writer = csv.writer(f)
+            header = ["step"]
+            for a in range(A):
+                header += [f"d{a}_x", f"d{a}_y", f"d{a}_z"]
+                if goal is not None:
+                    header += [f"d{a}_gx", f"d{a}_gy", f"d{a}_gz"]
+            writer.writerow(header)
+            for t in range(T):
+                row = [t]
+                for a in range(A):
+                    p = pos[t, a].tolist()
+                    row += [f"{p[0]:.4f}", f"{p[1]:.4f}", f"{p[2]:.4f}"]
+                    if goal is not None:
+                        g = goal[t, a].tolist()
+                        row += [f"{g[0]:.4f}", f"{g[1]:.4f}", f"{g[2]:.4f}"]
+                writer.writerow(row)
+        print(f"[INFO] Trajectory CSV saved: {csv_path}")
+
     # close the simulator
     env.close()
 
