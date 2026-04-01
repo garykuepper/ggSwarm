@@ -170,12 +170,44 @@ class GgswarmEnv(DirectRLEnv):
             ep_len_grouped = self.episode_length_buf.reshape(G, A)[:, 0]  # shape: [G]
             should_trigger = (ep_len_grouped == self._dropout_step) & (self._dropout_step > 0)
             if should_trigger.any():
+                from ggswarm.formations import get_formation  # noqa: PLC0415
+
                 for g in should_trigger.nonzero(as_tuple=True)[0]:
                     group_start = g * A
                     alive_in_group = self._agent_alive[group_start:group_start + A].nonzero(as_tuple=True)[0]
                     if len(alive_in_group) > 2:  # keep at least 2 alive
                         victim = alive_in_group[torch.randint(len(alive_in_group), (1,))]
                         self._agent_alive[group_start + victim] = False
+
+                        # Dynamic slot recomputation: new formation for N-1 alive drones
+                        n_alive = len(alive_in_group) - 1
+                        spacing = self.cfg.formation_target_spacing
+                        radius = spacing / (2 * math.sin(math.pi / max(n_alive, 2)))
+                        new_offsets = get_formation(
+                            self.cfg.formation_shape, n_alive, radius=radius, spacing=spacing,
+                        ).to(self.device)  # [n_alive, 3]
+
+                        # Reassign goals to alive drones via nearest-slot
+                        alive_mask = self._agent_alive[group_start:group_start + A]
+                        alive_ids = alive_mask.nonzero(as_tuple=True)[0]  # [n_alive]
+                        # Get centroid from current goal (use first alive drone's goal as reference)
+                        first_alive = group_start + alive_ids[0]
+                        centroid_w = self._desired_pos_w[first_alive] - self._formation_offsets[0].to(self.device)
+                        slot_pos = centroid_w.unsqueeze(0) + new_offsets  # [n_alive, 3]
+
+                        # Greedy nearest-slot assignment for alive drones
+                        drone_pos = self._robot.data.root_pos_w[group_start:group_start + A][alive_mask]  # [n_alive, 3]
+                        dist_matrix = torch.cdist(drone_pos, slot_pos)  # [n_alive, n_alive]
+                        claimed = torch.zeros(n_alive, dtype=torch.bool, device=self.device)
+                        for _ in range(n_alive):
+                            dist_matrix[:, claimed] = float("inf")
+                            flat_idx = dist_matrix.argmin()
+                            di = flat_idx // n_alive
+                            sj = flat_idx % n_alive
+                            drone_id = group_start + alive_ids[di]
+                            self._desired_pos_w[drone_id] = slot_pos[sj]
+                            claimed[sj] = True
+                            dist_matrix[di, :] = float("inf")
 
         # MINCO minimum-jerk smoothing (L3 layer — replaces EMA)
         if self.cfg.minco_enabled:
