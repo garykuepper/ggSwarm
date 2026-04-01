@@ -6,77 +6,107 @@
 
 | ID | Goal | Success Criteria |
 | :--- | :--- | :--- |
-| P5.1 | HD demo video of swarm formation | >= 1080p, >= 30 s, showing formation + fault recovery |
-| P5.2 | Proposal objectives verified | Testing Report finalized with pass/fail |
-| P5.3 | Formation error < 0.5 m steady-state | Verified across evaluation suite |
+| P5.1 | Cinematic trailer (~2:30) | Tron-inspired, 1080p 60fps, 8 scenes, formation morphing + dropout |
+| P5.2 | Proposal objectives verified | Testing Report finalized with pass/fail for O1-O4 |
+| P5.3 | Formation error < 0.3m steady-state | Verified across evaluation suite |
 | P5.4 | Presentation-ready repository | Clean README, reproducible commands |
 
-## 2. Tasks
+## 2. Cinematic Trailer (P5.1)
+
+### Concept
+
+Tron Legacy-inspired cinematic showcase. Dark void, volumetric teal fog,
+emissive drone materials, cinematic camera rigs. Signature color: #64d5d2
+(Gary Gigabytes teal). ~2:30 runtime at 1080p 60fps.
+
+### Storyboard
 
 ```mermaid
-flowchart LR
-    Setup["Camera Setup<br/>angles, lighting"] --> Record["Record Demos"]
-    Record --> R1["Formation Hover<br/>8 agents, polygon"]
-    Record --> R2["Scale Demo<br/>20 agents"]
-    Record --> R3["Agent Loss<br/>octagon → heptagon"]
-    Record --> R4["Forest Navigation<br/>20 agents + obstacles"]
-    R1 & R2 & R3 & R4 --> Edit["Compile Video<br/>+ Testing Report"]
-    Edit --> M4["M4 Gate<br/>Apr 20"]
+flowchart TD
+    S1["Scene 1: Cold Open (3s)<br/>Black void, grid materializes from fog"] --> S2
+    S2["Scene 2: Drone Spawn (5s)<br/>8 drones appear, GNN edges visible as teal lines"] --> S3
+    S3["Scene 3: Octagon Formation (5s)<br/>Formation snaps into place — orbit camera"] --> S4
+    S4["Scene 4-6: Formation Morphing (15s)<br/>Octagon → Triangle → Grid → Letter G — top-down camera"] --> S5
+    S5["Scene 7: Drone Failure (5s)<br/>One drone LED cuts out, edges snap — low angle"] --> S6
+    S6["Scene 8: SwarmRaft Recovery (10s)<br/>Heptagon reforms within 2s — orbit camera"] --> S7
+    S7["Scene 9: Scale-Up (15s)<br/>20-agent polygon fills the frame"] --> S8
+    S8["Scene 10: Title Card (5s)<br/>ggSwarm — NVIDIA Isaac Lab — Spring 2026"]
 
-    style Setup fill:#3498db,color:#fff
-    style Record fill:#2ecc71,color:#fff
-    style Edit fill:#f39c12,color:#fff
-    style M4 fill:#c0392b,color:#fff
+    style S1 fill:#141818,color:#64d5d2
+    style S2 fill:#141818,color:#64d5d2
+    style S3 fill:#2e4c5b,color:#64d5d2
+    style S4 fill:#2e4c5b,color:#64d5d2
+    style S5 fill:#e74c3c,color:#fff
+    style S6 fill:#2ecc71,color:#fff
+    style S7 fill:#3498db,color:#fff
+    style S8 fill:#141818,color:#64d5d2
 ```
 
-No new environment or policy code. All work is recording, documentation,
-and polish.
+### Technical Implementation
 
-**Visual setup** — configure camera angles for the best formation view.
-Use `env_spacing=0.01` (play mode) so drones are visually together.
-Set `formation_centroid = (0, 0, 1.0)` for centered hover.
+| Component | File | Description |
+| :--- | :--- | :--- |
+| Tron environment | `scripts/tron_env.py` | Black void, fog, grid, lighting, drone materials, camera rigs |
+| Showcase script | `scripts/showcase.py` | Scene sequencer, formation morphing, dropout orchestration |
+| Trained policy | p4-6 checkpoint | Triangle mesh + dropout trained, generalizes to all shapes |
 
-**HD demo recording** — record scenario sequences using NVENC recorder:
+### Tron Environment Features
 
-- Formation hover (3 agents, 15 s) — triangle formation at centroid
-- Scale demo (6-10 agents, 15 s) — larger swarm, same checkpoint
-- Agent loss recovery (3 agents, 15 s) — kill drone, watch re-form
-- Full scenario (10+ agents, 30 s) — combined demo
+- **Black void stage** — default lights removed, RTX path tracing enabled (32 SPP)
+- **Volumetric fog** — tinted #64d5d2, subtle density (0.08), 3-25m range
+- **Emissive grid plane** — 50m quad with teal OmniPBR emissive material
+- **3-point cinematic lighting** — key (teal-white), fill (navy), rim (bright teal edge glow)
+- **Drone material** — near-black metallic body + #64d5d2 emissive LED at intensity 10
 
-Commands:
+### Camera Rigs (TronCameraRig)
+
+| Mode | Description | Used In |
+| :--- | :--- | :--- |
+| `orbit` | Slow 360° around swarm centroid | Scenes 1-3, 8-10 |
+| `top_down` | Locked overhead — formation shape reveal | Scenes 4-6 |
+| `low_angle` | Dramatic ground-level looking up | Scene 7 (drone failure) |
+| `chase` | Follows swarm centroid | Optional |
+
+### Run Command
 
 ```powershell
-# 3-agent formation demo
-python scripts/skrl/play.py --task ggswarm-v0 --num_agents 3 --num_envs 3 `
-  --policy gnn --checkpoint <path> --video --video_prefix showcase-3
-
-# 10-agent scale demo
-python scripts/skrl/play.py --task ggswarm-v0 --num_agents 10 --num_envs 10 `
-  --policy gnn --checkpoint <path> --video --video_prefix showcase-10
+env_isaaclab/Scripts/python.exe scripts/showcase.py `
+    --task ggswarm-v0 `
+    --checkpoint logs/skrl/ggswarm/p4/<best_run>/checkpoints/best_agent.pt `
+    --prefix p5-1-showcase
 ```
 
-**Testing Report** — compile Phase 4 evaluation results into
-`docs/testing_report.md` with:
+## 3. Testing Report (P5.2)
 
-- Objective pass/fail table (O1-O4)
-- Formation error metrics by scenario
-- Scale benchmark results
-- Trajectory plot comparisons (MLP vs GNN, 3 vs 10 agents)
+Compile Phase 4 evaluation results into `docs/testing_report.md`:
 
-## 3. Design Integration
+- Objective pass/fail table (O1-O4) with measured values
+- Formation error metrics by scenario (polygon, grid, letter, scale)
+- SwarmRaft recovery time measurements
+- MINCO jitter A/B comparison data
+- Scale benchmark results (8, 10, 15, 20 agents)
+- Trajectory plot gallery
+
+## 4. Design Integration
 
 No architectural changes. Consumes Phase 4 validated stack and packages
 for presentation.
 
 | Deliverable | Source |
 | :--- | :--- |
-| Demo videos | NVENC recorder output |
+| Cinematic trailer | `scripts/showcase.py` + `scripts/tron_env.py` |
+| Demo clips | `scripts/skrl/play.py` with `--prefix` |
 | Trajectory plots | `ggswarm.viz.trajectory_plots` |
-| Testing Report | Phase 4 evaluation data |
+| Testing Report | Phase 4 evaluation data + `scripts/eval_metrics.py` |
 
-## 4. Results
+## 5. Results
 
-Phase 5 has not started.
+Phase 5 early start (Mar 31) — showcase script and Tron environment created.
+Full recording scheduled for Apr 14-20 after Phase 4 testing complete.
+
+- **p5-1:** Showcase script created. Tron environment with fog, grid, lighting.
+  8-scene cinematic sequence with formation morphing + SwarmRaft dropout.
+  Using p4-6 checkpoint (triangle + dropout, 1000 iter).
 
 ---
 
@@ -84,3 +114,4 @@ Phase 5 has not started.
 
 - [Phase 4: Stress Testing](phase4_stress_testing.md)
 - [Phase 6: Delivery](phase6_delivery.md)
+- [Assumptions](../design/assumptions.md)
