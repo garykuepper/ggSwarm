@@ -57,6 +57,12 @@ parser.add_argument(
     help="Record and plot drone trajectories.",
 )
 parser.add_argument(
+    "--formation",
+    type=str,
+    default=None,
+    help="Formation shape at play time: polygon, grid, triangle, letter_G, etc.",
+)
+parser.add_argument(
     "--disable_fabric",
     action="store_true",
     default=False,
@@ -266,6 +272,19 @@ def main(
     # convert to single-agent instance if required by the RL algorithm
     if isinstance(env.unwrapped, DirectMARLEnv) and algorithm in ["ppo"]:
         env = multi_agent_to_single_agent(env)
+
+    # Override formation shape at play time (--formation arg)
+    if args_cli.formation and args_cli.num_agents > 1:
+        from ggswarm.formations import get_formation  # noqa: PLC0415
+
+        base = env.unwrapped
+        A = base.cfg.num_agents
+        spacing = base.cfg.formation_target_spacing
+        import math  # noqa: PLC0415
+        radius = spacing / (2 * math.sin(math.pi / A))
+        new_offsets = get_formation(args_cli.formation, A, radius=radius, spacing=spacing, size=2.0)
+        base._formation_offsets = new_offsets.to(base.device)
+        print(f"[INFO] Formation override: {args_cli.formation} ({A} agents)")
 
     # get environment (step) dt for real-time evaluation
     try:

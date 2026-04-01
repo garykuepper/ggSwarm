@@ -195,14 +195,26 @@ def get_formation(name: str, n: int, **kwargs) -> torch.Tensor:
     Args:
         name: formation name ('polygon', 'grid', 'triangle_mesh', 'letter_X')
         n: number of agents
-        **kwargs: passed to the formation function (e.g. spacing, radius)
+        **kwargs: common params — each function picks what it needs:
+            radius: for polygon (default 0.5)
+            spacing: for grid/triangle_mesh (default 0.5)
+            size: for letter (default 2.0)
 
     Returns:
         [N, 3] XYZ offsets from centroid
     """
-    if name.startswith("letter_") and len(name) == 8:
-        char = name[-1]
-        return letter(char, n, **kwargs)
+    import inspect  # noqa: PLC0415
+
+    if name.startswith("letter_") and len(name) >= 8:
+        char = name.split("_", 1)[1]
+        fn = letter
+        # letter(char, n, size) — inject char as first arg
+        sig_params = set(inspect.signature(fn).parameters.keys()) - {"char", "n"}
+        filtered = {k: v for k, v in kwargs.items() if k in sig_params}
+        return fn(char, n, **filtered)
     if name in FORMATIONS:
-        return FORMATIONS[name](n, **kwargs)
+        fn = FORMATIONS[name]
+        sig_params = set(inspect.signature(fn).parameters.keys()) - {"n"}
+        filtered = {k: v for k, v in kwargs.items() if k in sig_params}
+        return fn(n, **filtered)
     raise ValueError(f"Unknown formation: {name}. Available: {list(FORMATIONS.keys())} + letter_X")
