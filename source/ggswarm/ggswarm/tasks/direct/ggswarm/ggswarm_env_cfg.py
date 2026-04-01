@@ -87,8 +87,8 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     moment_scale = 0.01
 
     # spawn offsets — radius computed to maintain min spacing between drones
-    # R = min_spawn_spacing / (2 * sin(pi/N)), ensures nearest-neighbor >= 0.6m
-    min_spawn_spacing = 0.6  # minimum distance between adjacent drones at spawn (m)
+    # R = min_spawn_spacing / (2 * sin(pi/N)), ensures nearest-neighbor >= 0.75m
+    min_spawn_spacing = 0.75  # minimum distance between adjacent drones at spawn (m)
 
     @property
     def spawn_radius(self) -> float:
