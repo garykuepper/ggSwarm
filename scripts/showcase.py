@@ -110,21 +110,58 @@ def main():
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array")
     base_env = env.unwrapped
 
-    # Wrap for SKRL (maps observation/action spaces correctly)
+    A = args_cli.num_agents
+    device = base_env.device
+    num_envs = base_env.num_envs
+
+    # --- Apply Tron environment (before any wrapping) ---
+    import omni.usd
+
+    stage = omni.usd.get_context().get_stage()
+
+    drone_paths = []
+    for i in range(A):
+        path = f"/World/envs/env_{i}/Drone_0"
+        if stage.GetPrimAtPath(path).IsValid():
+            drone_paths.append(path)
+
+    setup_tron_environment(base_env.sim, drone_paths)
+    cam = TronCameraRig(base_env.sim, mode="orbit", radius=6.0, height=2.0)
+    print("[SHOWCASE] Tron environment applied.")
+
+    # Set active viewport camera
+    try:
+        from omni.kit.viewport.utility import get_active_viewport
+
+        viewport = get_active_viewport()
+        if viewport:
+            viewport.set_active_camera(cam.prim_path)
+            print(f"[SHOWCASE] Active camera set to {cam.prim_path}")
+    except Exception as e:
+        print(f"[SHOWCASE] Could not set viewport camera: {e}")
+
+    # --- Video recorder (wraps gym.Env — must be BEFORE SkrlVecEnvWrapper) ---
+    from ggswarm.viz.nvenc_recorder import NvencRecorder
+
+    os.makedirs(args_cli.output_dir, exist_ok=True)
+    env = NvencRecorder(
+        env,
+        video_folder=args_cli.output_dir,
+        video_length=int(total_duration / (env_cfg.decimation * env_cfg.sim.dt)),
+        name_prefix=args_cli.prefix,
+    )
+
+    # --- Wrap for SKRL (must be AFTER NvencRecorder) ---
     from isaaclab_rl.skrl import SkrlVecEnvWrapper
 
     env = SkrlVecEnvWrapper(env, ml_framework="torch")
 
-    # --- Load trained policy (same pattern as play.py) ---
+    # --- Load trained policy ---
     from skrl.agents.torch.ppo import PPO, PPO_DEFAULT_CONFIG
     from skrl.memories.torch import RandomMemory
     from skrl.resources.preprocessors.torch import RunningStandardScaler
 
     from ggswarm.gnn_policy import GgswarmGNNPolicy
-
-    A = args_cli.num_agents
-    device = base_env.device
-    num_envs = base_env.num_envs
 
     memory = RandomMemory(memory_size=24, num_envs=num_envs, device=device)
     gnn_model = GgswarmGNNPolicy(
@@ -158,45 +195,6 @@ def main():
 
     print(f"[SHOWCASE] Loaded checkpoint: {args_cli.checkpoint}")
     print(f"[SHOWCASE] {A} agents, {total_duration:.0f}s total duration")
-
-    # --- Apply Tron environment ---
-    import omni.usd
-
-    stage = omni.usd.get_context().get_stage()
-
-    # Get drone prim paths for material override
-    drone_paths = []
-    for i in range(A):
-        path = f"/World/envs/env_{i}/Drone_0"
-        if stage.GetPrimAtPath(path).IsValid():
-            drone_paths.append(path)
-
-    setup_tron_environment(base_env.sim, drone_paths)
-    cam = TronCameraRig(base_env.sim, mode="orbit", radius=6.0, height=2.0)
-
-    print("[SHOWCASE] Tron environment applied.")
-
-    # --- Set active viewport camera to TronCamera ---
-    try:
-        from omni.kit.viewport.utility import get_active_viewport
-
-        viewport = get_active_viewport()
-        if viewport:
-            viewport.set_active_camera(cam.prim_path)
-            print(f"[SHOWCASE] Active camera set to {cam.prim_path}")
-    except Exception as e:
-        print(f"[SHOWCASE] Could not set viewport camera: {e}")
-
-    # --- Video recorder ---
-    from ggswarm.viz.nvenc_recorder import NvencRecorder
-
-    os.makedirs(args_cli.output_dir, exist_ok=True)
-    env = NvencRecorder(
-        env,
-        video_folder=args_cli.output_dir,
-        video_length=int(total_duration / (env_cfg.decimation * env_cfg.sim.dt)),
-        name_prefix=args_cli.prefix,
-    )
 
     # --- Run showcase ---
     obs, _ = env.reset()
