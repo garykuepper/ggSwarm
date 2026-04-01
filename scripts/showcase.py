@@ -194,7 +194,6 @@ def main():
     env = NvencRecorder(
         env,
         video_folder=args_cli.output_dir,
-        step_trigger=lambda step: step == 0,
         video_length=int(total_duration / (env_cfg.decimation * env_cfg.sim.dt)),
         name_prefix=args_cli.prefix,
     )
