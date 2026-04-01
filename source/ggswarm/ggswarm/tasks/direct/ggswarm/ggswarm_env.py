@@ -736,8 +736,8 @@ class GgswarmEnv(DirectRLEnv):
         r = self.cfg.spawn_radius
         default_root_state[:, 0] += torch.zeros(len(env_ids), device=self.device).uniform_(-r, r)
         default_root_state[:, 1] += torch.zeros(len(env_ids), device=self.device).uniform_(-r, r)
-        # Random Z offset to spread drones vertically at spawn (0.5m to 1.5m)
-        default_root_state[:, 2] = torch.zeros(len(env_ids), device=self.device).uniform_(0.5, 1.5)
+        # Spawn at fixed Z=1.0m (matches typical centroid goal height)
+        default_root_state[:, 2] = 1.0
 
         self._robot.write_root_pose_to_sim(default_root_state[:, :7], env_ids)
         self._robot.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)
