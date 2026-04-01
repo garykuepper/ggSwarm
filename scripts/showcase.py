@@ -119,8 +119,9 @@ def main():
 
     A = args_cli.num_agents
     device = base_env.device
+    num_envs = base_env.num_envs
 
-    memory = RandomMemory(memory_size=24, num_envs=env.num_envs, device=device)
+    memory = RandomMemory(memory_size=24, num_envs=num_envs, device=device)
     gnn_model = GgswarmGNNPolicy(
         observation_space=env.observation_space,
         action_space=env.action_space,
@@ -128,7 +129,7 @@ def main():
         num_neighbors=env_cfg.num_neighbors,
         num_agents=A,
     )
-    GgswarmGNNPolicy.init_edge_cache(memory_size=24, num_envs=env.num_envs)
+    GgswarmGNNPolicy.init_edge_cache(memory_size=24, num_envs=num_envs)
     models = {"policy": gnn_model, "value": gnn_model}
 
     ppo_cfg = PPO_DEFAULT_CONFIG.copy()
