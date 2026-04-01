@@ -146,6 +146,6 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
 
     # SwarmRaft agent dropout (L3 consensus)
     dropout_enabled = True            # enable random agent dropout during training
-    dropout_step_min = 100            # earliest step to trigger dropout
-    dropout_step_max = 250            # latest step to trigger dropout
+    dropout_step_min = 200            # earliest step to trigger dropout (after formation settles)
+    dropout_step_max = 350            # latest step to trigger dropout
     dropout_count = 1                 # agents to kill per group
