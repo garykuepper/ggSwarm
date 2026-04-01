@@ -52,11 +52,13 @@ class GgswarmEnv(DirectRLEnv):
         # Formation slot offsets — computed via formations module
         # shape: [num_agents, 3] — XYZ offset from group centroid
         if A > 1:
-            from ggswarm.formations import polygon  # noqa: PLC0415
+            from ggswarm.formations import get_formation  # noqa: PLC0415
 
             spacing = self.cfg.formation_target_spacing
             radius = spacing / (2 * math.sin(math.pi / A))
-            self._formation_offsets = polygon(A, radius=radius).to(device)  # [A, 3]
+            self._formation_offsets = get_formation(
+                self.cfg.formation_shape, A, radius=radius, spacing=spacing,
+            ).to(device)  # [A, 3]
         else:
             self._formation_offsets = None
 

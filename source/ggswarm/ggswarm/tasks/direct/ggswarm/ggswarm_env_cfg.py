@@ -106,6 +106,7 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     # formation (Phase 2B/2C/3)
     num_neighbors = 2                 # K-nearest neighbors in obs (fixed obs size)
     formation_mode = "polygon"        # "polygon" (rigid slots) or "cloud" (boids-like)
+    formation_shape = "triangle"      # training shape: polygon, grid, triangle (play overrides with --formation)
     formation_target_spacing = 0.5    # target inter-drone distance (m) — polygon mode
     formation_reward_scale = 2.0      # formation reward scale — polygon mode
     formation_reward_sigma = 0.3      # tanh sharpness — polygon mode
