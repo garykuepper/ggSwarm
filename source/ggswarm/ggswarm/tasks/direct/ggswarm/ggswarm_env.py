@@ -702,20 +702,47 @@ class GgswarmEnv(DirectRLEnv):
                 centroid_z = torch.zeros(n_groups, 1, device=self.device).uniform_(0.5, 1.5)
                 centroid = torch.cat([centroid_xy, centroid_z], dim=-1)  # [n_groups, 3]
 
-            # Assign each drone in each group
+            # Assign each drone in each group (nearest-slot matching)
             for g_idx in range(n_groups):
                 g = group_ids[g_idx]
                 # Store group goal in local coords for centroid-to-goal reward
                 if self._cloud_mode:
                     self._group_goal_local[g] = centroid[g_idx]  # [3]
-                for i in range(A):
-                    drone_id = g * A + i
-                    offset = self._formation_offsets[i] if not self._cloud_mode else torch.zeros(3, device=self.device)
-                    self._desired_pos_w[drone_id] = (
-                        centroid[g_idx]
-                        + self._terrain.env_origins[drone_id]
-                        + offset
-                    )
+
+                if not self._cloud_mode and self._formation_offsets is not None:
+                    # Greedy nearest-slot: each drone claims the closest unclaimed slot
+                    group_start = g * A
+                    drone_pos = (
+                        self._robot.data.root_pos_w[group_start:group_start + A]
+                        - self._terrain.env_origins[group_start:group_start + A]
+                    )  # [A, 3] local positions
+                    slot_pos = centroid[g_idx] + self._formation_offsets  # [A, 3]
+                    # Compute pairwise distance matrix [A_drones, A_slots]
+                    dist_matrix = torch.cdist(drone_pos, slot_pos)  # [A, A]
+                    claimed = torch.zeros(A, dtype=torch.bool, device=self.device)
+                    for _ in range(A):
+                        # Mask already-claimed slots
+                        dist_matrix[:, claimed] = float("inf")
+                        # Find closest drone-slot pair
+                        flat_idx = dist_matrix.argmin()
+                        drone_i = flat_idx // A
+                        slot_j = flat_idx % A
+                        # Assign
+                        drone_id = group_start + drone_i
+                        self._desired_pos_w[drone_id] = (
+                            slot_pos[slot_j] + self._terrain.env_origins[drone_id]
+                        )
+                        claimed[slot_j] = True
+                        dist_matrix[drone_i, :] = float("inf")  # drone assigned
+                else:
+                    for i in range(A):
+                        drone_id = g * A + i
+                        offset = torch.zeros(3, device=self.device)
+                        self._desired_pos_w[drone_id] = (
+                            centroid[g_idx]
+                            + self._terrain.env_origins[drone_id]
+                            + offset
+                        )
         else:
             # Single-agent: independent random goals
             self._desired_pos_w[env_ids, :2] = torch.zeros_like(
