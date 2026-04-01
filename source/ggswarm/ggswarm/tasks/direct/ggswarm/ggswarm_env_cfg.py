@@ -86,8 +86,16 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     thrust_to_weight = 1.9
     moment_scale = 0.01
 
-    # spawn offsets — computed dynamically as circle of radius
-    spawn_radius = 0.8  # meters, distance from env center to each drone
+    # spawn offsets — radius computed to maintain min spacing between drones
+    # R = min_spawn_spacing / (2 * sin(pi/N)), ensures nearest-neighbor >= 0.6m
+    min_spawn_spacing = 0.6  # minimum distance between adjacent drones at spawn (m)
+
+    @property
+    def spawn_radius(self) -> float:
+        """Compute spawn radius to maintain min_spawn_spacing for num_agents."""
+        if self.num_agents <= 1:
+            return 0.5
+        return self.min_spawn_spacing / (2 * math.sin(math.pi / self.num_agents))
 
     # reward scales — hover (quadcopter reference)
     lin_vel_reward_scale = -0.2

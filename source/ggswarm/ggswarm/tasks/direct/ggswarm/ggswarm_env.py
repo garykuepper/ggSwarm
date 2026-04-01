@@ -732,8 +732,10 @@ class GgswarmEnv(DirectRLEnv):
         default_root_state = self._robot.data.default_root_state[env_ids]
         default_root_state[:, :3] += self._terrain.env_origins[env_ids]
         # Random XY offset within [-0.5, 0.5]m of env origin
-        default_root_state[:, 0] += torch.zeros(len(env_ids), device=self.device).uniform_(-0.5, 0.5)
-        default_root_state[:, 1] += torch.zeros(len(env_ids), device=self.device).uniform_(-0.5, 0.5)
+        # Random XY offset scaled by spawn_radius (auto-scales with num_agents)
+        r = self.cfg.spawn_radius
+        default_root_state[:, 0] += torch.zeros(len(env_ids), device=self.device).uniform_(-r, r)
+        default_root_state[:, 1] += torch.zeros(len(env_ids), device=self.device).uniform_(-r, r)
         # Random Z offset to spread drones vertically at spawn (0.5m to 1.5m)
         default_root_state[:, 2] = torch.zeros(len(env_ids), device=self.device).uniform_(0.5, 1.5)
 
