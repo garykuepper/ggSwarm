@@ -110,6 +110,11 @@ def main():
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array")
     base_env = env.unwrapped
 
+    # Wrap for SKRL (maps observation/action spaces correctly)
+    from isaaclab_rl.skrl import SkrlVecEnvWrapper
+
+    env = SkrlVecEnvWrapper(env, ml_framework="torch")
+
     # --- Load trained policy (same pattern as play.py) ---
     from skrl.agents.torch.ppo import PPO, PPO_DEFAULT_CONFIG
     from skrl.memories.torch import RandomMemory
