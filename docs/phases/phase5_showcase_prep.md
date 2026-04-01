@@ -67,14 +67,65 @@ flowchart TD
 | `low_angle` | Dramatic ground-level looking up | Scene 7 (drone failure) |
 | `chase` | Follows swarm centroid | Optional |
 
-### Run Command
+### Implementation Plan (incremental, 4 phases)
+
+Build the showcase incrementally — each phase independently testable.
+Do NOT try to do everything at once.
+
+```mermaid
+flowchart LR
+    A["Phase A<br/>--tron flag on play.py"] --> B["Phase B<br/>Fix Tron visuals"]
+    B --> C["Phase C<br/>Formation morphing"]
+    C --> D["Phase D<br/>Full cinematic"]
+
+    style A fill:#3498db,color:#fff
+    style B fill:#f39c12,color:#fff
+    style C fill:#2ecc71,color:#fff
+    style D fill:#8e44ad,color:#fff
+```
+
+**Phase A: `--tron` flag on play.py** (~30 lines)
+
+Add Tron visuals to the existing working play.py. No new wrapper ordering,
+no scene sequencing. Just call `setup_tron_environment()` after `gym.make()`
+but before `NvencRecorder`, create a `TronCameraRig`, and step it each frame.
 
 ```powershell
-env_isaaclab/Scripts/python.exe scripts/showcase.py `
-    --task ggswarm-v0 `
-    --checkpoint logs/skrl/ggswarm/p4/<best_run>/checkpoints/best_agent.pt `
-    --prefix p5-1-showcase
+python scripts/skrl/play.py --task ggswarm-v0 --checkpoint <path> `
+    --tron --video --prefix p5-tron-test
 ```
+
+**Phase B: Fix Tron visuals** (iterative)
+
+Debug colors: verify `/World/Light` and `/World/ground` removal, test
+emissive materials in RTX-Interactive vs Path Tracing mode, tweak fog
+density and grid material. Only modify `scripts/tron_env.py`.
+
+**Phase C: Formation morphing via `--showcase`** (~50 lines)
+
+Add `--showcase` flag to play.py that enables scripted formation changes
+at timed intervals. Reuse existing `get_formation()` + nearest-slot
+assignment. No separate showcase.py needed.
+
+```powershell
+python scripts/skrl/play.py --task ggswarm-v0 --checkpoint <path> `
+    --tron --showcase --video --prefix p5-showcase
+```
+
+**Phase D: Full cinematic** (drone kill + camera cuts)
+
+Add SwarmRaft dropout trigger, camera mode switching (orbit → top_down →
+low_angle), and optional scale-up. Either extend play.py `--showcase`
+or keep in separate `scripts/showcase.py`.
+
+### Files
+
+| Phase | File | Changes |
+| :--- | :--- | :--- |
+| A | `scripts/skrl/play.py` | `--tron` flag, call setup_tron_environment, step TronCameraRig |
+| B | `scripts/tron_env.py` | Fix light/ground removal, test materials |
+| C | `scripts/skrl/play.py` | `--showcase` flag with formation timer |
+| D | `scripts/showcase.py` or `play.py` | Drone kill, camera cuts |
 
 ## 3. Testing Report (P5.2)
 
