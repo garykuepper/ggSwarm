@@ -233,7 +233,55 @@ in `_setup_scene` as static rigid bodies.
 
 Phase 4 in progress. Started Mar 30.
 
-- **p4-1:** Polygon mode + velocity -0.2 + MINCO/CBF. Training...
+### Training Runs
+
+- **p4-1:** Polygon mode + velocity -0.2 + MINCO/CBF. Reward 47.1, ep_len 210.
+  Octagon visible but frequent collisions during reorganization.
+- **p4-2:** Wider spawn (0.8m radius, Z 0.5-1.5m). Reward 51.8, ep_len 254.
+  All 8 survive full episode. KNN stable at 0.4-0.5m.
+- **p4-3:** Same config, 500 iter (confirmed 1000 unnecessary). Reward 56.4,
+  ep_len 251. Baseline polygon checkpoint.
+
+### Findings
+
+#### Finding 1: Index-Based Slot Assignment Causes Path Crossings (2026-03-31)
+
+**Problem:** When scaling from 8 to 16+ agents, drones collided frequently
+and failed to form the target shape. Trajectory plots showed chaotic
+spaghetti paths with constant tumbling.
+
+**Root cause:** Slot assignment was index-based — drone 0 always went to
+slot 0, drone 1 to slot 1, etc. With random spawn positions, a drone on
+the far left might be assigned a slot on the far right, forcing it to fly
+through the entire swarm. With 16 drones, these crossing paths created
+a dense collision zone.
+
+**Fix:** Replaced with **greedy nearest-slot assignment**. Each drone claims
+the closest unclaimed formation slot from its spawn position. This
+eliminates crossing paths — drones take the shortest route to the nearest
+available position.
+
+```mermaid
+flowchart LR
+    subgraph Before["Index-based (broken at scale)"]
+        B1["Drone 0 → Slot 0<br/>(far away)"] ~~~ B2["Paths cross<br/>→ collisions"]
+    end
+    subgraph After["Nearest-slot (fixed)"]
+        A1["Drone 0 → nearest slot"] ~~~ A2["Short paths<br/>→ no crossings"]
+    end
+
+    style Before fill:#e74c3c,color:#fff
+    style After fill:#2ecc71,color:#fff
+```
+
+**Impact:** This is critical for the O4 objective (20+ agents). Without
+nearest-slot assignment, scaling beyond 8 agents is not viable. The fix
+also applies to SwarmRaft slot recomputation — when a drone drops out and
+slots are recalculated, surviving drones should reassign to nearest new slots.
+
+**Lesson:** Decentralized coordination requires not just a good policy but
+also sensible task allocation. In real swarms, slot assignment would use
+a distributed auction or Hungarian algorithm.
 
 ---
 
