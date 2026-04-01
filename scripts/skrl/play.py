@@ -31,11 +31,13 @@ parser.add_argument(
     help="Length of the recorded video (in steps). 500 = 10s at dt=0.02.",
 )
 parser.add_argument(
-    "--video_prefix",
+    "--prefix",
     type=str,
     default="ggswarm",
-    help="Filename prefix for video (e.g. p2b-3).",
+    help="Filename prefix for video, trajectories, and CSV (e.g. p4-5-dropout).",
 )
+# Keep --video_prefix as alias for backward compatibility
+parser.add_argument("--video_prefix", type=str, default=None, help=argparse.SUPPRESS)
 parser.add_argument(
     "--num_agents", type=int, default=8,
     help="Drones per swarm group. >1 enables SwarmWrapper for formation.",
@@ -117,6 +119,9 @@ parser.add_argument(
 AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
 args_cli, hydra_args = parser.parse_known_args()
+# Resolve --video_prefix alias → --prefix
+if args_cli.video_prefix is not None:
+    args_cli.prefix = args_cli.video_prefix
 # always enable cameras to record video
 if args_cli.video:
     args_cli.enable_cameras = True
@@ -301,7 +306,7 @@ def main(
             env,
             video_folder=video_folder,
             video_length=args_cli.video_length,
-            name_prefix=args_cli.video_prefix,
+            name_prefix=args_cli.prefix,
         )
         print(
             f"[INFO] Recording video to {video_folder} (NVENC H.264, {args_cli.video_length} steps)"
@@ -470,6 +475,7 @@ def main(
             target_spacing=base_env.cfg.formation_target_spacing if A > 1 else None,
             centroid=base_env.cfg.formation_centroid if A > 1 else None,
             collision_radius=base_env.cfg.collision_radius if A > 1 else None,
+            prefix=args_cli.prefix,
         )
 
         # Save trajectory data as CSV for post-processing
@@ -483,7 +489,8 @@ def main(
                 goal = goal - env_origins.unsqueeze(0)
         T = pos.shape[0]
 
-        csv_path = os.path.join(traj_dir, "trajectory_data.csv")
+        csv_fname = f"{args_cli.prefix}-trajectory_data.csv" if args_cli.prefix != "ggswarm" else "trajectory_data.csv"
+        csv_path = os.path.join(traj_dir, csv_fname)
         with open(csv_path, "w", newline="") as f:
             writer = csv.writer(f)
             header = ["step"]

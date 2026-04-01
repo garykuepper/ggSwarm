@@ -26,6 +26,7 @@ def generate_trajectory_plots(
     target_spacing: float | None = None,
     centroid: tuple[float, float, float] | None = None,
     collision_radius: float | None = None,
+    prefix: str | None = None,
 ) -> Path:
     """Create a 2x2 trajectory summary and save as PNG.
 
@@ -195,7 +196,8 @@ def generate_trajectory_plots(
     fig.suptitle(f"Trajectory Summary ({T} steps, {A} agents)", fontsize=14)
     fig.tight_layout()
 
-    out_path = out_dir / "trajectory_summary.png"
+    fname = f"{prefix}-trajectory_summary.png" if prefix else "trajectory_summary.png"
+    out_path = out_dir / fname
     fig.savefig(out_path, dpi=150)
     plt.close(fig)
     print(f"[INFO] Trajectory plot saved: {out_path}")
