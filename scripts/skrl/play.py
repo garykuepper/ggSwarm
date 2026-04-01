@@ -65,6 +65,12 @@ parser.add_argument(
     help="Formation shape at play time: polygon, grid, triangle, letter_G, etc.",
 )
 parser.add_argument(
+    "--dropout",
+    action="store_true",
+    default=False,
+    help="Enable SwarmRaft dropout during play (disabled by default).",
+)
+parser.add_argument(
     "--disable_fabric",
     action="store_true",
     default=False,
@@ -224,6 +230,7 @@ def main(
         env_cfg.scene.env_spacing = 0.01  # drones visually in same space
         env_cfg.collective_resets = False  # no group teleport during play
         env_cfg.formation_centroid = (0.0, 0.0, 1.0)  # hover over origin during play
+        env_cfg.dropout_enabled = args_cli.dropout  # off by default, --dropout to enable
     else:
         env_cfg.observation_space = 12
 
