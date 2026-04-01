@@ -955,3 +955,34 @@ matching) were irrelevant — the policy was receiving garbage inputs during eva
   nearest *alive* neighbors). Policy learns to handle topology changes implicitly
   via GNN. Targets O3: re-sync within 2.0s of failure. `dropout_enabled=False`
   by default for safe rollout.
+
+## Phase 4: Stress Testing (Mar 30+)
+
+- [2026-03-30] **Polygon-mode formation training (p4-1 through p4-3).** Switched
+  `formation_mode="polygon"` with rigid slot tracking. Velocity penalties bumped
+  -0.05→-0.2. p4-3 (500 iter): reward 56.4, ep_len 251, KNN stable at 0.4-0.5m.
+- [2026-03-30] **Formations module (`formations.py`).** New module with polygon,
+  grid, triangle_mesh, and letter presets. Each returns [N,3] offsets from centroid.
+  Train once, play any shape via `--formation` arg. `get_formation()` uses inspect
+  to route kwargs per function signature.
+- [2026-03-31] **Greedy nearest-slot assignment.** Replaced index-based slot
+  assignment (drone 0 → slot 0) with greedy nearest-match. Each drone claims the
+  closest unclaimed slot from its spawn position. Eliminates path crossings that
+  caused collisions at 16+ agents. (Finding 1)
+- [2026-03-31] **Dynamic spawn radius.** `spawn_radius` is now a `@property`:
+  `min_spawn_spacing / (2*sin(π/N))`. Auto-scales for any agent count — 8 agents
+  → 0.98m, 20 agents → 2.39m. Fixed spawn Z=0.5m (below goal).
+- [2026-03-31] **Configurable training shape.** Added `formation_shape` cfg param.
+  Triangle mesh (default) has more varied geometry than polygon, improving
+  generalization to grid/letter formations at play time.
+- [2026-03-31] **SwarmRaft polygon dropout with dynamic slot recomputation.**
+  When a drone dies, formation offsets recomputed for N-1 alive agents using
+  `get_formation()`. Goals reassigned via greedy nearest-slot. Octagon→heptagon
+  transition visible in play. Recovery time ~1.0s (passes O3 < 2.0s target).
+- [2026-03-31] **Play improvements.** `--prefix` tags all outputs (video, PNG,
+  CSV). `--formation` switches shape at play time. `--dropout` flag (off by
+  default). Trajectory CSV export. `sys.exit(0)` after play completes.
+  `play_length`/`video_length` synced and defaulted to 500 steps (10s).
+- [2026-03-31] **Assumptions and scope limitations documented.** 8 simplifying
+  assumptions (perfect state, perfect comms, no PID, centralized slots, etc.)
+  with reality checks, impact analysis, and future work paths.

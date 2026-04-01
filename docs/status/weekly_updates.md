@@ -79,16 +79,23 @@ Baseline timeline is in the [Proposal](../project/proposal.md#7-timeline-and-mil
 - **Best overall run: p3-24** — reward 36.4, ep_len 242, KNN 0.3-0.6m.
   All 8 drones survive full 500-step episode. Smooth attitude (+/-2 deg).
 
-### Phase 4 started (Mar 30)
+### Phase 4: Stress Testing (Mar 30-31)
 
-- **Polygon-mode training (p4-1, p4-2):** Switched from cloud to polygon
-  formation. p4-2: reward 51.8, ep_len 254. All 8 drones form octagon,
-  KNN stabilizes at 0.4-0.5m. Zero collisions in play.
+- **Polygon-mode training (p4-1 to p4-4):** Switched from cloud to polygon/triangle
+  formation. p4-3 (polygon, 500 iter): reward 56.4. p4-4 (triangle mesh): reward 62.9.
+  Triangle mesh has more varied geometry, generalizes better to other shapes.
 - **Formations module:** New `formations.py` with polygon, grid, triangle_mesh,
-  and letter presets. Train once with polygon, play any shape.
-- **Velocity penalties:** Bumped from -0.05 to -0.2 for steady-state hover.
+  and letter presets. Train once, play any shape via `--formation` arg.
+- **Finding 1: Index-based slot assignment breaks at scale.** 16+ agents caused
+  path crossings and collisions. Fixed with greedy nearest-slot matching.
+- **Dynamic spawn radius:** Auto-scales with agent count to maintain 0.75m spacing.
+- **SwarmRaft polygon dropout (p4-5, p4-6):** Dynamic slot recomputation for N-1
+  agents. Octagon→heptagon visible. Recovery ~1.0s (passes O3 < 2.0s target).
+- **Assumptions documented:** 8 simplifying assumptions with future work paths.
+- **Remaining:** Scale testing (10-20 agents), forest navigation, MINCO validation,
+  eval suite.
 
-- **Timeline:** M2 gate Apr 7 — met 9 days early. 25 days remain to deadline.
+- **Timeline:** 24 days remain to deadline (Apr 24).
 
 ---
 

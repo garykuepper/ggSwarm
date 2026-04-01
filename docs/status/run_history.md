@@ -107,6 +107,34 @@ or relaunching (Rule 23). Full assessment workflow: [`docs/ops/post_train_analys
 | p3-25 | 2026-03-29_14-30-20 | 12.3 | 132 | 0.32 | — | SwarmRaft dropout (death bug) | FAIL |
 | p3-26 | 2026-03-29_17-13-15 | 19.6 | 332 | 0.26 | 0.30-0.60m | SwarmRaft fixed (dead drone excl) | PASS |
 
+### Phase 4: Stress Testing
+
+| Run | Timestamp | Reward | Ep Len | Std | KNN Range | Key Change | Verdict |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| p4-1 | 2026-03-29_22-20-26 | 47.1 | 210 | 0.12 | 0.15-0.50m | Polygon mode + vel -0.2 | Collisions |
+| p4-2 | 2026-03-29_23-06-14 | 51.8 | 254 | 0.10 | 0.40-0.50m | Wider spawn (0.8m, Z 0.5-1.5) | PASS |
+| p4-3 | 2026-03-31_17-22-26 | 56.4 | 251 | 0.17 | 0.40-0.50m | 500 iter (confirmed sufficient) | PASS |
+| p4-4 | 2026-03-31_18-41-12 | 62.9 | 279 | 0.19 | 0.40-0.50m | Triangle mesh training shape | **BEST** |
+| p4-5 | 2026-03-31_19-34-48 | 11.9 | 125 | 0.17 | — | Triangle + dropout (500 iter) | Learning |
+| p4-6 | 2026-03-31_20-23-46 | 17.3 | 145 | 0.18 | 0.40-0.60m | Triangle + dropout (1000 iter) | PASS |
+
+> **p4-1 (2026-03-29):** First polygon run. Octagon visible but frequent collisions
+> during reorganization from spawn. Spawn radius too small for 8 drones.
+
+> **p4-2 (2026-03-29):** Wider spawn fixed collisions. All 8 survive full episode.
+> TB confirmed 1000 iterations unnecessary — plateaus by step ~5000.
+
+> **p4-4 (2026-03-31):** Triangle mesh has more varied geometry (staggered rows)
+> than polygon (all equidistant from center). Better generalization to grid/letter.
+
+> **p4-5/p4-6 (2026-03-31):** SwarmRaft dropout with dynamic slot recomputation.
+> Formation offsets recomputed for N-1 alive agents on kill. Greedy nearest-slot
+> reassignment. Late dropout (step 200-350) shows clean octagon→heptagon transition.
+> Recovery time ~1.0s (50 steps) — passes O3 target of < 2.0s.
+
+> **Finding 1:** Index-based slot assignment (drone 0 → slot 0) caused path crossings
+> at 16+ agents. Fixed with greedy nearest-slot matching.
+
 > **p3-5 (2026-03-27):** Root cause identified — all drones in cloud mode shared same
 > `_desired_pos_w`, per-drone goal reward (15.0) pulled them all to one point.
 
