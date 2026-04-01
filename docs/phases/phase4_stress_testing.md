@@ -112,8 +112,23 @@ Systematic evaluation across all scenarios:
 - Obstacles (8 agents, static cylinders, 100 episodes)
 - Dense formation (8 agents, target_spacing 0.3m, 25 episodes)
 
-Collect: formation error, collision count, gap-fill latency, velocity jitter,
-episode length, success rate. Produce data tables for Testing Report (Phase 5).
+Collect all metrics below. Produce data tables for Testing Report (Phase 5).
+
+### Presentation Metrics (post-processing script)
+
+Computed from trajectory data — no env code changes needed.
+
+| Metric | Why it's compelling | How to compute |
+| :--- | :--- | :--- |
+| Formation convergence time | "Drones reach octagon in X seconds" | Time until formation error < threshold |
+| Dropout recovery time | "Swarm re-forms in X seconds after failure" (O3) | Steps from kill to formation error returning below threshold |
+| Velocity jitter comparison | "MINCO reduces jitter by X%" (O2) | `std(lin_vel)` with/without MINCO |
+| Scale degradation curve | "Formation quality vs number of agents" chart | Formation error at 8, 10, 15, 20 agents |
+| CBF intervention rate | "Safety shield activates X% of steps" | Count steps where CBF modifies actions |
+| Energy proxy | "Total thrust integral as efficiency metric" | Sum of thrust commands over episode |
+
+Implementation: `scripts/eval_metrics.py` — reads trajectory `.pt` files
+and TB event logs, outputs a metrics summary table and charts.
 
 ## 3. New Components
 

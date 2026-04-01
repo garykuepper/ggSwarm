@@ -27,8 +27,8 @@ parser.add_argument(
 parser.add_argument(
     "--video_length",
     type=int,
-    default=300,
-    help="Length of the recorded video (in steps).",
+    default=500,
+    help="Length of the recorded video (in steps). 500 = 10s at dt=0.02.",
 )
 parser.add_argument(
     "--video_prefix",
@@ -47,8 +47,8 @@ parser.add_argument(
 parser.add_argument(
     "--play_length",
     type=int,
-    default=300,
-    help="Number of steps to play (default: 500 = 1 episode).",
+    default=500,
+    help="Number of steps to play. 500 = 10s at dt=0.02.",
 )
 parser.add_argument(
     "--trajectories",
