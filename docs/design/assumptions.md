@@ -53,17 +53,38 @@ would be mapped to setpoints for the onboard controller.
 
 ## 4. Centralized Slot Assignment
 
-**Assumption:** Formation slot positions are assigned by index — drone 0
-always goes to slot 0, drone 1 to slot 1, etc. The environment assigns
-slots centrally during reset.
+**Assumption:** Formation slot positions are computed centrally by the
+environment. At episode reset, greedy nearest-slot matching assigns each
+drone to the closest available slot. On SwarmRaft dropout, the environment
+recomputes formation offsets for N-1 alive agents and reassigns slots.
 
-**Reality:** In a truly decentralized swarm, drones would need a consensus
-protocol to agree on slot assignments (e.g., auction-based allocation,
-Hungarian algorithm, or Raft consensus). Slot conflicts could occur.
+**Reality:** In a truly decentralized swarm, drones would negotiate slot
+assignments through a consensus protocol (auction-based allocation,
+Hungarian algorithm, or Raft consensus). Each drone would independently
+express a preference for a slot, and conflicts would be resolved through
+multi-round bidding or distributed voting.
 
-**Impact:** The "SwarmRaft" implementation simulates failure recovery but
-not slot negotiation. The GNN implicitly learns spatial coordination
-through message passing, but explicit slot assignment is centralized.
+**Impact:** The current system is spatially aware (nearest-slot, not
+index-based) but centralized — the environment acts as an omniscient
+coordinator. The GNN learns spatial coordination through message passing,
+but slot allocation decisions are not part of the learned policy.
+
+**Why full decentralization is hard:** The CTDE architecture uses a shared
+policy with single-pass inference. Multi-round consensus (auction, Raft
+voting) requires iterative communication loops between agents, which
+breaks the vectorized batch inference model. In Isaac Lab with 4096
+parallel environments, running iterative consensus per swarm group would
+destroy training throughput.
+
+**Future work path (semi-decentralized):**
+
+1. Add all slot positions to observations (drones can see available options)
+2. Extend action space with slot preference logits (drones express choice)
+3. Environment resolves conflicts using preferences as tie-breakers
+4. GNN learns emergent spatial reasoning ("I'm on the right, prefer rightmost slot")
+
+This would give drones agency in slot selection while keeping conflict
+resolution centralized — practical within CTDE constraints.
 
 ## 5. Homogeneous Agents
 
