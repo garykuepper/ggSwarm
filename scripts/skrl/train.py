@@ -80,6 +80,12 @@ parser.add_argument(
     "--max_iterations", type=int, default=4800, help="RL Policy training iterations."
 )
 parser.add_argument(
+    "--no-minco",
+    action="store_true",
+    default=False,
+    help="Disable MINCO trajectory filter for ablation training.",
+)
+parser.add_argument(
     "--export_io_descriptors",
     action="store_true",
     default=False,
@@ -204,6 +210,11 @@ def main(
               f"K={env_cfg.num_neighbors} neighbors, obs_space={env_cfg.observation_space}")
     else:
         env_cfg.observation_space = 12
+
+    # MINCO toggle for ablation training
+    if args_cli.no_minco:
+        env_cfg.minco_enabled = False
+        print("[INFO] MINCO trajectory filter DISABLED (--no-minco)")
 
     # Check for invalid combination of CPU device with distributed training
     if (

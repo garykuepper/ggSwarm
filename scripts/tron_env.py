@@ -59,11 +59,17 @@ def setup_tron_environment(sim, drone_prim_paths: list[str] | None = None):
 
 def _set_black_void(stage: Usd.Stage):
     """Remove default sky dome and set background to pure black."""
-    # Kill the default distant light and dome if they exist
-    for path in ["/World/defaultDistantLight", "/World/defaultDomeLight", "/Environment"]:
+    # Kill all existing lights and ground plane
+    for path in [
+        "/World/defaultDistantLight", "/World/defaultDomeLight",
+        "/World/Light",       # Isaac Lab DomeLightCfg
+        "/Environment",
+        "/World/ground",      # Isaac Lab terrain ground plane
+    ]:
         prim = stage.GetPrimAtPath(path)
         if prim.IsValid():
             stage.RemovePrim(path)
+            carb.log_info(f"[tron_env] Removed: {path}")
 
     # Set viewport background color to black via render settings
     settings = carb.settings.get_settings()

@@ -71,6 +71,12 @@ parser.add_argument(
     help="Enable SwarmRaft dropout during play (disabled by default).",
 )
 parser.add_argument(
+    "--no-minco",
+    action="store_true",
+    default=False,
+    help="Disable MINCO trajectory filter for A/B jitter comparison.",
+)
+parser.add_argument(
     "--disable_fabric",
     action="store_true",
     default=False,
@@ -233,6 +239,11 @@ def main(
         env_cfg.dropout_enabled = args_cli.dropout  # off by default, --dropout to enable
     else:
         env_cfg.observation_space = 12
+
+    # MINCO toggle for A/B jitter comparison
+    if args_cli.no_minco:
+        env_cfg.minco_enabled = False
+        print("[INFO] MINCO trajectory filter DISABLED (--no-minco)")
 
     # configure the ML framework into the global skrl variable
     if args_cli.ml_framework.startswith("jax"):
