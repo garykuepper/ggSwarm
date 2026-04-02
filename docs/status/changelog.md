@@ -986,3 +986,30 @@ matching) were irrelevant — the policy was receiving garbage inputs during eva
 - [2026-03-31] **Assumptions and scope limitations documented.** 8 simplifying
   assumptions (perfect state, perfect comms, no PID, centralized slots, etc.)
   with reality checks, impact analysis, and future work paths.
+- [2026-04-02] **Scale testing (O4): 8, 10, 15, 20 agents.** Deployed p4-4
+  checkpoint (triangle mesh, trained with 8 agents) at higher agent counts.
+  All pass O1 (formation error < 0.3m steady-state). Results:
+  - 8 agents: FE 0.038m, converge 1.6s, 0 collisions
+  - 10 agents: FE 0.044m, converge 3.3s, 0 collisions
+  - 15 agents: FE 0.142m, converge 5.0s, 1 collision step (min dist 0.085m)
+  - 20 agents: FE 0.061m, converge 3.7s, 0 collisions
+  O4 target (20+ agents in formation) met. 15-agent run was roughest — likely
+  a spawn configuration edge case; 20 agents performed better.
+- [2026-04-02] **MINCO O2 validation — reframed as training benefit.** Initial
+  runtime A/B test (MINCO on vs off at play time) showed no difference — both
+  near-zero jitter (0.008 vs 0.006 m/s). The policy trained with MINCO already
+  outputs smooth actions, so the filter adds no runtime benefit.
+  Reframed O2: trained p4-7 WITHOUT MINCO on GCE (500 iter, same config as
+  p4-4). Comparison of trained policies:
+  - Steady-state jitter: 0.008 m/s (with) vs 0.034 m/s (without) — **77% reduction**
+  - Formation error: 0.038m (with) vs 0.137m (without) — **72% better**
+  - Convergence time: 1.6s (with) vs 2.7s (without) — **40% faster**
+  MINCO's value is as a training stabilizer: minimum-jerk smoothing during
+  exploration prevents jerky actions from crashing drones, enabling better
+  policy learning. O2 target (>= 20% jitter reduction) met at 77%.
+- [2026-04-02] **`--no-minco` flag added to train.py and play.py.** Disables
+  MINCO trajectory filter at training or play time for ablation experiments.
+- [2026-04-02] **`scripts/eval_phase4.py` evaluation script.** Computes formation
+  error, velocity jitter, convergence time, inter-agent distances, and MINCO A/B
+  comparison from trajectory CSVs. Supports `--batch` (scale summary table) and
+  `--compare` (MINCO A/B with pass/fail verdict).

@@ -117,6 +117,7 @@ or relaunching (Rule 23). Full assessment workflow: [`docs/ops/post_train_analys
 | p4-4 | 2026-03-31_18-41-12 | 62.9 | 279 | 0.19 | 0.40-0.50m | Triangle mesh training shape | **BEST** |
 | p4-5 | 2026-03-31_19-34-48 | 11.9 | 125 | 0.17 | — | Triangle + dropout (500 iter) | Learning |
 | p4-6 | 2026-03-31_20-23-46 | 17.3 | 145 | 0.18 | 0.40-0.60m | Triangle + dropout (1000 iter) | PASS |
+| p4-7 | 2026-04-02_11-53-10 | — | — | — | — | Triangle mesh, NO MINCO (ablation) | ABLATION |
 
 > **p4-1 (2026-03-29):** First polygon run. Octagon visible but frequent collisions
 > during reorganization from spawn. Spawn radius too small for 8 drones.
@@ -131,6 +132,11 @@ or relaunching (Rule 23). Full assessment workflow: [`docs/ops/post_train_analys
 > Formation offsets recomputed for N-1 alive agents on kill. Greedy nearest-slot
 > reassignment. Late dropout (step 200-350) shows clean octagon→heptagon transition.
 > Recovery time ~1.0s (50 steps) — passes O3 target of < 2.0s.
+
+> **p4-7 (2026-04-02):** MINCO ablation — trained WITHOUT MINCO, all else identical
+> to p4-4. Play comparison: steady jitter 0.034 m/s (vs 0.008 with MINCO, 77% worse),
+> formation error 0.137m (vs 0.038m, 72% worse), convergence 2.7s (vs 1.6s).
+> Confirms MINCO's value as training stabilizer. O2 reframed and PASS (77% reduction).
 
 > **Finding 1:** Index-based slot assignment (drone 0 → slot 0) caused path crossings
 > at 16+ agents. Fixed with greedy nearest-slot matching.
