@@ -160,8 +160,110 @@ class GgswarmEnv(DirectRLEnv):
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
 
+        # Forest obstacles — generate positions and spawn cylinders in env_0
+        self._obstacle_pos = None
+        if self.cfg.forest_enabled:
+            self._obstacle_pos = self._generate_forest_obstacles()
+        if self.cfg.forest_enabled and self._obstacle_pos is not None:
+            self._spawn_forest_cylinders(stage)
+
+    def _generate_forest_obstacles(self) -> torch.Tensor:
+        """Generate obstacle positions as staggered rows across the flight path.
+
+        Row A: cylinders at Y = -0.8, 0.0, +0.8  (blocks center)
+        Row B: cylinders at Y = -0.4, +0.4        (staggered, blocks gaps)
+
+        Rows alternate A-B along X, forcing the swarm to weave. Deterministic
+        layout — no randomness.
+
+        Returns:
+            [K, 3] obstacle positions in local frame (on self.device).
+        """
+        obs_z = self.cfg.forest_obstacle_z
+        dev = self.device
+
+        # Two row patterns that alternate — staggered to force weaving
+        s = self.cfg.forest_cylinder_spacing
+        row_a_y = [-s, 0.0, s]           # 3 cylinders — blocks center corridor
+        row_b_y = [-s / 2, s / 2]        # 2 cylinders — staggered, blocks gaps in row A
+
+        num_rows = self.cfg.forest_num_rows
+        row_spacing = self.cfg.forest_row_spacing
+        start_x = self.cfg.forest_row_start_x
+
+        positions = []
+        for row_idx in range(num_rows):
+            row_x = start_x + row_idx * row_spacing
+            y_positions = row_a_y if row_idx % 2 == 0 else row_b_y
+            for cy in y_positions:
+                positions.append([row_x, cy, obs_z])
+
+        return torch.tensor(positions, device=dev, dtype=torch.float32)  # [K, 3]
+
+    def _spawn_forest_cylinders(self, stage) -> None:
+        """Spawn static cylinder prims for forest obstacles."""
+        from pxr import Gf, UsdGeom, UsdPhysics  # noqa: PLC0415
+
+        r = self.cfg.forest_obstacle_radius
+        h = self.cfg.forest_obstacle_height
+
+        for k in range(self._obstacle_pos.shape[0]):
+            pos = self._obstacle_pos[k].cpu().tolist()
+            prim_path = f"/World/envs/env_0/Obstacle_{k}"
+
+            # Create cylinder
+            cylinder = UsdGeom.Cylinder.Define(stage, prim_path)
+            cylinder.GetRadiusAttr().Set(r)
+            cylinder.GetHeightAttr().Set(h)
+            cylinder.GetAxisAttr().Set("Z")
+
+            # Position
+            xform = UsdGeom.Xformable(cylinder.GetPrim())
+            xform.ClearXformOpOrder()
+            xform.AddTranslateOp().Set(Gf.Vec3d(pos[0], pos[1], pos[2]))
+
+            # Static collider (no rigid body — immovable)
+            UsdPhysics.CollisionAPI.Apply(cylinder.GetPrim())
+
+            # Dark gray material
+            mat_path = f"{prim_path}/ObstacleMat"
+            mat_cfg = sim_utils.PreviewSurfaceCfg(diffuse_color=(0.3, 0.3, 0.3))
+            sim_utils.spawn_preview_surface(mat_path, mat_cfg)
+            from pxr import UsdShade  # noqa: PLC0415
+            body_prim = cylinder.GetPrim()
+            mat_prim = stage.GetPrimAtPath(mat_path)
+            if body_prim.IsValid() and mat_prim.IsValid():
+                UsdShade.MaterialBindingAPI.Apply(body_prim)
+                UsdShade.MaterialBindingAPI(body_prim).Bind(UsdShade.Material(mat_prim))
+
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         self._actions = actions.clamp(-1.0, 1.0)
+
+        # Forest: advance centroid along +X path each step
+        if self.cfg.forest_enabled and self._formation_active:
+            dx = self.cfg.centroid_speed * self.step_dt  # meters per step
+            A = self.cfg.num_agents
+            G = self._num_groups
+            for g in range(G):
+                group_start = g * A
+                self._desired_pos_w[group_start:group_start + A, 0] += dx
+
+            # Goal deflection: push each drone's goal away from nearby obstacles
+            # Works WITH the policy (drone tracks deflected goal) instead of against it
+            pos_local = self._desired_pos_w - self._terrain.env_origins  # [N, 3]
+            deflect_radius = self.cfg.cbf_obstacle_d_safe + self.cfg.forest_obstacle_radius
+            for k in range(self._obstacle_pos.shape[0]):
+                obs_xy = self._obstacle_pos[k, :2]  # [2]
+                diff_xy = pos_local[:, :2] - obs_xy.unsqueeze(0)  # [N, 2]
+                dist_xy = diff_xy.norm(dim=1, keepdim=True).clamp(min=1e-6)  # [N, 1]
+                too_close = (dist_xy.squeeze(1) < deflect_radius)  # [N] bool
+                if not too_close.any():
+                    continue
+                # Push goal outward from obstacle center until at deflect_radius
+                direction = diff_xy[too_close] / dist_xy[too_close]  # [U, 2] unit
+                shortfall = deflect_radius - dist_xy[too_close].squeeze(1)  # [U] how much to push
+                self._desired_pos_w[too_close, 0] += (direction[:, 0] * shortfall)
+                self._desired_pos_w[too_close, 1] += (direction[:, 1] * shortfall)
 
         # SwarmRaft: trigger agent dropout at scheduled step
         if self.cfg.dropout_enabled and self.cfg.num_agents > 1:
@@ -258,6 +360,19 @@ class GgswarmEnv(DirectRLEnv):
             self.cfg.thrust_to_weight * self._robot_weight * (act[:, 0] + 1.0) / 2.0
         )
         self._moment[:, 0, :] = self.cfg.moment_scale * act[:, 1:]
+
+        # Forest: count drone-obstacle collisions (actual positions, not goals)
+        if self.cfg.forest_enabled and self._obstacle_pos is not None:
+            pos_local = self._robot.data.root_pos_w - self._terrain.env_origins  # [N, 3]
+            hit_r = self.cfg.forest_obstacle_radius
+            step = self.episode_length_buf[0].item()
+            for k in range(self._obstacle_pos.shape[0]):
+                diff_xy = pos_local[:, :2] - self._obstacle_pos[k, :2].unsqueeze(0)
+                dist_xy = diff_xy.norm(dim=1)  # [N]
+                hits = (dist_xy < hit_r).sum().item()
+                if hits > 0:
+                    print(f"[OBSTACLE HIT] step={step} obs={k} hits={hits} "
+                          f"min_dist={dist_xy.min():.3f}m")
 
     def _apply_action(self) -> None:
         self._robot.permanent_wrench_composer.set_forces_and_torques(

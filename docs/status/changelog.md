@@ -1013,3 +1013,18 @@ matching) were irrelevant — the policy was receiving garbage inputs during eva
   error, velocity jitter, convergence time, inter-agent distances, and MINCO A/B
   comparison from trajectory CSVs. Supports `--batch` (scale summary table) and
   `--compare` (MINCO A/B with pass/fail verdict).
+- [2026-04-02] **Forest obstacle navigation (O4).** Swarm navigates through
+  staggered rows of static cylinders using goal deflection + moving centroid.
+  No retraining needed. Goal deflection pushes each drone's target away from
+  nearby obstacles; policy tracks deflected goals naturally. Action-space CBF
+  avoidance proved ineffective (correction fights policy goal-tracking), so
+  goal deflection was adopted instead. `--forest` flag on play.py.
+  Results: 0 obstacle hits, 0 deaths, 0.71 m/s steady speed at 0.8 m/s centroid.
+- [2026-04-02] **CBF obstacle avoidance module (`apply_cbf_obstacles`).** Added
+  to cbf.py — XY-plane barrier with lateral escape direction for cylinder
+  obstacles. Retained for potential future use but goal deflection preferred
+  for current policy.
+- [2026-04-02] **Forest config params.** All obstacle layout parameters moved to
+  `GgswarmEnvCfg`: `forest_cylinder_spacing`, `forest_row_spacing`,
+  `forest_num_rows`, `forest_row_start_x`, `forest_viewer_eye/lookat`,
+  `cbf_obstacle_d_safe`, `centroid_speed`.

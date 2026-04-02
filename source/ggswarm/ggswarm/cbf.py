@@ -125,3 +125,105 @@ def apply_cbf(
 
     # Clamp all actions back to valid range
     return act_g.reshape(N, 4).clamp(-1.0, 1.0)
+
+
+def apply_cbf_obstacles(
+    actions: torch.Tensor,
+    pos_w: torch.Tensor,
+    env_origins: torch.Tensor,
+    vel_w: torch.Tensor,
+    obstacle_pos: torch.Tensor,
+    d_safe: float,
+    gamma: float,
+) -> torch.Tensor:
+    """Apply CBF safety projection for drone-obstacle avoidance.
+
+    Treats each static cylinder as an immovable virtual agent. Only the
+    drone receives a correction (obstacles don't move). d_safe should
+    include the obstacle radius: effective_d = d_safe + obstacle_radius.
+
+    Uses a stronger correction than drone-drone CBF since obstacles are
+    immovable and the drone must do all the work.
+
+    Args:
+        actions: [N, 4] raw actions in [-1, 1]
+        pos_w: [N, 3] drone world positions
+        env_origins: [N, 3] env origins
+        vel_w: [N, 3] drone world velocities
+        obstacle_pos: [K, 3] obstacle positions in LOCAL frame (env_origins=0)
+        d_safe: minimum safe distance (m), should include obstacle radius
+        gamma: barrier decay rate
+
+    Returns:
+        [N, 4] safe actions
+    """
+    N = actions.shape[0]  # shape: [N, 4]
+    K = obstacle_pos.shape[0]  # shape: [K, 3]
+    if K == 0:
+        return actions
+
+    # Lateral correction — steers around obstacles, doesn't fight policy
+    obstacle_max_correction = 0.25
+
+    # Local drone positions  # shape: [N, 3]
+    pos_local = pos_w - env_origins
+
+    act = actions.clone()  # shape: [N, 4]
+    d_safe_sq = d_safe * d_safe
+
+    for k in range(K):
+        # Barrier: drone XY position vs obstacle k (ignore Z for cylinders)
+        obs_k = obstacle_pos[k]  # shape: [3]
+        diff = pos_local - obs_k.unsqueeze(0)  # shape: [N, 3]
+
+        # Use XY distance only for cylindrical obstacles (infinite height)
+        diff_xy = diff.clone()  # shape: [N, 3]
+        diff_xy[:, 2] = 0.0  # zero out Z for 2D barrier
+        dist_sq_xy = (diff_xy * diff_xy).sum(dim=1)  # shape: [N]
+        h = dist_sq_xy - d_safe_sq  # shape: [N]
+
+        # h_dot: obstacle is static, so v_obstacle = 0 (XY only)
+        vel_xy = vel_w.clone()  # shape: [N, 3]
+        vel_xy[:, 2] = 0.0
+        h_dot = 2.0 * (diff_xy * vel_xy).sum(dim=1)  # shape: [N]
+
+        # Barrier constraint
+        constraint = h_dot + gamma * h  # shape: [N]
+        unsafe = constraint < 0  # shape: [N] bool
+
+        if not unsafe.any():
+            continue
+
+        # Violation severity — stronger scaling for obstacles
+        strength = (-constraint[unsafe] / (gamma * d_safe_sq + 1e-6)).clamp(0.0, 1.0)  # shape: [U]
+
+        # Compute escape direction: lateral (perpendicular to velocity)
+        # so drones steer AROUND obstacles instead of fighting backwards
+        diff_unsafe = diff_xy[unsafe]  # shape: [U, 3]
+        dist_unsafe = diff_unsafe.norm(dim=1, keepdim=True).clamp(min=1e-6)  # shape: [U, 1]
+        radial_dir = diff_unsafe / dist_unsafe  # shape: [U, 3] unit radial (away from obstacle)
+
+        # Lateral direction: rotate radial 90 degrees in XY plane
+        # Choose the side that aligns with existing velocity (go WITH momentum)
+        lateral_dir = torch.zeros_like(radial_dir)  # shape: [U, 3]
+        lateral_dir[:, 0] = -radial_dir[:, 1]  # rotate 90 deg: (x,y) -> (-y,x)
+        lateral_dir[:, 1] = radial_dir[:, 0]
+
+        # Pick sign: go with velocity (dot product with drone velocity)
+        vel_unsafe = vel_xy[unsafe]  # shape: [U, 3]
+        dot = (lateral_dir * vel_unsafe).sum(dim=1)  # shape: [U]
+        sign = torch.where(dot >= 0, torch.ones_like(dot), -torch.ones_like(dot))
+        lateral_dir = lateral_dir * sign.unsqueeze(1)
+
+        # Blend: mostly lateral (steer around) + some radial (push away)
+        escape_dir = 0.7 * lateral_dir + 0.3 * radial_dir  # shape: [U, 3]
+        escape_norm = escape_dir.norm(dim=1, keepdim=True).clamp(min=1e-6)
+        escape_dir = escape_dir / escape_norm
+
+        # Action correction
+        s = (strength * obstacle_max_correction).unsqueeze(1)  # shape: [U, 1]
+        act[unsafe, 0] = act[unsafe, 0] + s.squeeze(1) * escape_dir[:, 2]  # thrust ← Z
+        act[unsafe, 1] = act[unsafe, 1] + s.squeeze(1) * escape_dir[:, 1]  # roll ← Y
+        act[unsafe, 2] = act[unsafe, 2] + s.squeeze(1) * escape_dir[:, 0]  # pitch ← X
+
+    return act.clamp(-1.0, 1.0)

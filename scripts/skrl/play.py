@@ -77,6 +77,12 @@ parser.add_argument(
     help="Disable MINCO trajectory filter for A/B jitter comparison.",
 )
 parser.add_argument(
+    "--forest",
+    action="store_true",
+    default=False,
+    help="Enable forest obstacle navigation with moving centroid.",
+)
+parser.add_argument(
     "--disable_fabric",
     action="store_true",
     default=False,
@@ -244,6 +250,20 @@ def main(
     if args_cli.no_minco:
         env_cfg.minco_enabled = False
         print("[INFO] MINCO trajectory filter DISABLED (--no-minco)")
+
+    # Forest obstacle navigation
+    if args_cli.forest:
+        env_cfg.forest_enabled = True
+        env_cfg.formation_centroid = (0.0, 0.0, 1.0)  # start at origin, moves +X
+        # Forest camera from cfg
+        env_cfg.viewer = type(env_cfg.viewer)(
+            eye=env_cfg.forest_viewer_eye,
+            lookat=env_cfg.forest_viewer_lookat,
+            resolution=(1920, 1080),
+        )
+        print(f"[INFO] Forest mode: {env_cfg.forest_num_rows} rows, "
+              f"spacing {env_cfg.forest_cylinder_spacing}m, "
+              f"centroid speed {env_cfg.centroid_speed} m/s")
 
     # configure the ML framework into the global skrl variable
     if args_cli.ml_framework.startswith("jax"):

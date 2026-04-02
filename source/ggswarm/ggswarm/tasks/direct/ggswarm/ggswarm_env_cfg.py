@@ -69,7 +69,7 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
 
     # viewer camera
     viewer: ViewerCfg = ViewerCfg(
-        eye=(2.0, 2.0, 2.0),
+        eye=(1.5, 1.5, 2.0),
         lookat=(0.0, 0.0, 1.0),
         resolution=(1920, 1080),
     )
@@ -143,6 +143,20 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     # Virtual collision detection
     collision_radius = 0.10           # body collision radius (m) — terminates episode
     collision_enabled = True          # enable virtual collision termination
+
+    # Obstacle forest (Phase 4 — Step 5)
+    forest_enabled = False            # spawn static cylinder obstacles
+    forest_obstacle_radius = 0.12     # cylinder radius (m)
+    forest_obstacle_height = 1.5      # cylinder height (m)
+    forest_obstacle_z = 0.5           # cylinder center Z (m)
+    cbf_obstacle_d_safe = 0.25        # goal deflection radius beyond obstacle body (m)
+    centroid_speed = 0.8             # moving centroid speed (m/s)
+    forest_cylinder_spacing = 1.0     # Y spacing between cylinders within a row (m)
+    forest_row_spacing = 1.0          # X spacing between rows (m)
+    forest_num_rows = 2               # number of obstacle rows
+    forest_row_start_x = 3.0          # X position of first row (m)
+    forest_viewer_eye = (5.0, -2.0, 6.0)   # isometric camera for forest mode
+    forest_viewer_lookat = (5.0, 0.0, 0.8)
 
     # SwarmRaft agent dropout (L3 consensus)
     dropout_enabled = True            # enable random agent dropout during training
