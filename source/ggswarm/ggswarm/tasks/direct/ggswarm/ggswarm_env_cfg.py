@@ -158,7 +158,7 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     forest_row_start_x = 3.0          # X position of first row (m)
     forest_viewer_eye = (4.0, -1.8, 5.0)   # isometric camera for forest mode
     forest_viewer_lookat = (4.0, 0.0, 1.0)
-    obstacle_penalty_scale = 10.0         # penalty for proximity to obstacles
+    obstacle_penalty_scale = 30.0         # penalty for proximity to obstacles
     obstacle_penalty_radius = 0.5         # distance (m) from obstacle center where penalty starts
 
     # SwarmRaft agent dropout (L3 consensus)
