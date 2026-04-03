@@ -408,15 +408,40 @@ class GgswarmEnv(DirectRLEnv):
             self._desired_pos_w,
         )
         # shape: [num_envs, 12]
-        obs = torch.cat(
-            [
-                self._robot.data.root_lin_vel_b,
-                self._robot.data.root_ang_vel_b,
-                self._robot.data.projected_gravity_b,
-                desired_pos_b,
-            ],
-            dim=-1,
-        )
+        obs_parts = [
+            self._robot.data.root_lin_vel_b,
+            self._robot.data.root_ang_vel_b,
+            self._robot.data.projected_gravity_b,
+            desired_pos_b,
+        ]
+
+        # Obstacle observations: K-nearest obstacle XY in body frame
+        if self.cfg.forest_enabled and self._obstacle_pos is not None:
+            K_obs = self.cfg.obstacle_obs_k
+            # Obstacle positions in world frame (broadcast per env)
+            # _obstacle_pos is [K_total, 3] in local frame; convert to world per drone
+            pos_local = self._robot.data.root_pos_w - self._terrain.env_origins  # [N, 3]
+            # XY distances from each drone to each obstacle
+            obs_xy = self._obstacle_pos[:, :2]  # [K_total, 2]
+            diff_xy = pos_local[:, :2].unsqueeze(1) - obs_xy.unsqueeze(0)  # [N, K_total, 2]
+            dists_xy = diff_xy.norm(dim=2)  # [N, K_total]
+            # K-nearest obstacles
+            _, nearest_idx = torch.topk(dists_xy, K_obs, dim=1, largest=False)  # [N, K_obs]
+            # Gather nearest obstacle world positions and transform to body frame
+            nearest_obs_local = self._obstacle_pos[nearest_idx]  # [N, K_obs, 3]
+            nearest_obs_w = nearest_obs_local + self._terrain.env_origins.unsqueeze(1)  # [N, K_obs, 3]
+            # Transform each obstacle to body frame using subtract_frame_transforms
+            obs_body_parts = []
+            for k in range(K_obs):
+                obs_k_b, _ = subtract_frame_transforms(
+                    self._robot.data.root_pos_w,
+                    self._robot.data.root_quat_w,
+                    nearest_obs_w[:, k, :],
+                )  # [N, 3]
+                obs_body_parts.append(obs_k_b[:, :2])  # XY only — [N, 2]
+            obs_parts.append(torch.cat(obs_body_parts, dim=-1))  # [N, K_obs*2]
+
+        obs = torch.cat(obs_parts, dim=-1)
 
         # Expand obs with neighbor relative positions for formation
         if self.cfg.num_agents > 1:

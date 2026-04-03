@@ -160,6 +160,7 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     forest_viewer_lookat = (4.0, 0.0, 1.0)
     obstacle_penalty_scale = 30.0         # penalty for proximity to obstacles
     obstacle_penalty_radius = 0.5         # distance (m) from obstacle center where penalty starts
+    obstacle_obs_k = 2                    # K-nearest obstacles in obs (body-frame XY)
 
     # SwarmRaft agent dropout (L3 consensus)
     dropout_enabled = True            # enable random agent dropout during training

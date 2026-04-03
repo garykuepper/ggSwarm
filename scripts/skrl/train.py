@@ -205,11 +205,16 @@ def main(
     # Apply num_agents and expand observation space for formation
     env_cfg.num_agents = args_cli.num_agents
     if args_cli.num_agents > 1:
-        env_cfg.observation_space = 12 + env_cfg.num_neighbors * 3
+        obs_dim = 12 + env_cfg.num_neighbors * 3
+        if env_cfg.forest_enabled:
+            obs_dim += env_cfg.obstacle_obs_k * 2  # K-nearest obstacle XY in body frame
+        env_cfg.observation_space = obs_dim
         print(f"[INFO] Formation mode: {args_cli.num_agents} agents/swarm, "
               f"K={env_cfg.num_neighbors} neighbors, obs_space={env_cfg.observation_space}")
     else:
         env_cfg.observation_space = 12
+        if env_cfg.forest_enabled:
+            env_cfg.observation_space += env_cfg.obstacle_obs_k * 2
 
     # MINCO toggle for ablation training
     if args_cli.no_minco:
