@@ -151,18 +151,19 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     forest_obstacle_height = 1.5      # cylinder height (m)
     forest_obstacle_z = 0.5           # cylinder center Z (m)
     cbf_obstacle_d_safe = 0.4        # safe clearance beyond obstacle body (m)
-    centroid_speed = 0.75              # moving centroid speed (m/s)
-    forest_cylinder_spacing = 1.0     # Y spacing between cylinders within a row (m)
-    forest_row_spacing = 1.0        # X spacing between rows (m)
+    centroid_speed = 0.0               # legacy — no moving centroid in static-goal mode
+    forest_cylinder_spacing = 0.8     # Y spacing between cylinders within a row (m)
+    forest_row_spacing = 1.0          # X spacing between rows (m)
     forest_num_rows = 2               # number of obstacle rows
     forest_row_start_x = 3.0          # X position of first row (m)
+    forest_goal_x = 6.0              # X position of static goal centroid (beyond obstacles)
     forest_viewer_eye = (4.0, -1.8, 5.0)   # isometric camera for forest mode
     forest_viewer_lookat = (4.0, 0.0, 1.0)
     obstacle_penalty_scale = 30.0         # penalty for proximity to obstacles
     obstacle_penalty_radius = 0.5         # distance (m) from obstacle center where penalty starts
     obstacle_obs_k = 2                    # K-nearest obstacles in obs (body-frame XY)
-    obstacle_curriculum_start = 8000      # step to begin obstacle penalty (after formation settles)
-    obstacle_curriculum_end = 12000       # step at full obstacle penalty
+    obstacle_curriculum_start = 0         # obstacle penalty active from start
+    obstacle_curriculum_end = 5000        # full penalty by step 5000
 
     # SwarmRaft agent dropout (L3 consensus)
     dropout_enabled = True            # enable random agent dropout during training

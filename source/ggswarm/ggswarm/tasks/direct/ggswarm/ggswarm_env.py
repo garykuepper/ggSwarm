@@ -177,13 +177,13 @@ class GgswarmEnv(DirectRLEnv):
             self._spawn_forest_cylinders(stage)
 
     def _generate_forest_obstacles(self) -> torch.Tensor:
-        """Generate obstacle positions as staggered rows across the flight path.
+        """Generate obstacle positions as wide staggered rows across the flight path.
 
-        Row A: cylinders at Y = -0.8, 0.0, +0.8  (blocks center)
-        Row B: cylinders at Y = -0.4, +0.4        (staggered, blocks gaps)
+        Row A: 5 cylinders at Y = -2s, -s, 0, +s, +2s (blocks wide corridor)
+        Row B: 4 cylinders at Y = -1.5s, -0.5s, +0.5s, +1.5s (staggered, blocks gaps)
 
-        Rows alternate A-B along X, forcing the swarm to weave. Deterministic
-        layout — no randomness.
+        Rows alternate A-B along X, forcing the swarm to weave. Wide enough
+        to prevent flanking around the edges. Deterministic layout.
 
         Returns:
             [K, 3] obstacle positions in local frame (on self.device).
@@ -191,10 +191,10 @@ class GgswarmEnv(DirectRLEnv):
         obs_z = self.cfg.forest_obstacle_z
         dev = self.device
 
-        # Two row patterns that alternate — staggered to force weaving
+        # Wide staggered rows — no flanking possible
         s = self.cfg.forest_cylinder_spacing
-        row_a_y = [-s, 0.0, s]           # 3 cylinders — blocks center corridor
-        row_b_y = [-s / 2, s / 2]        # 2 cylinders — staggered, blocks gaps in row A
+        row_a_y = [-2 * s, -s, 0.0, s, 2 * s]                # 5 cylinders
+        row_b_y = [-1.5 * s, -0.5 * s, 0.5 * s, 1.5 * s]     # 4 staggered
 
         num_rows = self.cfg.forest_num_rows
         row_spacing = self.cfg.forest_row_spacing
@@ -248,27 +248,7 @@ class GgswarmEnv(DirectRLEnv):
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         self._actions = actions.clamp(-1.0, 1.0)
 
-        # Forest: advance centroid along +X, recompute per-drone goals (no deflection)
-        if self.cfg.forest_enabled and self._formation_active:
-            dx = self.cfg.centroid_speed * self.step_dt  # meters per step
-            A = self.cfg.num_agents
-            G = self._num_groups
-
-            # Advance group centroids along +X
-            self._forest_centroid[:, 0] += dx
-
-            # Recompute per-drone goals from centroid + slot offset (local frame)
-            centroid_expanded = self._forest_centroid.unsqueeze(1).expand(G, A, 3)  # [G, A, 3]
-            slot_offset = self._drone_slot_offset.reshape(G, A, 3)  # [G, A, 3]
-            goals_local = (centroid_expanded + slot_offset).reshape(-1, 3)  # [N, 3]
-
-            # Write back to world frame
-            self._desired_pos_w[:, :2] = goals_local[:, :2] + self._terrain.env_origins[:, :2]
-            self._desired_pos_w[:, 2] = goals_local[:, 2] + self._terrain.env_origins[:, 2]
-
-            # Keep cloud-mode centroid goal in sync with advancing centroid
-            if self._cloud_mode and hasattr(self, '_group_goal_local'):
-                self._group_goal_local[:] = self._forest_centroid
+        # Forest: static goals — set once at reset, no per-step advancement
 
         # SwarmRaft: trigger agent dropout at scheduled step
         if self.cfg.dropout_enabled and self.cfg.num_agents > 1:
@@ -909,7 +889,12 @@ class GgswarmEnv(DirectRLEnv):
                 )
 
             # Sample or use fixed centroid per group
-            if self.cfg.formation_centroid is not None:
+            if self.cfg.forest_enabled:
+                # Static goal beyond obstacles
+                centroid = torch.tensor(
+                    [[self.cfg.forest_goal_x, 0.0, 1.0]], device=self.device
+                ).expand(n_groups, 3).clone()
+            elif self.cfg.formation_centroid is not None:
                 fc = self.cfg.formation_centroid
                 centroid = torch.tensor([[fc[0], fc[1], fc[2]]], device=self.device).expand(n_groups, 3).clone()
             else:
