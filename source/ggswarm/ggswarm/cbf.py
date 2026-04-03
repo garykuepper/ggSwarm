@@ -164,7 +164,7 @@ def apply_cbf_obstacles(
         return actions
 
     # Lateral correction — primary obstacle avoidance (no goal deflection)
-    obstacle_max_correction = 0.35
+    obstacle_max_correction = 0.25
 
     # Local drone positions  # shape: [N, 3]
     pos_local = pos_w - env_origins
@@ -228,7 +228,7 @@ def apply_cbf_obstacles(
         toward_pitch = -escape_dir[:, 0]  # pitch direction toward obstacle
         roll_toward = (act[unsafe, 1] * toward_roll) > 0  # shape: [U] bool
         pitch_toward = (act[unsafe, 2] * toward_pitch) > 0  # shape: [U] bool
-        dampen = 1.0 - strength  # shape: [U] — 1.0 at low urgency, 0.0 at max
+        dampen = (1.0 - 0.5 * strength).clamp(min=0.5)  # shape: [U] — 1.0 at low, 0.5 at max (never fully suppress)
         act[unsafe, 1] = torch.where(roll_toward, act[unsafe, 1] * dampen, act[unsafe, 1])
         act[unsafe, 2] = torch.where(pitch_toward, act[unsafe, 2] * dampen, act[unsafe, 2])
 

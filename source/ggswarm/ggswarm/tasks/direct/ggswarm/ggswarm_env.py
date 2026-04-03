@@ -110,6 +110,8 @@ class GgswarmEnv(DirectRLEnv):
         # Initialized on first reset, advanced each step in _pre_physics_step
         if self.cfg.forest_enabled and A > 1:
             self._forest_centroid = torch.zeros(G, 3, device=device)  # [G, 3]
+            # Per-drone slot offset from group centroid (set at reset, reused each step)
+            self._drone_slot_offset = torch.zeros(N, 3, device=device)  # [N, 3]
 
         # Body ID, mass, weight
         self._body_id = self._robot.find_bodies("body")[0]
@@ -121,6 +123,8 @@ class GgswarmEnv(DirectRLEnv):
         log_keys = ["lin_vel", "ang_vel", "distance_to_goal"]
         if self._formation_active:
             log_keys.append("formation")
+        if self.cfg.forest_enabled:
+            log_keys.append("obstacle")
         self._episode_sums = {
             key: torch.zeros(N, dtype=torch.float, device=device)
             for key in log_keys
@@ -244,27 +248,27 @@ class GgswarmEnv(DirectRLEnv):
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         self._actions = actions.clamp(-1.0, 1.0)
 
-        # Forest: advance goals along +X, deflect around obstacles
+        # Forest: advance centroid along +X, recompute per-drone goals (no deflection)
         if self.cfg.forest_enabled and self._formation_active:
             dx = self.cfg.centroid_speed * self.step_dt  # meters per step
-            deflect_radius = self.cfg.cbf_obstacle_d_safe + self.cfg.forest_obstacle_radius
+            A = self.cfg.num_agents
+            G = self._num_groups
 
-            # Advance all goals uniformly
-            self._desired_pos_w[:, 0] += dx
+            # Advance group centroids along +X
+            self._forest_centroid[:, 0] += dx
 
-            # Goal deflection: push each goal radially away from obstacles
-            pos_local = self._desired_pos_w - self._terrain.env_origins  # [N, 3]
-            for k in range(self._obstacle_pos.shape[0]):
-                obs_xy = self._obstacle_pos[k, :2]  # [2]
-                diff_xy = pos_local[:, :2] - obs_xy.unsqueeze(0)  # [N, 2]
-                dist_xy = diff_xy.norm(dim=1, keepdim=True).clamp(min=1e-6)  # [N, 1]
-                too_close = (dist_xy.squeeze(1) < deflect_radius)  # [N] bool
-                if not too_close.any():
-                    continue
-                direction = diff_xy[too_close] / dist_xy[too_close]  # [U, 2] unit
-                shortfall = deflect_radius - dist_xy[too_close].squeeze(1)  # [U]
-                self._desired_pos_w[too_close, 0] += (direction[:, 0] * shortfall)
-                self._desired_pos_w[too_close, 1] += (direction[:, 1] * shortfall)
+            # Recompute per-drone goals from centroid + slot offset (local frame)
+            centroid_expanded = self._forest_centroid.unsqueeze(1).expand(G, A, 3)  # [G, A, 3]
+            slot_offset = self._drone_slot_offset.reshape(G, A, 3)  # [G, A, 3]
+            goals_local = (centroid_expanded + slot_offset).reshape(-1, 3)  # [N, 3]
+
+            # Write back to world frame
+            self._desired_pos_w[:, :2] = goals_local[:, :2] + self._terrain.env_origins[:, :2]
+            self._desired_pos_w[:, 2] = goals_local[:, 2] + self._terrain.env_origins[:, 2]
+
+            # Keep cloud-mode centroid goal in sync with advancing centroid
+            if self._cloud_mode and hasattr(self, '_group_goal_local'):
+                self._group_goal_local[:] = self._forest_centroid
 
         # SwarmRaft: trigger agent dropout at scheduled step
         if self.cfg.dropout_enabled and self.cfg.num_agents > 1:
@@ -353,6 +357,20 @@ class GgswarmEnv(DirectRLEnv):
             # without this, MINCO overwrites CBF corrections every step.
             if self.cfg.minco_enabled:
                 self._minco_pos.copy_(act)
+
+        # CBF obstacle avoidance (forest cylinders)
+        if self.cfg.forest_enabled and self._obstacle_pos is not None:
+            from ggswarm.cbf import apply_cbf_obstacles  # noqa: PLC0415
+
+            act = apply_cbf_obstacles(
+                act,
+                self._robot.data.root_pos_w,
+                self._terrain.env_origins,
+                self._robot.data.root_lin_vel_w,
+                self._obstacle_pos,
+                self.cfg.cbf_obstacle_d_safe + self.cfg.forest_obstacle_radius,
+                self.cfg.cbf_gamma,
+            )
 
         # Zero out dead drone actions (no thrust/moment for dead drones)
         if self.cfg.dropout_enabled:
@@ -562,6 +580,23 @@ class GgswarmEnv(DirectRLEnv):
                 formation_rew = self._compute_formation_reward()
             reward = reward + formation_rew
             rewards["formation"] = formation_rew
+
+        # --- Obstacle proximity penalty (forest) ---
+        if self.cfg.forest_enabled and self._obstacle_pos is not None:
+            pos_local = self._robot.data.root_pos_w - self._terrain.env_origins  # [N, 3]
+            obstacle_pen = self._zero_reward_N.clone()  # [N]
+            for k in range(self._obstacle_pos.shape[0]):
+                diff_xy = pos_local[:, :2] - self._obstacle_pos[k, :2].unsqueeze(0)  # [N, 2]
+                dist_xy = diff_xy.norm(dim=1)  # [N]
+                # Linear penalty: max at obstacle center, zero at penalty_radius
+                penetration = torch.clamp(
+                    self.cfg.obstacle_penalty_radius - dist_xy, min=0.0
+                )  # [N]
+                obstacle_pen = obstacle_pen - (
+                    self.cfg.obstacle_penalty_scale * penetration * self.step_dt
+                )
+            reward = reward + obstacle_pen
+            rewards["obstacle"] = obstacle_pen
 
         # Logging
         for key, value in rewards.items():
@@ -889,6 +924,11 @@ class GgswarmEnv(DirectRLEnv):
                         self._desired_pos_w[drone_id] = (
                             slot_pos[slot_j] + self._terrain.env_origins[drone_id]
                         )
+                        # Store slot offset from centroid for forest goal recomputation
+                        if self.cfg.forest_enabled and hasattr(self, '_drone_slot_offset'):
+                            self._drone_slot_offset[drone_id] = (
+                                slot_pos[slot_j] - centroid[g_idx]
+                            )  # [3]
                         claimed[slot_j] = True
                         dist_matrix[drone_i, :] = float("inf")  # drone assigned
                 else:
