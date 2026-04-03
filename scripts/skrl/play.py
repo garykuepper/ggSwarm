@@ -548,6 +548,20 @@ def main(
                 writer.writerow(row)
         print(f"[INFO] Trajectory CSV saved: {csv_path}")
 
+        # Save obstacle positions if forest mode
+        if args_cli.forest and hasattr(base_env, '_obstacle_pos') and base_env._obstacle_pos is not None:
+            obs_fname = f"{args_cli.prefix}-obstacles.csv" if args_cli.prefix != "ggswarm" else "obstacles.csv"
+            obs_path = os.path.join(traj_dir, obs_fname)
+            obs_pos = base_env._obstacle_pos.cpu()
+            obs_r = base_env.cfg.forest_obstacle_radius
+            with open(obs_path, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(["id", "x", "y", "z", "radius"])
+                for k in range(obs_pos.shape[0]):
+                    p = obs_pos[k].tolist()
+                    writer.writerow([k, f"{p[0]:.4f}", f"{p[1]:.4f}", f"{p[2]:.4f}", f"{obs_r:.4f}"])
+            print(f"[INFO] Obstacle CSV saved: {obs_path}")
+
     # close the simulator
     env.close()
 

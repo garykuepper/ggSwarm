@@ -27,6 +27,7 @@ def apply_cbf(
     d_safe: float,
     gamma: float,
     alive_mask: torch.Tensor | None = None,
+    max_correction: float = _MAX_CORRECTION,
 ) -> torch.Tensor:
     """Apply CBF safety projection to actions within each swarm group.
 
@@ -110,8 +111,8 @@ def apply_cbf(
             #   diff_y -> roll   (act[:,1])
             #   diff_x -> pitch  (act[:,2])
             #   yaw    -> no correction (act[:,3])
-            # Correction = strength * _MAX_CORRECTION * escape_dir component
-            s = (strength * _MAX_CORRECTION).unsqueeze(1)  # shape: [U, 1]
+            # Correction = strength * max_correction * escape_dir component
+            s = (strength * max_correction).unsqueeze(1)  # shape: [U, 1]
 
             # Drone i: push away from j (positive escape direction)
             act_g[unsafe, i, 0] = act_g[unsafe, i, 0] + s.squeeze(1) * escape_dir[:, 2]
@@ -162,8 +163,8 @@ def apply_cbf_obstacles(
     if K == 0:
         return actions
 
-    # Lateral correction — steers around obstacles, doesn't fight policy
-    obstacle_max_correction = 0.25
+    # Lateral correction — primary obstacle avoidance (no goal deflection)
+    obstacle_max_correction = 0.35
 
     # Local drone positions  # shape: [N, 3]
     pos_local = pos_w - env_origins
@@ -220,10 +221,21 @@ def apply_cbf_obstacles(
         escape_norm = escape_dir.norm(dim=1, keepdim=True).clamp(min=1e-6)
         escape_dir = escape_dir / escape_norm
 
-        # Action correction
+        # Dampen policy action components pulling TOWARD the obstacle
+        # proportional to CBF urgency (strength 0-1). At max urgency,
+        # the toward-obstacle component is fully suppressed.
+        toward_roll = -escape_dir[:, 1]   # roll direction toward obstacle
+        toward_pitch = -escape_dir[:, 0]  # pitch direction toward obstacle
+        roll_toward = (act[unsafe, 1] * toward_roll) > 0  # shape: [U] bool
+        pitch_toward = (act[unsafe, 2] * toward_pitch) > 0  # shape: [U] bool
+        dampen = 1.0 - strength  # shape: [U] — 1.0 at low urgency, 0.0 at max
+        act[unsafe, 1] = torch.where(roll_toward, act[unsafe, 1] * dampen, act[unsafe, 1])
+        act[unsafe, 2] = torch.where(pitch_toward, act[unsafe, 2] * dampen, act[unsafe, 2])
+
+        # Add lateral correction on top
         s = (strength * obstacle_max_correction).unsqueeze(1)  # shape: [U, 1]
-        act[unsafe, 0] = act[unsafe, 0] + s.squeeze(1) * escape_dir[:, 2]  # thrust ← Z
-        act[unsafe, 1] = act[unsafe, 1] + s.squeeze(1) * escape_dir[:, 1]  # roll ← Y
-        act[unsafe, 2] = act[unsafe, 2] + s.squeeze(1) * escape_dir[:, 0]  # pitch ← X
+        act[unsafe, 0] = act[unsafe, 0] + s.squeeze(1) * escape_dir[:, 2]  # thrust
+        act[unsafe, 1] = act[unsafe, 1] + s.squeeze(1) * escape_dir[:, 1]  # roll
+        act[unsafe, 2] = act[unsafe, 2] + s.squeeze(1) * escape_dir[:, 0]  # pitch
 
     return act.clamp(-1.0, 1.0)

@@ -106,6 +106,11 @@ class GgswarmEnv(DirectRLEnv):
         if A > 1:
             self._dropout_step = torch.zeros(G, dtype=torch.long, device=device)  # [G]
 
+        # Forest: per-group centroid position (local frame, tracks along +X)
+        # Initialized on first reset, advanced each step in _pre_physics_step
+        if self.cfg.forest_enabled and A > 1:
+            self._forest_centroid = torch.zeros(G, 3, device=device)  # [G, 3]
+
         # Body ID, mass, weight
         self._body_id = self._robot.find_bodies("body")[0]
         self._robot_mass = self._robot.root_physx_view.get_masses()[0].sum()
@@ -239,19 +244,16 @@ class GgswarmEnv(DirectRLEnv):
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         self._actions = actions.clamp(-1.0, 1.0)
 
-        # Forest: advance centroid along +X path each step
+        # Forest: advance goals along +X, deflect around obstacles
         if self.cfg.forest_enabled and self._formation_active:
             dx = self.cfg.centroid_speed * self.step_dt  # meters per step
-            A = self.cfg.num_agents
-            G = self._num_groups
-            for g in range(G):
-                group_start = g * A
-                self._desired_pos_w[group_start:group_start + A, 0] += dx
-
-            # Goal deflection: push each drone's goal away from nearby obstacles
-            # Works WITH the policy (drone tracks deflected goal) instead of against it
-            pos_local = self._desired_pos_w - self._terrain.env_origins  # [N, 3]
             deflect_radius = self.cfg.cbf_obstacle_d_safe + self.cfg.forest_obstacle_radius
+
+            # Advance all goals uniformly
+            self._desired_pos_w[:, 0] += dx
+
+            # Goal deflection: push each goal radially away from obstacles
+            pos_local = self._desired_pos_w - self._terrain.env_origins  # [N, 3]
             for k in range(self._obstacle_pos.shape[0]):
                 obs_xy = self._obstacle_pos[k, :2]  # [2]
                 diff_xy = pos_local[:, :2] - obs_xy.unsqueeze(0)  # [N, 2]
@@ -259,9 +261,8 @@ class GgswarmEnv(DirectRLEnv):
                 too_close = (dist_xy.squeeze(1) < deflect_radius)  # [N] bool
                 if not too_close.any():
                     continue
-                # Push goal outward from obstacle center until at deflect_radius
                 direction = diff_xy[too_close] / dist_xy[too_close]  # [U, 2] unit
-                shortfall = deflect_radius - dist_xy[too_close].squeeze(1)  # [U] how much to push
+                shortfall = deflect_radius - dist_xy[too_close].squeeze(1)  # [U]
                 self._desired_pos_w[too_close, 0] += (direction[:, 0] * shortfall)
                 self._desired_pos_w[too_close, 1] += (direction[:, 1] * shortfall)
 
@@ -346,6 +347,7 @@ class GgswarmEnv(DirectRLEnv):
                 self.cfg.cbf_d_safe,
                 self.cfg.cbf_gamma,
                 self._agent_alive if self.cfg.dropout_enabled else None,
+                self.cfg.cbf_max_correction,
             )
             # Sync MINCO state to post-CBF action so corrections are sticky —
             # without this, MINCO overwrites CBF corrections every step.
@@ -850,6 +852,12 @@ class GgswarmEnv(DirectRLEnv):
                 centroid_xy = torch.zeros(n_groups, 2, device=self.device).uniform_(-0.5, 0.5)
                 centroid_z = torch.zeros(n_groups, 1, device=self.device).uniform_(0.5, 1.5)
                 centroid = torch.cat([centroid_xy, centroid_z], dim=-1)  # [n_groups, 3]
+
+            # Initialize forest centroid tracker from reset centroid
+            if self.cfg.forest_enabled and hasattr(self, '_forest_centroid'):
+                for g_idx in range(n_groups):
+                    g = group_ids[g_idx]
+                    self._forest_centroid[g] = centroid[g_idx]
 
             # Assign each drone in each group (nearest-slot matching)
             for g_idx in range(n_groups):

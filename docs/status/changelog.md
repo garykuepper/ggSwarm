@@ -1014,17 +1014,24 @@ matching) were irrelevant — the policy was receiving garbage inputs during eva
   comparison from trajectory CSVs. Supports `--batch` (scale summary table) and
   `--compare` (MINCO A/B with pass/fail verdict).
 - [2026-04-02] **Forest obstacle navigation (O4).** Swarm navigates through
-  staggered rows of static cylinders using goal deflection + moving centroid.
-  No retraining needed. Goal deflection pushes each drone's target away from
-  nearby obstacles; policy tracks deflected goals naturally. Action-space CBF
-  avoidance proved ineffective (correction fights policy goal-tracking), so
-  goal deflection was adopted instead. `--forest` flag on play.py.
-  Results: 0 obstacle hits, 0 deaths, 0.71 m/s steady speed at 0.8 m/s centroid.
+  staggered rows of static cylinders using radial goal deflection + moving
+  centroid. No retraining needed. Each drone's goal is pushed radially away
+  from nearby cylinder centers; policy tracks deflected goals through gaps.
+  Extensive iteration: tested action-space CBF (lateral escape, policy
+  dampening), centroid-level deflection, group speed scaling — all caused
+  regressions. Simple per-drone radial deflection at `deflect_radius=0.37m`
+  with `cylinder_spacing=1.2m` proved most robust.
+  Results (forest-36): 0 hits, 0 deaths, 0.63-0.70 m/s, 700 steps.
 - [2026-04-02] **CBF obstacle avoidance module (`apply_cbf_obstacles`).** Added
   to cbf.py — XY-plane barrier with lateral escape direction for cylinder
-  obstacles. Retained for potential future use but goal deflection preferred
-  for current policy.
-- [2026-04-02] **Forest config params.** All obstacle layout parameters moved to
+  obstacles. Retained for future use but goal deflection preferred for current
+  policy (CBF corrections can't overpower goal-tracking reward).
+- [2026-04-02] **`cbf_max_correction` promoted to cfg.** Drone-drone CBF
+  max correction now configurable via `GgswarmEnvCfg.cbf_max_correction`.
+- [2026-04-02] **Forest config params.** All obstacle layout parameters in
   `GgswarmEnvCfg`: `forest_cylinder_spacing`, `forest_row_spacing`,
   `forest_num_rows`, `forest_row_start_x`, `forest_viewer_eye/lookat`,
   `cbf_obstacle_d_safe`, `centroid_speed`.
+- [2026-04-02] **Obstacle CSV export.** `play.py --forest` saves obstacle
+  positions to `{prefix}-obstacles.csv` alongside trajectory data for
+  post-hoc analysis.

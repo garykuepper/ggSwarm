@@ -284,29 +284,31 @@ smoothness, making the runtime filter unnecessary.
 
 ### Forest Obstacle Navigation (O4) -- 2026-04-02
 
-Swarm navigates through static cylinder obstacles using goal deflection +
-moving centroid. No retraining needed -- policy tracks deflected goals naturally.
+Swarm navigates through staggered rows of static cylinders using goal
+deflection. No retraining needed -- policy tracks deflected goals naturally.
 
-**Approach:** Instead of action-space CBF (which fights the policy), obstacle
-positions deflect each drone's goal outward from nearby cylinders. The policy
-tracks the deflected goal and naturally steers around obstacles. Moving centroid
-pulls the swarm along +X through the forest at configurable speed.
+**Approach:** Each drone's goal is pushed radially away from nearby cylinder
+centers when within `deflect_radius = cbf_obstacle_d_safe + obstacle_radius`.
+The policy tracks the deflected goal and steers through gaps between cylinders.
+Moving centroid pulls the swarm along +X at `centroid_speed`.
 
-**Layout:** Staggered rows of cylinders perpendicular to flight path. Row A has
-3 cylinders (blocks center), Row B has 2 (blocks gaps in A), forcing the swarm
-to weave. All spacing configurable via `forest_cylinder_spacing`, `forest_row_spacing`.
+**Layout:** Row A: 3 cylinders at Y = [-1.2, 0, 1.2]. Row B: 2 cylinders at
+Y = [-0.6, 0.6], staggered to block the gaps. Rows spaced 1.2m apart in X.
+All params configurable in `GgswarmEnvCfg`.
 
-**Results (forest-18, 8 agents, triangle formation, 0.8 m/s):**
-- Obstacle hits: **0**
+**Design iterations:** Explored action-space CBF obstacle avoidance (lateral
+escape direction, policy dampening) but the policy's goal-tracking overwhelms
+CBF corrections -- drones fly through cylinders. Goal deflection works WITH the
+policy (moves the target around obstacles) instead of fighting it. CBF obstacle
+module retained in `cbf.py` for future use.
+
+**Results (forest-36, 8 agents, triangle formation, 0.72 m/s, 700 steps):**
+- Obstacle hits: **0** (closest: 0.171m)
 - Drone deaths: **0**
-- Steady speed: 0.71 m/s (tracking 0.8 m/s centroid)
-- Formation error: 0.82m (elevated due to obstacle avoidance deformation -- expected)
-- Zero drone-drone collisions
-
-**Finding:** Action-space CBF obstacle avoidance fails for this policy because
-the goal-tracking reward overwhelms the correction. Goal deflection works WITH
-the policy instead of against it -- the drone follows its deflected goal through
-the gap naturally.
+- Speed through zone: 0.63-0.70 m/s
+- Y deflection: 0.05-0.28m lateral steering visible
+- Formation error: 0.73m before, 0.75m during obstacles (minor deformation)
+- Attitude: stable throughout (Z vel std 0.08 during, 0.008 after)
 
 ### Key Results
 
