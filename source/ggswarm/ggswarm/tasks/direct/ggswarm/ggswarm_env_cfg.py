@@ -161,6 +161,8 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     obstacle_penalty_scale = 30.0         # penalty for proximity to obstacles
     obstacle_penalty_radius = 0.5         # distance (m) from obstacle center where penalty starts
     obstacle_obs_k = 2                    # K-nearest obstacles in obs (body-frame XY)
+    obstacle_curriculum_start = 8000      # step to begin obstacle penalty (after formation settles)
+    obstacle_curriculum_end = 12000       # step at full obstacle penalty
 
     # SwarmRaft agent dropout (L3 consensus)
     dropout_enabled = True            # enable random agent dropout during training

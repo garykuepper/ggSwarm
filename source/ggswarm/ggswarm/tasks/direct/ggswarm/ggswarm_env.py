@@ -606,22 +606,26 @@ class GgswarmEnv(DirectRLEnv):
             reward = reward + formation_rew
             rewards["formation"] = formation_rew
 
-        # --- Obstacle proximity penalty (forest) ---
+        # --- Obstacle proximity penalty (forest, curriculum-scaled) ---
         if self.cfg.forest_enabled and self._obstacle_pos is not None:
-            pos_local = self._robot.data.root_pos_w - self._terrain.env_origins  # [N, 3]
-            obstacle_pen = self._zero_reward_N.clone()  # [N]
-            for k in range(self._obstacle_pos.shape[0]):
-                diff_xy = pos_local[:, :2] - self._obstacle_pos[k, :2].unsqueeze(0)  # [N, 2]
-                dist_xy = diff_xy.norm(dim=1)  # [N]
-                # Linear penalty: max at obstacle center, zero at penalty_radius
-                penetration = torch.clamp(
-                    self.cfg.obstacle_penalty_radius - dist_xy, min=0.0
-                )  # [N]
-                obstacle_pen = obstacle_pen - (
-                    self.cfg.obstacle_penalty_scale * penetration * self.step_dt
-                )
-            reward = reward + obstacle_pen
-            rewards["obstacle"] = obstacle_pen
+            obs_alpha = min(1.0, max(0.0,
+                (self._global_step - self.cfg.obstacle_curriculum_start)
+                / max(1, self.cfg.obstacle_curriculum_end - self.cfg.obstacle_curriculum_start)
+            ))
+            if obs_alpha > 0.0:
+                pos_local = self._robot.data.root_pos_w - self._terrain.env_origins  # [N, 3]
+                obstacle_pen = self._zero_reward_N.clone()  # [N]
+                for k in range(self._obstacle_pos.shape[0]):
+                    diff_xy = pos_local[:, :2] - self._obstacle_pos[k, :2].unsqueeze(0)  # [N, 2]
+                    dist_xy = diff_xy.norm(dim=1)  # [N]
+                    penetration = torch.clamp(
+                        self.cfg.obstacle_penalty_radius - dist_xy, min=0.0
+                    )  # [N]
+                    obstacle_pen = obstacle_pen - (
+                        obs_alpha * self.cfg.obstacle_penalty_scale * penetration * self.step_dt
+                    )
+                reward = reward + obstacle_pen
+                rewards["obstacle"] = obstacle_pen
 
         # Logging
         for key, value in rewards.items():
