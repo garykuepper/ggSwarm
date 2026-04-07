@@ -238,18 +238,13 @@ def main(
     # Apply num_agents and expand observation space for formation
     env_cfg.num_agents = args_cli.num_agents
     if args_cli.num_agents > 1:
-        obs_dim = 12 + env_cfg.num_neighbors * 3
-        if env_cfg.forest_enabled:
-            obs_dim += env_cfg.obstacle_obs_k * 2
-        env_cfg.observation_space = obs_dim
+        env_cfg.observation_space = 12 + env_cfg.num_neighbors * 3
         env_cfg.scene.env_spacing = 0.01  # drones visually in same space
         env_cfg.collective_resets = False  # no group teleport during play
         env_cfg.formation_centroid = (0.0, 0.0, 1.0)  # hover over origin during play
         env_cfg.dropout_enabled = args_cli.dropout  # off by default, --dropout to enable
     else:
         env_cfg.observation_space = 12
-        if env_cfg.forest_enabled:
-            env_cfg.observation_space += env_cfg.obstacle_obs_k * 2
 
     # MINCO toggle for A/B jitter comparison
     if args_cli.no_minco:

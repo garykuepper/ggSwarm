@@ -103,10 +103,7 @@ def main():
 
     env_cfg = parse_env_cfg(args_cli.task, device=args_cli.device)
     env_cfg.num_agents = args_cli.num_agents
-    obs_dim = 12 + env_cfg.num_neighbors * 3
-    if env_cfg.forest_enabled:
-        obs_dim += env_cfg.obstacle_obs_k * 2
-    env_cfg.observation_space = obs_dim
+    env_cfg.observation_space = 12 + env_cfg.num_neighbors * 3
     env_cfg.scene.num_envs = args_cli.num_agents
     env_cfg.scene.env_spacing = 0.01
     env_cfg.collective_resets = False

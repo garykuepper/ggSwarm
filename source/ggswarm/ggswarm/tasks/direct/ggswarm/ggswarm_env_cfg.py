@@ -101,7 +101,7 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     lin_vel_reward_scale = -0.2
     ang_vel_reward_scale = -0.2
     distance_to_goal_reward_scale = 15.0
-    distance_to_goal_sigma = 3.0
+    distance_to_goal_sigma = 0.8
 
     # formation (Phase 2B/2C/3)
     num_neighbors = 2                 # K-nearest neighbors in obs (fixed obs size)
@@ -146,24 +146,18 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     collision_enabled = True          # enable virtual collision termination
 
     # Obstacle forest (Phase 4 — Step 5)
-    forest_enabled = True             # spawn static cylinder obstacles
+    forest_enabled = False            # spawn static cylinder obstacles (toggled via play.py --forest)
     forest_obstacle_radius = 0.12     # cylinder radius (m)
     forest_obstacle_height = 1.5      # cylinder height (m)
     forest_obstacle_z = 0.5           # cylinder center Z (m)
-    cbf_obstacle_d_safe = 0.4        # safe clearance beyond obstacle body (m)
-    centroid_speed = 0.0               # legacy — no moving centroid in static-goal mode
-    forest_cylinder_spacing = 0.8     # Y spacing between cylinders within a row (m)
-    forest_row_spacing = 1.0          # X spacing between rows (m)
+    cbf_obstacle_d_safe = 0.25        # goal deflection radius beyond obstacle body (m)
+    centroid_speed = 0.5              # moving centroid speed (m/s)
+    forest_cylinder_spacing = 1.2     # Y spacing between cylinders within a row (m)
+    forest_row_spacing = 1.2          # X spacing between rows (m)
     forest_num_rows = 2               # number of obstacle rows
     forest_row_start_x = 3.0          # X position of first row (m)
-    forest_goal_x = 4.5              # X position of static goal centroid (past row A)
     forest_viewer_eye = (4.0, -1.8, 5.0)   # isometric camera for forest mode
     forest_viewer_lookat = (4.0, 0.0, 1.0)
-    obstacle_penalty_scale = 30.0         # penalty for proximity to obstacles
-    obstacle_penalty_radius = 0.5         # distance (m) from obstacle center where penalty starts
-    obstacle_obs_k = 2                    # K-nearest obstacles in obs (body-frame XY)
-    obstacle_curriculum_start = 0         # obstacle penalty active from start
-    obstacle_curriculum_end = 5000        # full penalty by step 5000
 
     # SwarmRaft agent dropout (L3 consensus)
     dropout_enabled = True            # enable random agent dropout during training

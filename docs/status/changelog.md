@@ -1035,3 +1035,19 @@ matching) were irrelevant — the policy was receiving garbage inputs during eva
 - [2026-04-02] **Obstacle CSV export.** `play.py --forest` saves obstacle
   positions to `{prefix}-obstacles.csv` alongside trajectory data for
   post-hoc analysis.
+- [2026-04-06] **Reverted learned-obstacle-avoidance experiment.** Six commits
+  (`fa2e16ab` → `428b2f2c`, 2026-04-02/03) added obstacle proximity penalty,
+  K=2 obstacle obs columns, curriculum staging, static goal beyond obstacles,
+  and an action-space `apply_cbf_obstacles` call. Across six p4-obstacle runs
+  the obs columns showed no measurable effect on avoidance behavior; min XY
+  clearance hovered around 0.05 m with or without them, and the most recent
+  tunings collapsed forward progress to zero. Reverted obstacle code in
+  `ggswarm_env.py`, `ggswarm_env_cfg.py`, `play.py`, `train.py`, `showcase.py`
+  to the goal-deflection state, **plus** fixed the cumulative-Y-scatter bug
+  from `a330d1e9` by holding a separate `_forest_base_goal` buffer (advances
+  along +X each step) and recomputing deflection fresh from it every step.
+  Past the cylinder rows, deflection rebounds to zero and the goal returns to
+  the centerline instead of accumulating sideways drift. Experimental work
+  preserved on branch `experimental/learned-obstacle-avoidance`. Reuses
+  checkpoint `p4/2026-03-31_18-41-12` for forest deployment — original
+  "train plain formation, deploy in forest, no retraining" principle restored.
