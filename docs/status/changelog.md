@@ -1051,3 +1051,73 @@ matching) were irrelevant — the policy was receiving garbage inputs during eva
   preserved on branch `experimental/learned-obstacle-avoidance`. Reuses
   checkpoint `p4/2026-03-31_18-41-12` for forest deployment — original
   "train plain formation, deploy in forest, no retraining" principle restored.
+- [2026-04-06] **Regression recovery: cfg drift to Mar 31 baseline.** Two GCE
+  retrains after the obstacle revert (`p4-revert-1`, `p4-revert-2`) collapsed
+  to reward 24 / 7 (vs Mar 31 baseline 63) and ep_len 222 / 74 (vs 279).
+  Diagnostic via Explore agent confirmed env code path was character-identical
+  to Mar 31 — root cause was 100% cfg drift across `cbf_d_safe` 0.30→0.40,
+  `cbf_max_correction` (new field), `collision_radius` 0.10→0.18, and
+  `dropout_enabled` false→true. First revert attempt (`p4-revert-3`) raised
+  `cbf_max_correction` to 0.50 based on a wrong claim that Mar 31 had no
+  field; in reality the value was hardcoded `_MAX_CORRECTION = 0.15` in
+  `cbf.py` (commit `daae89c6`, Mar 28). Setting it to 0.50 reproduced the
+  p3-16 unclamped-CBF flip regression (ep_len collapsed to 37). Final fix
+  (`p4-revert-4`) reverts every drifted field exactly: `cbf_d_safe = 0.30`,
+  `cbf_max_correction = 0.15`, `collision_radius = 0.10`, `dropout_enabled =
+  False`. Result: reward 66.83 / ep_len 307.74 — slightly better than Mar 31.
+- [2026-04-07] **Drone-radius-aware obstacle metrics.** Found that the
+  historical "0 hits" claim in `p4-forest-14/15/16` and the M3 gate result
+  was a measurement bug — body penetrations were never counted with the
+  drone radius (0.10m) included. Re-measured all forest runs at
+  `dist - cylinder_radius - drone_radius < 0` and found every previous run
+  grazed cylinders by ~5cm (41–309 body penetrations across 700-step runs).
+  M3 gate "obstacle success rate >95%" remains valid for forward progress
+  but the proximity metrics in [phase4_stress_testing.md](../phases/phase4_stress_testing.md)
+  should be re-stated using the body-radius formula.
+- [2026-04-07] **Goal deflection bug 1: deflection used goal position not
+  drone position.** The deflection check fired on `||desired_pos_w − cylinder||
+  < deflect_radius`, but the goal is an abstract slot — drones drift off-slot
+  due to formation pressure / inertia. Concrete failure: in p4-revert-4 forest
+  play, drone d1's goal sat at Y=−0.38 (0.01m beyond `deflect_radius=0.37m`)
+  while the drone drifted to Y=−0.10 and penetrated the cylinder at Y=0 by
+  5cm. Fix: compute deflection from `self._robot.data.root_pos_w`. Drones
+  whose slots happen to land just outside the deflection radius now still
+  get protection because the check uses where the drone actually is.
+- [2026-04-07] **Goal deflection bug 2: runaway base goal on stuck drones.**
+  After fixing bug 1, drones traversed the field but one drone in the
+  flockdeflect2 run got stuck at the cylinder field for 350+ steps. Trajectory
+  analysis showed the drone froze at X=2.88 while its `_forest_base_goal`
+  kept advancing unconditionally at `centroid_speed * step_dt` — by step
+  650 the goal was 4.12m ahead of the drone, on the far side of the cylinder.
+  The X-tracking gradient was so strong it drowned out the lateral deflection.
+  Fix: cap `_forest_base_goal[:, 0]` to `drone_x + forest_max_goal_lead`
+  (default 0.5m). Stuck drones get a goal that pauses with them; lateral
+  deflection regains full authority. New cfg field `forest_max_goal_lead`.
+- [2026-04-07] **Neighbor-velocity-guided lateral deflection (boids alignment).**
+  Replaced pure radial deflection with a lateral steering blend that picks
+  the side using mean K-nearest neighbor velocity (`forest_deflect_lateral_blend
+  = 0.7`). Falls back to drone's own velocity when KNN mean is below
+  `forest_deflect_neighbor_vel_eps = 0.05 m/s`; final fallback is geometric
+  Y-sign relative to the cylinder. Combined with the goal-lead cap and
+  bumped `cbf_obstacle_d_safe = 0.60`, this gives drones flock-coordinated
+  side selection so neighbors don't pick opposite sides of the same cylinder.
+  Verified on p4-revert-4 checkpoint with r=0.20m (40cm-diameter young tree)
+  trunks, 700 steps × 8 drones: **0 body penetrations**, min body clearance
+  +3.7cm (positive), min pair distance 0.177m, all 8 drones traverse with no
+  resets. Compare against the broken pure-radial baseline (128 hits) and
+  yesterday's drone-position radial fix (191 hits at r=0.40, no longer the
+  bottleneck once X-tracking stopped washing out the lateral push).
+- [2026-04-07] **`apply_cbf_obstacles` constants promoted to function
+  parameters.** Hardcoded `_MAX_CORRECTION = 0.25`, `0.7/0.3` lateral/radial
+  blend, and `0.5/0.5` dampen floor/strength in `cbf.py` are now function
+  parameters with defaults matching prior values. Function remains uncalled —
+  pure cleanup that prepares it for re-enablement as an action-space backstop
+  if the goal deflection ever proves insufficient. Mirror cfg fields
+  (`obstacle_max_correction`, `obstacle_lateral_blend`, `obstacle_dampen_floor`,
+  `obstacle_dampen_strength`) added to `GgswarmEnvCfg` per CLAUDE.md "no magic
+  numbers in env core".
+- [2026-04-07] **Forest cylinder radius widened to 0.20m (40cm diameter).**
+  Was 0.12m (24cm). New value matches a young tree trunk for visual realism.
+  Edge-to-edge gap between cylinders within a row drops from 96cm to 80cm
+  (still comfortable for 8 drones in 0.5m formation). Deflection radius
+  scales automatically (`cbf_obstacle_d_safe + forest_obstacle_radius`).

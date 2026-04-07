@@ -17,6 +17,98 @@ Baseline timeline is in the [Proposal](../project/proposal.md#7-timeline-and-mil
 
 ---
 
+## Week 13 Update (2026-04-07) — Phase 4 mid-flight: regression recovery + forest fix
+
+### Headline
+
+Forest navigation now works cleanly. **0 body penetrations** in 700-step forest
+play with 8 drones and 0.20m-radius (40cm-diameter) tree trunks. The recovery
+required walking back through three compounding bugs and one failed
+hyper-tuning experiment. p4-revert-4 checkpoint (reward 66.83 / ep_len 307.74)
+trains slightly *better* than the Mar 31 baseline.
+
+### What happened
+
+- **Reverted the learned-obstacle-avoidance experiment** (`fa2e16ab`→`428b2f2c`).
+  Six commits worth of obstacle penalty + obs columns + curriculum + static
+  goal placement gave zero measurable benefit across six p4-obstacle GCE runs.
+  Experimental work archived to `experimental/learned-obstacle-avoidance`
+  branch; main returned to the goal-deflection approach.
+
+- **Diagnosed and recovered from cfg drift regression.** Two retrain attempts
+  on the reverted code (`p4-revert-1`, `p4-revert-2`) collapsed to reward
+  24 / 7 vs the Mar 31 baseline of 63. An Explore-agent diagnostic confirmed
+  the env code path was character-identical to Mar 31 — root cause was 100%
+  cfg drift in `cbf_d_safe`, `cbf_max_correction`, `collision_radius`, and
+  `dropout_enabled`. A third attempt (`p4-revert-3`) raised
+  `cbf_max_correction` to 0.50 based on a wrong claim that Mar 31 had no
+  field; in reality the value was hardcoded `_MAX_CORRECTION = 0.15` in
+  `cbf.py` since `daae89c6` (Mar 28). The 0.50 value reproduced the p3-16
+  unclamped-CBF flip regression. `p4-revert-4` reverts every drifted field
+  to its true Mar 31 value and trains to reward 66.83 / ep_len 307.74.
+
+- **Found and fixed two compounding goal-deflection bugs**:
+  1. **Deflection used goal position not drone position** — drones whose
+     slots happened to land just outside the deflection radius drifted
+     toward cylinders due to formation pressure and were never protected.
+  2. **Base goal advanced unconditionally** — when a drone got stuck at a
+     cylinder, its goal kept advancing at 0.5 m/s and was up to 4.12m ahead
+     by step 650, drowning out the lateral deflection with a runaway X
+     gradient. Fix: cap the goal lead over the drone with new cfg field
+     `forest_max_goal_lead = 0.5m`.
+
+- **Boids-style flock alignment for deflection direction.** Replaced pure
+  radial deflection with a 70/30 lateral/radial blend. Lateral side is
+  picked using mean K-nearest neighbor velocity (boids alignment principle),
+  with fallback to drone's own velocity, with final fallback to geometric
+  Y-sign. Drones now coordinate which side of a cylinder to dodge.
+
+- **`apply_cbf_obstacles` constants promoted to function parameters.** Pure
+  cleanup per CLAUDE.md "no magic numbers". Function remains uncalled but is
+  now ready for re-enablement as an action-space backstop if needed.
+
+- **Forest cylinders widened to 40cm diameter** for visual realism (young
+  tree trunks). Bumped `cbf_obstacle_d_safe` to 0.60m to compensate for the
+  reduced edge-to-edge reaction margin.
+
+### Forest play results (p4-revert-4 checkpoint, 700 steps × 8 drones)
+
+| Metric | broken (start of week) | after fixes |
+| :--- | :--- | :--- |
+| Body penetrations | 128 (and stuck at start) | **0** |
+| Min body clearance | -0.049m | **+0.037m (positive)** |
+| Min pair distance | 0.100m | 0.177m |
+| Final mean X | -0.28 (didn't traverse) | +6.22 |
+| Final min X | -0.88 (drones piled up) | +5.39 (no stuck drones) |
+| Stuck drones | 1+ | **0** |
+
+### Discovered along the way
+
+- **The historical "0 hits" claim from p4-forest-14/15/16 and the M3 gate
+  was a measurement bug.** Body penetrations were never counted with the
+  drone radius (0.10m) included. Re-measured every historical forest run
+  and found they all grazed cylinders by ~5cm (41–309 body penetrations
+  per 700-step run). M3 gate's "obstacle success rate" still passes for
+  *forward progress*, but the proximity claims need to be re-stated.
+
+- **Drones currently hover stacked on top of each other at spawn.** Real
+  Crazyflies have a downwash interaction zone — the upper drone destabilizes
+  the lower one. Logged as a deferred improvement: add a vertical-proximity
+  penalty to the formation reward and retrain. Not blocking the current
+  forest navigation work.
+
+### Next
+
+- **Downwash penalty + retrain** to address the vertical-stacking issue
+  (real-world fidelity gap). Needs a fresh GCE run.
+- **Re-state phase 4 obstacle metrics** in `phase4_stress_testing.md` using
+  the body-radius-aware formula.
+- **HD demo capture** with the trees2 forest config (40cm trunks).
+
+- **Timeline:** 17 days remain to deadline (Apr 24).
+
+---
+
 ## Week 12 Update (2026-03-31) — Phase 3 Complete
 
 ### Phase 2 wrap-up (Mar 25-27)
