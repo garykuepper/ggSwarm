@@ -1,0 +1,41 @@
+---
+description: Rules for generating git commit messages
+globs:
+alwaysApply: false
+---
+
+# Commit Message Format
+
+Use **Conventional Commits** style for all commit messages.
+
+## Prefixes
+
+- `feat:` new features
+- `fix:` bug fixes
+- `refactor:` code restructuring without behavior change
+- `docs:` documentation only
+- `chore:` build, config, tooling
+- `perf:` performance improvements
+- `test:` adding/updating tests
+
+## Scope
+
+Use the current project phase as scope when the change is phase-specific:
+
+```
+feat(phase4): add obstacle observations to policy
+fix(phase4): widen goal sigma to 3.0
+```
+
+Omit scope for cross-cutting changes:
+
+```
+refactor: extract reward terms into cfg parameters
+docs: update changelog for p2a-3 results
+```
+
+## Rules
+
+- Subject line must be lowercase, imperative mood, no period at the end
+- Keep the subject line under 72 characters
+- Use the body (separated by a blank line) for additional context when needed
