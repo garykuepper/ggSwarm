@@ -137,12 +137,12 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
 
     # CBF safety shield (Phase 3)
     cbf_enabled = True                # collision avoidance barrier
-    cbf_d_safe = 0.4                 # min safe distance (m) — safety floor
-    cbf_gamma = 3.0                   # barrier decay rate (QP enforcement strength)
+    cbf_d_safe = 0.35                 # min safe distance (m, c2c) — safety floor
+    cbf_gamma = 2.0                   # barrier decay rate (soft barrier so policy can learn)
     cbf_max_correction = 0.15         # max per-pair action correction per step
 
     # Virtual collision detection
-    collision_radius = 0.10           # body collision radius (m) — terminates episode
+    collision_radius = 0.18           # min c2c distance (m) — terminates episode (Crazyflie prop+downwash zone)
     collision_enabled = True          # enable virtual collision termination
 
     # Obstacle forest (Phase 4 — Step 5)
