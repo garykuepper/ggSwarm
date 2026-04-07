@@ -244,30 +244,101 @@ class GgswarmEnv(DirectRLEnv):
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         self._actions = actions.clamp(-1.0, 1.0)
 
-        # Forest: advance undeflected base goal along +X, then deflect transiently around obstacles.
-        # The deflection is recomputed fresh from _forest_base_goal each step (not cumulative),
-        # so once a drone clears the cylinder rows the goal rebounds back to the centerline.
+        # Forest: advance undeflected base goal along +X, then deflect goals based on
+        # DRONE position with neighbor-velocity-guided lateral steering. Goals are
+        # pushed laterally around cylinders whenever the drone body is within
+        # deflect_radius. The lateral side is chosen via mean K-nearest neighbor
+        # velocity (boids alignment), with fallback to own velocity then to
+        # geometric Y-sign. Past the cylinder rows the drone leaves the deflection
+        # zone and the goal rebounds to the base centerline.
         if self.cfg.forest_enabled and self._formation_active and self._obstacle_pos is not None:
+            A = self.cfg.num_agents
+            G = self._num_groups
+            K_nn = min(self.cfg.num_neighbors, A - 1)
+
             dx = self.cfg.centroid_speed * self.step_dt  # meters per step
             deflect_radius = self.cfg.cbf_obstacle_d_safe + self.cfg.forest_obstacle_radius
+            blend_lat = self.cfg.forest_deflect_lateral_blend
+            vel_eps = self.cfg.forest_deflect_neighbor_vel_eps
+            shortfall_scale = self.cfg.forest_deflect_shortfall_scale
 
             # Advance base centerline along +X (in-place, no allocation)
             self._forest_base_goal[:, 0] += dx
 
-            # Reset desired_pos_w to base + env origin, then apply transient deflection
+            # Drone state in local XY frame for deflection math
+            drone_local = self._robot.data.root_pos_w - self._terrain.env_origins  # shape: [N, 3]
+
+            # Cap goal lead over drone position. Prevents runaway goals on stuck
+            # drones: when a drone freezes at a cylinder, its goal would otherwise
+            # advance forever, putting the goal meters ahead of the drone and
+            # making the X-tracking gradient overwhelm the lateral deflection.
+            self._forest_base_goal[:, 0] = torch.minimum(
+                self._forest_base_goal[:, 0],
+                drone_local[:, 0] + self.cfg.forest_max_goal_lead,
+            )
+
+            # Reset desired_pos_w to base + env origin
             self._desired_pos_w[:] = self._forest_base_goal + self._terrain.env_origins
-            pos_local = self._desired_pos_w - self._terrain.env_origins  # shape: [N, 3]
+            vel_xy = self._robot.data.root_lin_vel_w[:, :2]  # shape: [N, 2]
+
+            # K-nearest neighbor mean velocity per drone (computed inline; cannot
+            # reuse self._knn_edge_index because that's populated in
+            # _get_observations which runs after _pre_physics_step).
+            pos_g = drone_local.reshape(G, A, 3)  # shape: [G, A, 3]
+            vel_g = vel_xy.reshape(G, A, 2)  # shape: [G, A, 2]
+            pair_dist = torch.cdist(pos_g, pos_g)  # shape: [G, A, A]
+            pair_dist = pair_dist + torch.eye(A, device=self.device).unsqueeze(0) * 1e6  # exclude self
+            _, knn_idx = torch.topk(pair_dist, K_nn, dim=2, largest=False)  # shape: [G, A, K_nn]
+            knn_vel = vel_g.gather(
+                1, knn_idx.reshape(G, A * K_nn, 1).expand(G, A * K_nn, 2)
+            ).reshape(G, A, K_nn, 2)  # shape: [G, A, K_nn, 2]
+            neighbor_mean_vel = knn_vel.mean(dim=2).reshape(-1, 2)  # shape: [N, 2]
+
+            # Per-cylinder deflection loop
             for k in range(self._obstacle_pos.shape[0]):
-                obs_xy = self._obstacle_pos[k, :2]  # [2]
-                diff_xy = pos_local[:, :2] - obs_xy.unsqueeze(0)  # [N, 2]
-                dist_xy = diff_xy.norm(dim=1, keepdim=True).clamp(min=1e-6)  # [N, 1]
-                too_close = (dist_xy.squeeze(1) < deflect_radius)  # [N] bool
+                obs_xy = self._obstacle_pos[k, :2]  # shape: [2]
+                diff_xy = drone_local[:, :2] - obs_xy.unsqueeze(0)  # shape: [N, 2]
+                dist = diff_xy.norm(dim=1, keepdim=True).clamp(min=1e-6)  # shape: [N, 1]
+                too_close = dist.squeeze(1) < deflect_radius  # shape: [N] bool
                 if not too_close.any():
                     continue
-                direction = diff_xy[too_close] / dist_xy[too_close]  # [U, 2] unit
-                shortfall = deflect_radius - dist_xy[too_close].squeeze(1)  # [U]
-                self._desired_pos_w[too_close, 0] += direction[:, 0] * shortfall
-                self._desired_pos_w[too_close, 1] += direction[:, 1] * shortfall
+
+                # Radial escape direction (cylinder → drone)
+                radial = diff_xy[too_close] / dist[too_close]  # shape: [U, 2] unit
+
+                # Lateral candidate: rotate radial +90 degrees in XY plane.
+                # The negative is the other side; sign chosen below.
+                lat_pos = torch.stack(
+                    [-radial[:, 1], radial[:, 0]], dim=1
+                )  # shape: [U, 2]
+
+                # Side selection: use mean K-nearest neighbor velocity as the
+                # alignment signal; fall back to own velocity if KNN mean is
+                # below vel_eps; final fallback is geometric Y-sign.
+                nv = neighbor_mean_vel[too_close]  # shape: [U, 2]
+                own = vel_xy[too_close]  # shape: [U, 2]
+                nv_mag = nv.norm(dim=1, keepdim=True)  # shape: [U, 1]
+                guide_vel = torch.where(nv_mag < vel_eps, own, nv)  # shape: [U, 2]
+                guide_mag = guide_vel.norm(dim=1)  # shape: [U]
+
+                dot = (lat_pos * guide_vel).sum(dim=1)  # shape: [U]
+                # Geometric fallback: drone's Y position relative to cylinder
+                y_sign = torch.sign(diff_xy[too_close, 1])  # shape: [U]
+                y_sign = torch.where(y_sign == 0, torch.ones_like(y_sign), y_sign)
+                # Use dot-product sign when guide_vel is large enough; else y_sign
+                dot_sign = torch.sign(dot)
+                dot_sign = torch.where(dot_sign == 0, torch.ones_like(dot_sign), dot_sign)
+                sign = torch.where(guide_mag < vel_eps, y_sign, dot_sign)  # shape: [U]
+                lateral = lat_pos * sign.unsqueeze(1)  # shape: [U, 2]
+
+                # Blend: mostly lateral (steer around) + some radial (push away)
+                escape = blend_lat * lateral + (1.0 - blend_lat) * radial  # shape: [U, 2]
+                escape = escape / escape.norm(dim=1, keepdim=True).clamp(min=1e-6)
+
+                # Push the goal in the escape direction by the (scaled) shortfall
+                shortfall = (deflect_radius - dist[too_close].squeeze(1)) * shortfall_scale  # shape: [U]
+                self._desired_pos_w[too_close, 0] += escape[:, 0] * shortfall
+                self._desired_pos_w[too_close, 1] += escape[:, 1] * shortfall
 
         # SwarmRaft: trigger agent dropout at scheduled step
         if self.cfg.dropout_enabled and self.cfg.num_agents > 1:

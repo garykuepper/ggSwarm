@@ -147,10 +147,10 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
 
     # Obstacle forest (Phase 4 — Step 5)
     forest_enabled = False            # spawn static cylinder obstacles (toggled via play.py --forest)
-    forest_obstacle_radius = 0.12     # cylinder radius (m)
+    forest_obstacle_radius = 0.20     # cylinder radius (m) — young tree trunk
     forest_obstacle_height = 1.5      # cylinder height (m)
     forest_obstacle_z = 0.5           # cylinder center Z (m)
-    cbf_obstacle_d_safe = 0.25        # goal deflection radius beyond obstacle body (m)
+    cbf_obstacle_d_safe = 0.60        # goal deflection radius beyond obstacle body (m)
     centroid_speed = 0.5              # moving centroid speed (m/s)
     forest_cylinder_spacing = 1.2     # Y spacing between cylinders within a row (m)
     forest_row_spacing = 1.2          # X spacing between rows (m)
@@ -158,6 +158,18 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     forest_row_start_x = 3.0          # X position of first row (m)
     forest_viewer_eye = (4.0, -1.8, 5.0)   # isometric camera for forest mode
     forest_viewer_lookat = (4.0, 0.0, 1.0)
+
+    # Forest goal deflection tuning (Phase 4 — neighbor-velocity-guided)
+    forest_deflect_lateral_blend = 0.7        # lateral vs radial mix in escape direction (1.0 pure lateral, 0.0 pure radial)
+    forest_deflect_neighbor_vel_eps = 0.05    # m/s — fall back to own velocity if KNN mean is slower
+    forest_deflect_shortfall_scale = 1.5      # multiplier for goal push magnitude
+    forest_max_goal_lead = 0.5                # max forward lead of base goal over drone X (prevents runaway goals when stuck)
+
+    # CBF obstacle avoidance tuning (apply_cbf_obstacles in cbf.py — currently uncalled)
+    obstacle_max_correction = 0.25            # max action-space correction per step toward escape
+    obstacle_lateral_blend = 0.7              # lateral vs radial mix in action correction
+    obstacle_dampen_floor = 0.5               # min retained policy magnitude when fully suppressing toward-obstacle component
+    obstacle_dampen_strength = 0.5            # how aggressively to dampen toward-obstacle policy components
 
     # SwarmRaft agent dropout (L3 consensus)
     dropout_enabled = False           # disabled for clean baseline; SwarmRaft fine-tune is a separate run

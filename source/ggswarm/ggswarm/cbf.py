@@ -136,6 +136,10 @@ def apply_cbf_obstacles(
     obstacle_pos: torch.Tensor,
     d_safe: float,
     gamma: float,
+    max_correction: float = 0.25,
+    lateral_blend: float = 0.7,
+    dampen_floor: float = 0.5,
+    dampen_strength: float = 0.5,
 ) -> torch.Tensor:
     """Apply CBF safety projection for drone-obstacle avoidance.
 
@@ -154,6 +158,12 @@ def apply_cbf_obstacles(
         obstacle_pos: [K, 3] obstacle positions in LOCAL frame (env_origins=0)
         d_safe: minimum safe distance (m), should include obstacle radius
         gamma: barrier decay rate
+        max_correction: max action-space correction per step toward escape
+        lateral_blend: lateral vs radial mix in escape direction (1.0 = pure lateral)
+        dampen_floor: min retained policy magnitude when fully suppressing
+            toward-obstacle component (1.0 = no dampening)
+        dampen_strength: how aggressively to dampen toward-obstacle policy
+            components (0.0 = no dampening, 1.0 = full at max urgency)
 
     Returns:
         [N, 4] safe actions
@@ -162,9 +172,6 @@ def apply_cbf_obstacles(
     K = obstacle_pos.shape[0]  # shape: [K, 3]
     if K == 0:
         return actions
-
-    # Lateral correction — primary obstacle avoidance (no goal deflection)
-    obstacle_max_correction = 0.25
 
     # Local drone positions  # shape: [N, 3]
     pos_local = pos_w - env_origins
@@ -217,23 +224,24 @@ def apply_cbf_obstacles(
         lateral_dir = lateral_dir * sign.unsqueeze(1)
 
         # Blend: mostly lateral (steer around) + some radial (push away)
-        escape_dir = 0.7 * lateral_dir + 0.3 * radial_dir  # shape: [U, 3]
+        escape_dir = lateral_blend * lateral_dir + (1.0 - lateral_blend) * radial_dir  # shape: [U, 3]
         escape_norm = escape_dir.norm(dim=1, keepdim=True).clamp(min=1e-6)
         escape_dir = escape_dir / escape_norm
 
         # Dampen policy action components pulling TOWARD the obstacle
-        # proportional to CBF urgency (strength 0-1). At max urgency,
-        # the toward-obstacle component is fully suppressed.
+        # proportional to CBF urgency (strength 0-1). dampen_strength controls
+        # how aggressive the dampening gets; dampen_floor is the minimum
+        # retained policy magnitude (so we never fully suppress the policy).
         toward_roll = -escape_dir[:, 1]   # roll direction toward obstacle
         toward_pitch = -escape_dir[:, 0]  # pitch direction toward obstacle
         roll_toward = (act[unsafe, 1] * toward_roll) > 0  # shape: [U] bool
         pitch_toward = (act[unsafe, 2] * toward_pitch) > 0  # shape: [U] bool
-        dampen = (1.0 - 0.5 * strength).clamp(min=0.5)  # shape: [U] — 1.0 at low, 0.5 at max (never fully suppress)
+        dampen = (1.0 - dampen_strength * strength).clamp(min=dampen_floor)  # shape: [U]
         act[unsafe, 1] = torch.where(roll_toward, act[unsafe, 1] * dampen, act[unsafe, 1])
         act[unsafe, 2] = torch.where(pitch_toward, act[unsafe, 2] * dampen, act[unsafe, 2])
 
         # Add lateral correction on top
-        s = (strength * obstacle_max_correction).unsqueeze(1)  # shape: [U, 1]
+        s = (strength * max_correction).unsqueeze(1)  # shape: [U, 1]
         act[unsafe, 0] = act[unsafe, 0] + s.squeeze(1) * escape_dir[:, 2]  # thrust
         act[unsafe, 1] = act[unsafe, 1] + s.squeeze(1) * escape_dir[:, 1]  # roll
         act[unsafe, 2] = act[unsafe, 2] + s.squeeze(1) * escape_dir[:, 0]  # pitch
