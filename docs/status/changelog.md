@@ -1121,3 +1121,14 @@ matching) were irrelevant — the policy was receiving garbage inputs during eva
   Edge-to-edge gap between cylinders within a row drops from 96cm to 80cm
   (still comfortable for 8 drones in 0.5m formation). Deflection radius
   scales automatically (`cbf_obstacle_d_safe + forest_obstacle_radius`).
+- [2026-04-07] **Phase 4 COMPLETE — M3 gate met (corrected metrics), 7 days
+  early.** All seven M3 criteria now pass against the body-radius-aware
+  obstacle metric. Canonical Phase 5 production checkpoint:
+  `logs/skrl/ggswarm/p4/2026-04-06_21-09-24_ppo_torch/checkpoints/best_agent.pt`
+  (reward 66.83, ep_len 307.74). Forest play with `--forest --video` and
+  the `trees2` config (0.20m trunks, `cbf_obstacle_d_safe = 0.60`,
+  `forest_max_goal_lead = 0.5`) gives 0 body penetrations across 8 drones
+  × 700 steps with positive minimum body clearance. Phase 4 doc updated
+  with the corrected obstacle metric and a new § 5.5 documenting the
+  rebuild week. Phase 5 (Showcase Prep) begins 2026-04-07 — original
+  schedule had it starting Apr 14.

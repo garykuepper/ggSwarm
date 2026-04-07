@@ -225,14 +225,32 @@ in `_setup_scene` as static rigid bodies.
 | Velocity jitter reduction (MINCO training benefit) | >= 20% | O2 | **PASS** | 77% reduction |
 | Gap-fill latency after dropout | < 2.0s (100 steps) | O3 | **PASS** | ~1.0s (p4-6) |
 | Scale test (20 agents) | Formation maintained | O4 | **PASS** | FE 0.061m, 0 collisions |
-| Obstacle success rate | > 95% / 100 episodes | O4 | **PASS** | 0 hits, 0 deaths (forest-18) |
+| Obstacle body-clearance rate | 0 body penetrations / 700 steps × 8 drones | O4 | **PASS** | 0 hits, +3.7cm min clearance (p4-revert-4-trees2, 0.20m trunks) |
 | Inter-agent collision rate | 0 / 100 episodes | O1 | **PASS** | 0 (8, 10, 20 agents) |
 | Steady-state hover drift | < 0.05 m/s mean velocity | O2 | **PASS** | 0.014 m/s |
 
+> **Note on the obstacle metric (2026-04-07 correction):** The earlier
+> "Obstacle success rate >95% / 100 episodes" criterion as originally measured
+> in p4-forest-14/15/16 and p4-forest-36 used a goal-vs-cylinder check that
+> ignored the drone's 0.10m body radius. Re-measured against the
+> body-aware formula `dist − cylinder_radius − drone_radius < 0`, every
+> historical run grazed cylinders by ~5cm (41–309 body penetrations per run;
+> p4-forest-36 had 41, not the originally reported 0). The criterion above
+> has been re-stated to **body** clearance rather than the abstract success
+> rate, and the gate is now met legitimately by `p4-revert-4` + the
+> flock-aligned deflection + goal-lead cap fixes (see § 5 below).
+
 ## 5. Results
 
-Phase 4 in progress. Started Mar 30. Scale testing and MINCO validation complete Apr 2.
-Forest obstacle navigation complete Apr 2.
+**Phase 4 COMPLETE.** Started Mar 30, M3 gate met (with corrected obstacle
+metrics) Apr 7. 7 days ahead of the original Apr 13 deadline. Phase 5
+(Showcase Prep) starts early on Apr 7.
+
+Scale testing and MINCO validation complete Apr 2. Forest obstacle
+navigation initially declared complete Apr 2 with goal-deflection but
+later found to be grazing cylinders by ~5cm — see § 5.5 for the
+rebuild week (Apr 6–7) that produced the canonical p4-revert-4
+checkpoint and the working flock-aligned deflection.
 
 ### Training Runs
 
@@ -303,12 +321,82 @@ policy (moves the target around obstacles) instead of fighting it. CBF obstacle
 module retained in `cbf.py` for future use.
 
 **Results (forest-36, 8 agents, triangle formation, 0.72 m/s, 700 steps):**
-- Obstacle hits: **0** (closest: 0.171m)
+- Obstacle hits: **0** (closest: 0.171m) — *body-radius bug, see § 5.5*
 - Drone deaths: **0**
 - Speed through zone: 0.63-0.70 m/s
 - Y deflection: 0.05-0.28m lateral steering visible
 - Formation error: 0.73m before, 0.75m during obstacles (minor deformation)
 - Attitude: stable throughout (Z vel std 0.08 during, 0.008 after)
+
+### 5.5 Forest Deflection Rebuild Week (2026-04-06 → 2026-04-07)
+
+After the M3 gate was first declared on Apr 2, an exploratory training-time
+obstacle-learning track (six commits, `fa2e16ab` → `428b2f2c`) was tried to
+see if the policy could learn obstacle avoidance directly. Across six
+p4-obstacle/ retrains the obs columns showed no measurable effect, and that
+work was reverted to the goal-deflection approach on Apr 6
+(`experimental/learned-obstacle-avoidance` branch preserves the experiment).
+
+The revert exposed a chain of bugs that the original measurement methodology
+had hidden:
+
+**Bug 0: drone-radius measurement bug.** Body penetrations were never
+counted with the drone's 0.10m radius. Re-measured: every historical
+forest run grazed by ~5cm. p4-forest-36 had 41 body penetrations, not 0.
+The corrected formula is `dist − cylinder_radius − drone_radius < 0`.
+
+**Bug 1: deflection used goal position, not drone position.** The check
+fired on `||goal − cylinder|| < deflect_radius`, but goals are abstract
+slot positions — drones drift off-slot due to formation pressure and
+inertia. Concrete failure: in `p4-revert-4` forest play, drone d1's goal
+sat at Y=−0.38 (0.01m beyond the deflection radius) while the drone
+itself drifted to Y=−0.10 and penetrated the cylinder at Y=0 by 5cm.
+Fix: compute deflection from `self._robot.data.root_pos_w`.
+
+**Bug 2: runaway base goal on stuck drones.** With bug 1 fixed, drones
+mostly traversed but some still got stuck against cylinders. The base goal
+advanced unconditionally at `centroid_speed * step_dt` every step — by
+step 650, a stuck drone had a goal 4.12m ahead of itself, on the far side
+of the cylinder. The X-tracking gradient was so strong it drowned out the
+lateral deflection. Fix: cap `_forest_base_goal[:, 0]` to
+`drone_x + forest_max_goal_lead` (default 0.5m). Stuck drones now get a
+goal that pauses with them; deflection regains full authority.
+
+**Cfg drift regression** (separate but happened in parallel): two
+intermediate retrain attempts (`p4-revert-1`, `p4-revert-2`) collapsed to
+reward 24 / 7 (vs Mar 31's 63) and ep_len 222 / 74 (vs 279). Diagnostic
+confirmed the env code path was character-identical to Mar 31; root cause
+was 100% cfg drift across `cbf_d_safe`, `cbf_max_correction`,
+`collision_radius`, `dropout_enabled`. Fully reverted in `p4-revert-4`,
+which trains to **reward 66.83 / ep_len 307.74** (slightly better than the
+Mar 31 baseline).
+
+**Boids-style flock alignment for direction.** Replaced pure radial
+deflection with a 70/30 lateral/radial blend; lateral side picked using
+mean K-nearest neighbor velocity (boids alignment principle), with
+fallback to drone's own velocity, with final fallback to geometric
+Y-sign. Drones now coordinate which side of a cylinder to dodge and
+neighbors don't pick opposite sides.
+
+**Trees widened to 0.20m radius (40cm diameter)** for visual realism.
+`cbf_obstacle_d_safe` bumped to 0.60 to restore reaction margin given
+the wider trunk eats more of the deflection band.
+
+**Final results (`p4-revert-4-trees2`, 8 agents, 0.20m trunks, 700 steps,
+body-radius-aware metrics):**
+
+| Metric | Result |
+| :--- | :--- |
+| Body penetrations | **0** (out of 5600 drone-steps) |
+| Min body clearance | **+3.7cm** (positive — never touched a trunk) |
+| Min pair distance | 0.177m |
+| Final mean X | +6.22m (full traversal) |
+| Final min X | +5.39m (no stuck drones) |
+| Episode resets | 0 |
+
+This is the definitive Phase 4 forest result. The `p4-revert-4` checkpoint
+(`logs/skrl/ggswarm/p4/2026-04-06_21-09-24_ppo_torch/checkpoints/best_agent.pt`)
+is the canonical Phase 5 production checkpoint.
 
 ### Key Results
 

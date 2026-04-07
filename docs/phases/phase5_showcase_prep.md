@@ -2,6 +2,16 @@
 
 **Timeline:** Apr 14 -- Apr 20  |  **Gate:** M4 -- HD showcase and Testing Report delivered
 
+**Status:** Started 2026-04-07, **7 days early.** Phase 4 wrapped after the
+forest-deflection rebuild produced clean obstacle navigation
+(`p4-revert-4` checkpoint, 0 body penetrations through 0.20m-radius trunks).
+Phase 5 begins by capturing HD video against the working forest scenario
+before moving to the Tron-styled trailer.
+
+**Production checkpoint:** [logs/skrl/ggswarm/p4/2026-04-06_21-09-24_ppo_torch/checkpoints/best_agent.pt](../../logs/skrl/ggswarm/p4/2026-04-06_21-09-24_ppo_torch/checkpoints/best_agent.pt)
+(reward 66.83, ep_len 307.74, formation tracking + flock-aligned forest
+navigation).
+
 ## 1. Goals
 
 | ID | Goal | Success Criteria |
