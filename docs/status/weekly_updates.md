@@ -89,21 +89,32 @@ trains slightly *better* than the Mar 31 baseline.
   drone radius (0.10m) included. Re-measured every historical forest run
   and found they all grazed cylinders by ~5cm (41–309 body penetrations
   per 700-step run). M3 gate's "obstacle success rate" still passes for
-  *forward progress*, but the proximity claims need to be re-stated.
+  *forward progress*, but the proximity claims need to be re-stated
+  (done in `phase4_stress_testing.md` § 4 and § 5.5).
 
 - **Drones currently hover stacked on top of each other at spawn.** Real
   Crazyflies have a downwash interaction zone — the upper drone destabilizes
-  the lower one. Logged as a deferred improvement: add a vertical-proximity
-  penalty to the formation reward and retrain. Not blocking the current
-  forest navigation work.
+  the lower one. With the recent runs the drones are no longer bunching up
+  at spawn so this isn't blocking anything. Logged as **post-capstone future
+  work** (real-world hardware fidelity improvement, not on the critical path).
+
+### Phase 4 wrap-up
+
+**Phase 4 COMPLETE.** All seven M3 criteria pass (with the corrected
+body-radius obstacle metric). Production checkpoint locked in at
+`logs/skrl/ggswarm/p4/2026-04-06_21-09-24_ppo_torch/`.
+**Phase 5 (Showcase Prep) starts 2026-04-07, 7 days early** vs the
+original Apr 14 schedule.
 
 ### Next
 
-- **Downwash penalty + retrain** to address the vertical-stacking issue
-  (real-world fidelity gap). Needs a fresh GCE run.
-- **Re-state phase 4 obstacle metrics** in `phase4_stress_testing.md` using
-  the body-radius-aware formula.
-- **HD demo capture** with the trees2 forest config (40cm trunks).
+- **Phase A of Phase 5:** add `--tron` flag to `play.py` that calls
+  `setup_tron_environment()` after `gym.make()`. ~30 lines, lets us
+  capture the first Tron-styled forest video same session.
+- **HD demo capture** with the trees2 forest config (40cm trunks) and
+  the production checkpoint.
+- **Phases B–D of Phase 5:** Tron visual debug, formation morphing
+  scene sequencer, full cinematic trailer (~2:30 at 1080p 60fps).
 
 - **Timeline:** 17 days remain to deadline (Apr 24).
 
