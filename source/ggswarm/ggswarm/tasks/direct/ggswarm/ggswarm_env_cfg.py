@@ -139,7 +139,7 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     cbf_enabled = True                # collision avoidance barrier
     cbf_d_safe = 0.30                 # min safe distance (m, c2c) — Mar 31 baseline
     cbf_gamma = 2.0                   # barrier decay rate (soft barrier so policy can learn)
-    cbf_max_correction = 0.50         # max per-pair action correction per step (loosened from 0.15)
+    cbf_max_correction = 0.15         # max per-pair action correction per step (Mar 31 baseline; clamps p3-16 flip)
 
     # Virtual collision detection
     collision_radius = 0.10           # min c2c distance (m) — terminates episode (Mar 31 baseline)
