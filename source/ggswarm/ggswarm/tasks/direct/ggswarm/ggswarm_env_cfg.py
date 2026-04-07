@@ -137,12 +137,12 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
 
     # CBF safety shield (Phase 3)
     cbf_enabled = True                # collision avoidance barrier
-    cbf_d_safe = 0.35                 # min safe distance (m, c2c) — safety floor
+    cbf_d_safe = 0.30                 # min safe distance (m, c2c) — Mar 31 baseline
     cbf_gamma = 2.0                   # barrier decay rate (soft barrier so policy can learn)
-    cbf_max_correction = 0.15         # max per-pair action correction per step
+    cbf_max_correction = 0.50         # max per-pair action correction per step (loosened from 0.15)
 
     # Virtual collision detection
-    collision_radius = 0.18           # min c2c distance (m) — terminates episode (Crazyflie prop+downwash zone)
+    collision_radius = 0.10           # min c2c distance (m) — terminates episode (Mar 31 baseline)
     collision_enabled = True          # enable virtual collision termination
 
     # Obstacle forest (Phase 4 — Step 5)
@@ -160,7 +160,7 @@ class GgswarmEnvCfg(DirectRLEnvCfg):
     forest_viewer_lookat = (4.0, 0.0, 1.0)
 
     # SwarmRaft agent dropout (L3 consensus)
-    dropout_enabled = True            # enable random agent dropout during training
+    dropout_enabled = False           # disabled for clean baseline; SwarmRaft fine-tune is a separate run
     dropout_step_min = 200            # earliest step to trigger dropout (after formation settles)
     dropout_step_max = 350            # latest step to trigger dropout
     dropout_count = 1                 # agents to kill per group
