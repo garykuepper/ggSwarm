@@ -341,10 +341,9 @@ def main(
 
         # Tron iter 1: remove all UsdLux lights from the stage (any type, any
         # path) via traversal. Standalone — does not touch render mode, fog,
-        # ground, materials, or anything else. After this we render and see
-        # what the scene looks like with no lights (should go very dark).
+        # ground, materials, or anything else.
         import omni.usd  # noqa: PLC0415
-        from pxr import UsdLux  # noqa: PLC0415
+        from pxr import Sdf, Usd, UsdGeom, UsdLux, UsdShade, Gf  # noqa: PLC0415
 
         _LIGHT_TYPE_NAMES = {
             "DistantLight", "DomeLight", "RectLight", "SphereLight",
@@ -358,6 +357,160 @@ def main(
         for _path in _to_remove:
             _stage.RemovePrim(_path)
         print(f"[INFO] Tron iter 1: removed {len(_to_remove)} light(s): {_to_remove}")
+
+        # Tron iter 4: make Drone instances uninstanceable so material edits
+        # propagate to the renderer. Per IsaacLab issue #622 and the
+        # sim_utils.make_uninstanceable docstring, instanceable assets cache
+        # their visuals at the prototype level — any GetInput("diffuseColor")
+        # .Set() call below would silently no-op without this. Must run AFTER
+        # gym.make() (env exists) but BEFORE env.reset() (physics not yet
+        # active), which is exactly where this --tron block lives.
+        import isaaclab.sim as sim_utils  # noqa: PLC0415
+        for _i in range(args_cli.num_agents):
+            _drone_path = f"/World/envs/env_{_i}/Drone_0"
+            if _stage.GetPrimAtPath(_drone_path).IsValid():
+                sim_utils.make_uninstanceable(_drone_path)
+        print(f"[INFO] Tron iter 4: made {args_cli.num_agents} drone(s) uninstanceable")
+
+        # Tron iter 2: change the existing DroneMat's diffuseColor in place.
+        # The env's _setup_scene already creates a UsdPreviewSurface material
+        # at /World/envs/env_{i}/Drone_0/body/Looks/DroneMat and binds it to
+        # the body prim. Rather than creating a new material with a different
+        # shader type and fighting USD binding strength, we just edit the
+        # existing material's diffuseColor and emissiveColor attributes.
+        _A_iter = args_cli.num_agents
+        # UsdPreviewSurface inputs are LINEAR — gamma-decode the desired sRGB
+        # display color #ff8c00 (1.0, 0.549, 0.0) → linear (1.0, 0.262, 0.0).
+        # Without this correction the rendered color skews yellow.
+        _AMBER = Gf.Vec3f(1.0, 0.262, 0.0)        # linear → #ff8c00 sRGB
+        _AMBER_BRIGHT = Gf.Vec3f(1.5, 0.39, 0.0)  # 1.5x amber, still under clip
+        _updated = 0
+        for _i in range(_A_iter):
+            _shader_path = f"/World/envs/env_{_i}/Drone_0/body/Looks/DroneMat/Shader"
+            _shader_prim = _stage.GetPrimAtPath(_shader_path)
+            if not _shader_prim.IsValid():
+                continue
+            _shader = UsdShade.Shader(_shader_prim)
+            _diffuse = _shader.GetInput("diffuseColor")
+            if _diffuse:
+                _diffuse.Set(_AMBER)
+                _updated += 1
+            _emissive = _shader.GetInput("emissiveColor")
+            if _emissive:
+                _emissive.Set(_AMBER_BRIGHT)
+            else:
+                _shader.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(_AMBER_BRIGHT)
+        print(f"[INFO] Tron iter 2: updated DroneMat on {_updated}/{_A_iter} drones to amber #ff8c00")
+
+        # Tron iter 5: replace the terrain grid with a custom emissive teal
+        # plane. The default Isaac Lab terrain uses a baked grid texture that
+        # overrides any constant diffuseColor we set (and the iter 3 cyan-flash
+        # confirmed this). Easier to remove the terrain entirely and spawn a
+        # simple plane with our own UsdPreviewSurface material via Isaac Lab's
+        # spawn_preview_surface (the same path the env uses for DroneMat).
+        _ground_root = _stage.GetPrimAtPath("/World/ground")
+        if _ground_root.IsValid():
+            _stage.RemovePrim("/World/ground")
+            print("[INFO] Tron iter 5: removed /World/ground (terrain)")
+
+        # 50m × 50m flat quad in the XY plane at z=0 (Isaac Lab Z-up).
+        _grid_path = "/World/TronGrid"
+        _grid_mesh = UsdGeom.Mesh.Define(_stage, _grid_path)
+        _size = 50.0
+        _grid_mesh.CreatePointsAttr([
+            Gf.Vec3f(-_size, -_size, 0.0),
+            Gf.Vec3f( _size, -_size, 0.0),
+            Gf.Vec3f( _size,  _size, 0.0),
+            Gf.Vec3f(-_size,  _size, 0.0),
+        ])
+        _grid_mesh.CreateFaceVertexCountsAttr([4])
+        _grid_mesh.CreateFaceVertexIndicesAttr([0, 1, 2, 3])
+        _grid_mesh.CreateNormalsAttr([Gf.Vec3f(0, 0, 1)] * 4)
+
+        # Pure black base plane — invisible against the black void, but kept
+        # as a flat surface so the grid lines have something to live on.
+        # The cyan lines from iter 6 are the only thing that should render here.
+        _grid_mat_path = "/World/Looks/TronGridMat"
+        sim_utils.spawn_preview_surface(
+            _grid_mat_path,
+            sim_utils.PreviewSurfaceCfg(
+                diffuse_color=(0.0, 0.0, 0.0),
+                emissive_color=(0.0, 0.0, 0.0),
+                roughness=1.0,
+            ),
+        )
+        _grid_mat_prim = _stage.GetPrimAtPath(_grid_mat_path)
+        UsdShade.MaterialBindingAPI.Apply(_grid_mesh.GetPrim())
+        UsdShade.MaterialBindingAPI(_grid_mesh.GetPrim()).Bind(
+            UsdShade.Material(_grid_mat_prim)
+        )
+        print("[INFO] Tron iter 5: spawned 50m teal base plane at /World/TronGrid")
+
+        # Tron iter 6: bright teal grid line geometry on top of the base plane.
+        # 1m spacing, ~5cm wide lines as thin quads at z=0.005 to avoid
+        # z-fighting with the base. One mesh containing all line quads.
+        _line_w = 0.01       # half-width: 2cm wide lines
+        _line_z = 0.005      # slight offset above base plane
+        _spacing = 2.0       # 2m grid cells (wider than before)
+        _n = int(_size / _spacing)  # lines from -_n*spacing .. +_n*spacing
+
+        _line_points: list[Gf.Vec3f] = []
+        _line_face_counts: list[int] = []
+        _line_face_indices: list[int] = []
+        _line_normals: list[Gf.Vec3f] = []
+        _vidx = 0
+
+        # Vertical lines (constant X, span all Y)
+        for _i in range(-_n, _n + 1):
+            _x = _i * _spacing
+            _line_points.extend([
+                Gf.Vec3f(_x - _line_w, -_size, _line_z),
+                Gf.Vec3f(_x + _line_w, -_size, _line_z),
+                Gf.Vec3f(_x + _line_w,  _size, _line_z),
+                Gf.Vec3f(_x - _line_w,  _size, _line_z),
+            ])
+            _line_face_counts.append(4)
+            _line_face_indices.extend([_vidx, _vidx + 1, _vidx + 2, _vidx + 3])
+            _line_normals.extend([Gf.Vec3f(0, 0, 1)] * 4)
+            _vidx += 4
+
+        # Horizontal lines (constant Y, span all X)
+        for _i in range(-_n, _n + 1):
+            _y = _i * _spacing
+            _line_points.extend([
+                Gf.Vec3f(-_size, _y - _line_w, _line_z),
+                Gf.Vec3f( _size, _y - _line_w, _line_z),
+                Gf.Vec3f( _size, _y + _line_w, _line_z),
+                Gf.Vec3f(-_size, _y + _line_w, _line_z),
+            ])
+            _line_face_counts.append(4)
+            _line_face_indices.extend([_vidx, _vidx + 1, _vidx + 2, _vidx + 3])
+            _line_normals.extend([Gf.Vec3f(0, 0, 1)] * 4)
+            _vidx += 4
+
+        _lines_path = "/World/TronGridLines"
+        _lines_mesh = UsdGeom.Mesh.Define(_stage, _lines_path)
+        _lines_mesh.CreatePointsAttr(_line_points)
+        _lines_mesh.CreateFaceVertexCountsAttr(_line_face_counts)
+        _lines_mesh.CreateFaceVertexIndicesAttr(_line_face_indices)
+        _lines_mesh.CreateNormalsAttr(_line_normals)
+
+        # Bright emissive teal material — these are the glowing grid lines
+        _lines_mat_path = "/World/Looks/TronGridLinesMat"
+        sim_utils.spawn_preview_surface(
+            _lines_mat_path,
+            sim_utils.PreviewSurfaceCfg(
+                diffuse_color=(0.018, 0.665, 0.652),
+                emissive_color=(0.3, 3.0, 2.8),   # bright glow
+                roughness=0.4,
+            ),
+        )
+        _lines_mat_prim = _stage.GetPrimAtPath(_lines_mat_path)
+        UsdShade.MaterialBindingAPI.Apply(_lines_mesh.GetPrim())
+        UsdShade.MaterialBindingAPI(_lines_mesh.GetPrim()).Bind(
+            UsdShade.Material(_lines_mat_prim)
+        )
+        print(f"[INFO] Tron iter 6: spawned {2 * (2 * _n + 1)} grid line quads at /World/TronGridLines")
 
         print("[INFO] Tron orbit camera enabled (sim.set_camera_view, vanilla scene).")
 
