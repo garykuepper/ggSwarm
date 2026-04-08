@@ -83,6 +83,12 @@ parser.add_argument(
     help="Enable forest obstacle navigation with moving centroid.",
 )
 parser.add_argument(
+    "--tron",
+    action="store_true",
+    default=False,
+    help="Enable Tron-styled cinematic environment (black void, fog, emissive grid, orbit camera).",
+)
+parser.add_argument(
     "--disable_fabric",
     action="store_true",
     default=False,
@@ -316,6 +322,24 @@ def main(
     if isinstance(env.unwrapped, DirectMARLEnv) and algorithm in ["ppo"]:
         env = multi_agent_to_single_agent(env)
 
+    # Tron-styled cinematic environment (Phase 5 sub-phase A)
+    # Phase B incremental rebuild: start with ONLY an orbit camera, no scene
+    # changes (vanilla Isaac Lab visuals). The orbit positions are pushed to
+    # env.sim.set_camera_view() each frame — that's the same API Isaac Lab's
+    # ViewportCameraController uses internally, so the recorded video will
+    # actually follow the orbit (the Kit-viewport set_active_camera approach
+    # only updated the live UI, not the env.render() pipeline that
+    # NvencRecorder reads from).
+    tron_orbit = None
+    if args_cli.tron:
+        tron_orbit = {
+            "angle_deg": 0.0,
+            "radius": 2.0,         # XY-plane orbit radius (m) — ~3x zoom vs 6.0
+            "height": 0.6,         # Z offset above swarm centroid (m)
+            "speed_deg": 0.6,      # degrees per frame (0.6 * 250 frames = 150°)
+        }
+        print("[INFO] Tron orbit camera enabled (sim.set_camera_view, vanilla scene).")
+
     # Override formation shape at play time (--formation arg)
     if args_cli.formation and args_cli.num_agents > 1:
         from ggswarm.formations import get_formation  # noqa: PLC0415
@@ -339,7 +363,13 @@ def main(
     if args_cli.video:
         from ggswarm.viz.nvenc_recorder import NvencRecorder
 
-        video_folder = os.path.join(log_dir, "videos", "play")
+        # Phase 5 cinematic clips go to a clean top-level videos/showcase/ dir
+        # so they're easy to find for stitching. Standard play videos stay
+        # nested in the run directory.
+        if args_cli.tron:
+            video_folder = os.path.join("videos", "showcase")
+        else:
+            video_folder = os.path.join(log_dir, "videos", "play")
         env = NvencRecorder(
             env,
             video_folder=video_folder,
@@ -455,6 +485,25 @@ def main(
                 actions = outputs[-1].get("mean_actions", outputs[0])
             # env stepping
             obs, _, _, _, _ = env.step(actions)
+
+        # Advance Tron orbit camera (Z-up, drives env render camera so the
+        # recorded video follows the orbit, not just the live UI viewport)
+        if tron_orbit is not None:
+            import math  # noqa: PLC0415
+
+            base_for_cam = env.unwrapped
+            A_cam = args_cli.num_agents
+            centroid = base_for_cam._robot.data.root_pos_w[:A_cam].mean(dim=0).cpu()
+            cx, cy, cz = float(centroid[0]), float(centroid[1]), float(centroid[2])
+            tron_orbit["angle_deg"] = (tron_orbit["angle_deg"] + tron_orbit["speed_deg"]) % 360.0
+            rad = math.radians(tron_orbit["angle_deg"])
+            eye_x = cx + tron_orbit["radius"] * math.sin(rad)
+            eye_y = cy + tron_orbit["radius"] * math.cos(rad)
+            eye_z = cz + tron_orbit["height"]
+            base_for_cam.sim.set_camera_view(
+                eye=(eye_x, eye_y, eye_z),
+                target=(cx, cy, cz),
+            )
 
         # Record trajectory data (first swarm group)
         if args_cli.trajectories:
