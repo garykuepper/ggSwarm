@@ -338,6 +338,27 @@ def main(
             "height": 0.6,         # Z offset above swarm centroid (m)
             "speed_deg": 0.6,      # degrees per frame (0.6 * 250 frames = 150°)
         }
+
+        # Tron iter 1: remove all UsdLux lights from the stage (any type, any
+        # path) via traversal. Standalone — does not touch render mode, fog,
+        # ground, materials, or anything else. After this we render and see
+        # what the scene looks like with no lights (should go very dark).
+        import omni.usd  # noqa: PLC0415
+        from pxr import UsdLux  # noqa: PLC0415
+
+        _LIGHT_TYPE_NAMES = {
+            "DistantLight", "DomeLight", "RectLight", "SphereLight",
+            "DiskLight", "CylinderLight", "GeometryLight",
+        }
+        _stage = omni.usd.get_context().get_stage()
+        _to_remove = [
+            str(p.GetPath()) for p in _stage.Traverse()
+            if p.GetTypeName() in _LIGHT_TYPE_NAMES
+        ]
+        for _path in _to_remove:
+            _stage.RemovePrim(_path)
+        print(f"[INFO] Tron iter 1: removed {len(_to_remove)} light(s): {_to_remove}")
+
         print("[INFO] Tron orbit camera enabled (sim.set_camera_view, vanilla scene).")
 
     # Override formation shape at play time (--formation arg)
