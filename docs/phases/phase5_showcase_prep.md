@@ -263,7 +263,7 @@ DaVinci Resolve / Premiere with title cards + transitions + music.**
 | ID | Goal | Success Criteria |
 | :--- | :--- | :--- |
 | P5.1 | Cinematic trailer (~2:30) | Tron-inspired, 1080p 60fps, 8 scenes, formation morphing + dropout |
-| P5.2 | Proposal objectives verified | Testing Report finalized with pass/fail for O1-O4 |
+| P5.2 | Proposal objectives verified | Testing Report finalized with pass/fail for O1-O4 — **DONE 2026-04-08** ([docs/testing_report.md](../testing_report.md)) |
 | P5.3 | Formation error < 0.3m steady-state | Verified across evaluation suite |
 | P5.4 | Presentation-ready repository | Clean README, reproducible commands |
 
@@ -383,9 +383,9 @@ or keep in separate `scripts/showcase.py`.
 | C | `scripts/skrl/play.py` | `--showcase` flag with formation timer |
 | D | `scripts/showcase.py` or `play.py` | Drone kill, camera cuts |
 
-## 3. Testing Report (P5.2)
+## 3. Testing Report (P5.2) — DONE 2026-04-08
 
-Compile Phase 4 evaluation results into `docs/testing_report.md`:
+Delivered: [`docs/testing_report.md`](../testing_report.md). Compiles Phase 4 evaluation results:
 
 - Objective pass/fail table (O1-O4) with measured values
 - Formation error metrics by scenario (polygon, grid, letter, scale)

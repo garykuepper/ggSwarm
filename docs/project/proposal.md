@@ -2,7 +2,7 @@
 
 **CST489/499 Online Capstone**
 **Student:** Gary Kuepper
-**Advisors:** Eric Tao, Brian Robertson
+~~**Advisors:** Eric Tao, Brian Robertson~~ `[Revised 2026-04-08]` **Advisor:** Dr. Eric Tao
 **Term:** Spring 2026
 
 > **Edit Policy:** This is the authoritative source document for the project.
