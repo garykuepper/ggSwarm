@@ -2,6 +2,17 @@
 
 **Timeline:** Apr 21 -- Apr 24  |  **Gate:** Final -- Capstone Festival presentation and all submissions
 
+**Status: Pre-sprint.** Phase 5 sub-phase A wrapped 2026-04-08 with 20
+captured cinematic clips (see [Phase 5](phase5_showcase_prep.md) § 5).
+The next concrete step is **manual cinematic editing** in DaVinci
+Resolve / Premiere using the captured clips — this is now the headline
+Phase 6 task and is documented in the updated task list below.
+
+**16 days remaining to deadline (as of 2026-04-08).** All training is
+done. Production checkpoint locked in (`p4-revert-4`). No more code
+changes are required for the trailer; only editing, polish, and
+submission.
+
 ## 1. Goals
 
 | ID | Goal | Success Criteria |
@@ -17,24 +28,59 @@
 
 ```mermaid
 gantt
-    title Delivery Sprint (Apr 21-24)
+    title Delivery Sprint (Apr 9-24)
     dateFormat YYYY-MM-DD
+    section Cinematic
+        Stitch trailer in DaVinci/Premiere :c1, 2026-04-09, 5d
+        Title cards + music + grading      :c2, after c1, 2d
+        Final trailer export (1080p60)     :milestone, after c2, 0d
     section Documentation
-        README + changelog polish    :d1, 2026-04-21, 1d
-        Reproducibility verification :d2, after d1, 1d
-        Git tag v1.0.0-capstone      :milestone, after d2, 0d
+        README + changelog polish          :d1, 2026-04-21, 1d
+        Reproducibility verification       :d2, after d1, 1d
+        Git tag v1.0.0-capstone            :milestone, after d2, 0d
     section Presentation
-        Poster / slide deck          :p1, 2026-04-22, 1d
-        Demo video export            :p2, 2026-04-22, 1d
-        Live demo prep               :p3, after p1, 1d
+        Poster / slide deck                :p1, 2026-04-22, 1d
+        Demo video export                  :p2, 2026-04-22, 1d
+        Live demo prep                     :p3, after p1, 1d
     section Festival
-        Capstone presentation        :f1, 2026-04-24, 1d
-        Portfolio + Journal submit   :f2, 2026-04-24, 1d
+        Capstone presentation              :f1, 2026-04-24, 1d
+        Portfolio + Journal submit         :f2, 2026-04-24, 1d
 ```
 
-No new code. Four-day sprint converting Phase 5 results into deliverables.
+No new training. Most code work is done — Phase 4 produced the
+production checkpoint, Phase 5 sub-A produced the cinematic clip
+inventory. Phase 6 is editing, polish, and submission.
 
-**Day 1 (Apr 22): Documentation and repo polish**
+### Days 1-7 (Apr 9-15): Cinematic stitching
+
+- **Open the 20 clips from `videos/showcase/`** in DaVinci Resolve or
+  Premiere. Inventory:
+  - Orbit clips (8): octagon, triangle, grid, letter_G (8 + 16 agents),
+    scale-20, dropout, forest with wireframe trees
+  - Top-down clips (5): triangle, octagon, grid, letter_G-16, forest
+  - Chase clip (1): forest fly-along (15s)
+  - Cold open clips (2): no-drones orbit + no-drones forest
+  - Off-distribution (1): cloud / boid attempt (probably skip)
+- **Build the trailer per the storyboard** in
+  [phase5_showcase_prep.md § 2](phase5_showcase_prep.md):
+  cold open → drone spawn → octagon → formation morph → dropout →
+  recovery → scale-up → title card. Target ~2:30 at 1080p 60fps.
+- **Title cards** (intro/outro/scene labels), **transitions**
+  (cuts + crossfades), **color grading** if needed.
+- **Music** — pick a Tron-Legacy-adjacent track (creative-commons or
+  licensed). Pace cuts to the music.
+- **Export final cinematic** (1080p60 H.264, audio embedded). Target
+  file size < 100 MB so it fits in submissions.
+
+### Days 8-14 (Apr 16-20): Slack / polish / contingency
+
+- Re-render any clip if visual issues found during editing.
+- Optional: drone color refinement, cold open at slower orbit speed,
+  HD upgrade — see [Phase 5 § 5 deferred list](phase5_showcase_prep.md).
+- Optional: 3-point lighting iteration, fog, etc. — only if there's
+  time and the cinematic looks lacking.
+
+### Days 15-16 (Apr 21-22): Documentation and repo polish
 
 - Update `README.md` to final state
 - Finalize changelog entries for all phases
@@ -42,23 +88,24 @@ No new code. Four-day sprint converting Phase 5 results into deliverables.
 
   ```powershell
   pip install -e source/ggswarm
-  python scripts/skrl/train.py --headless --task ggswarm-v0 --num_envs 64 --num_agents 3 --max_iterations 5
-  python scripts/skrl/play.py --task ggswarm-v0 --num_agents 3 --num_envs 3 --policy gnn --checkpoint <path>
+  env_isaaclab/Scripts/python.exe scripts/skrl/train.py --headless --task ggswarm-v0 --num_envs 64 --max_iterations 5
+  env_isaaclab/Scripts/python.exe scripts/skrl/play.py --task ggswarm-v0 --num_agents 8 --policy gnn --tron --formation triangle --video --video_length 250 --play_length 250 --prefix repro-test --checkpoint <path-to-p4-revert-4-best_agent.pt>
   ```
 
 - Tag `v1.0.0-capstone`
 
-**Day 2 (Apr 23): Presentation materials**
+### Days 17-18 (Apr 23): Presentation materials
 
 - Build poster/slide deck (10 slides: title, problem, GNSC architecture,
-  Phase 2 results, Phase 3 GNN, Phase 4 stress tests, showcase demo,
-  results vs objectives, lessons learned, future work)
-- Export demo video with QR code
+  Phase 2 results, Phase 3 GNN, Phase 4 stress tests + obstacle navigation,
+  Phase 5 cinematic, results vs objectives, lessons learned, future work)
+- Export demo video with QR code linking to the GitHub repo
 - Prepare live demo machine
 
-**Day 3 (Apr 24): Capstone Festival**
+### Day 19 (Apr 24): Capstone Festival
 
-- Present poster and run live demo
+- Present poster and run live demo (or play the cinematic if live
+  demo is impractical)
 - Submit Portfolio and Learning Journal
 - Archive final GCS state
 
@@ -80,7 +127,11 @@ No new code. Four-day sprint converting Phase 5 results into deliverables.
 
 ## 5. Results
 
-Phase 6 has not started.
+**Phase 6 pre-sprint, started early.** Phase 5 sub-A wrapped 2026-04-08
+producing the cinematic clip inventory. Phase 6 cinematic stitching
+begins immediately (day 1 = 2026-04-09) — 16 days of slack before the
+Apr 24 deadline. Goal: cinematic trailer locked in by Apr 15-16, then
+documentation + presentation polish.
 
 ---
 

@@ -17,7 +17,7 @@ Baseline timeline is in the [Proposal](../project/proposal.md#7-timeline-and-mil
 
 ---
 
-## Week 14 Update (2026-04-08) — Phase 5 sub-A complete, 17 cinematic clips captured
+## Week 14 Update (2026-04-08) — Phase 5 sub-A complete, 20 cinematic clips captured
 
 ### Headline
 

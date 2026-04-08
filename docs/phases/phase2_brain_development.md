@@ -2,6 +2,13 @@
 
 **Timeline:** Feb 25 -- Mar 27 (Weeks 7--12)  |  **Gate:** M1 -- Formation control
 
+**Status: COMPLETE** (2026-03-27). M1 gate met. Fresh-start rebuild on
+2026-03-26 archived the original Phase 1/2 codebase and rebuilt from the
+Isaac Lab quadcopter reference. p2b-8 was the final formation checkpoint
+(ep_len min=499 zero-crashes, formation reward 1.39, drones visually form
+triangle with fixed centroid goal). Phase 2 deliverables fed directly
+into Phase 3.
+
 ---
 
 ## 1. Goals

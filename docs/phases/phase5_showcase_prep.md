@@ -2,11 +2,29 @@
 
 **Timeline:** Apr 14 -- Apr 20  |  **Gate:** M4 -- HD showcase and Testing Report delivered
 
-**Status:** Started 2026-04-07, **7 days early.** Phase 4 wrapped after the
+**Status: Sub-phase A COMPLETE** (2026-04-08). Started 2026-04-07,
+**6 days ahead of the original Apr 14 schedule.** Phase 4 wrapped after the
 forest-deflection rebuild produced clean obstacle navigation
 (`p4-revert-4` checkpoint, 0 body penetrations through 0.20m-radius trunks).
-Phase 5 begins by capturing HD video against the working forest scenario
-before moving to the Tron-styled trailer.
+
+Phase 5 sub-phase A delivered:
+
+- **Tron baseline pipeline** in `scripts/skrl/play.py` behind `--tron`
+  (commits `e5dcbb7c` → `1d95af2c`). 7 commits total.
+- **20 stitchable cinematic clips** in `videos/showcase/` covering 4
+  formations × multiple agent counts × 4 camera modes (`orbit`,
+  `top_down`, `low_angle`, `chase`) + cold-open shots + forest with
+  red-wireframe trees.
+- **Fully documented setup reference** in § 0 below — captures the
+  two-day debugging journey (USD instancing, linear-RGB color space,
+  `sim.set_camera_view` vs `viewport.set_active_camera`, texture-based
+  terrain) so future visual work doesn't re-walk the same traps.
+
+**Sub-phase B/C/D (cinematic 3-point lighting, scene morphing
+sequencer, full automated cinematic) are deferred** — manual editing
+in DaVinci Resolve / Premiere with the 20 captured clips covers the
+M4 deliverable. See § 5 (Results) for the full inventory and the
+out-of-scope list.
 
 **Production checkpoint:** [logs/skrl/ggswarm/p4/2026-04-06_21-09-24_ppo_torch/checkpoints/best_agent.pt](../../logs/skrl/ggswarm/p4/2026-04-06_21-09-24_ppo_torch/checkpoints/best_agent.pt)
 (reward 66.83, ep_len 307.74, formation tracking + flock-aligned forest
@@ -390,12 +408,88 @@ for presentation.
 
 ## 5. Results
 
-Phase 5 early start (Mar 31) — showcase script and Tron environment created.
-Full recording scheduled for Apr 14-20 after Phase 4 testing complete.
+**Sub-phase A COMPLETE (2026-04-08).** The originally-planned
+`scripts/showcase.py` + `scripts/tron_env.py` (created Mar 31) was
+**superseded** by the in-`play.py` `--tron` rebuild on Apr 7-8 because
+the all-in-one `setup_tron_environment()` function did ~6 things at
+once and made debugging impossible. The rebuilt pipeline is documented
+in § 0 above; `showcase.py` and `tron_env.py` are unchanged on disk
+but unused by the current cinematic workflow.
 
-- **p5-1:** Showcase script created. Tron environment with fog, grid, lighting.
-  8-scene cinematic sequence with formation morphing + SwarmRaft dropout.
-  Using p4-6 checkpoint (triangle + dropout, 1000 iter).
+### Production checkpoint
+
+`logs/skrl/ggswarm/p4/2026-04-06_21-09-24_ppo_torch/checkpoints/best_agent.pt`
+— reward 66.83, ep_len 307.74, polygon-mode triangle formation
+training, flock-aligned forest navigation. Same checkpoint feeds every
+clip below.
+
+### 20 stitchable clips in `videos/showcase/`
+
+| # | Clip | Mode | Formation | N | Length | Notes |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| 1 | `p5-baseline-orbit-zoom2` | orbit | triangle | 8 | 5s | Baseline reference |
+| 2 | `p5-orbit-octagon-10s` | orbit | polygon | 8 | 10s | Scene 3 — octagon |
+| 3 | `p5-orbit-triangle-10s` | orbit | triangle | 8 | 10s | Scene 2/3 — triangle |
+| 4 | `p5-orbit-grid-10s` | orbit | grid | 8 | 10s | Scene 4 — grid |
+| 5 | `p5-orbit-letter-G-10s` | orbit | letter_G | 8 | 10s | Scene 6 — letter G |
+| 6 | `p5-orbit-letter-G-16` | orbit | letter_G | 16 | 10s | Bigger letter G |
+| 7 | `p5-orbit-letter-G-16-15s` | orbit | letter_G | 16 | 15s | Extended letter G |
+| 8 | `p5-orbit-scale-20` | orbit | polygon | 20 | 10s | Scene 9 — scale up |
+| 9 | `p5-orbit-dropout` | orbit | triangle + `--dropout` | 8 | 10s | Scenes 7-8 |
+| 10 | `p5-orbit-forest-wireframe3` | orbit | triangle + `--forest` | 8 | 10s | Forest with red wireframe trees |
+| 11 | `p5-orbit-cloud-10s` | orbit | `--cloud` (off-distribution) | 8 | 10s | Boid attempt |
+| 12 | `p5-topdown-triangle-3m` | top_down | triangle | 8 | 10s | Scene 4 reveal |
+| 13 | `p5-topdown-octagon` | top_down | polygon | 8 | 10s | Scene 4 reveal |
+| 14 | `p5-topdown-grid` | top_down | grid | 8 | 10s | Scene 5 reveal |
+| 15 | `p5-topdown-letter-G-16` | top_down | letter_G | 16 | 10s | Scene 6 reveal |
+| 16 | `p5-topdown-letter-G-16-15s` | top_down | letter_G | 16 | 15s | Extended scene 6 |
+| 17 | `p5-topdown-forest` | top_down | triangle + `--forest` | 8 | 10s | Forest from above |
+| 18 | `p5-chase-forest-15s` | chase | triangle + `--forest` | 8 | 15s | Fly-along forest |
+| 19 | `p5-orbit-no-drones-clean` | orbit | `--no_drones` | — | 10s | Cold open (env only) |
+| 20 | `p5-orbit-no-drones-forest` | orbit | `--no_drones --forest` | — | 10s | Cold open + forest reveal |
+
+### Reproduction matrix
+
+All clips render from a single play.py invocation against the
+production checkpoint. Flag combinations:
+
+```text
+play.py --task ggswarm-v0
+        --num_agents {8 | 16 | 20}
+        --checkpoint logs/.../p4-revert-4/best_agent.pt
+        --tron
+        [--formation {polygon | triangle | grid | letter_G}]
+        [--num_agents N]
+        [--forest]
+        [--dropout]
+        [--cam_mode {orbit | top_down | low_angle | chase}]
+        [--no_drones]
+        [--cloud]
+        --video --video_length {500 | 750}
+        --play_length {500 | 750}
+        --prefix p5-...
+```
+
+500 frames = 10s at dt=0.02. 750 frames = 15s. All output goes to
+`videos/showcase/` at the repo root.
+
+### Next steps
+
+**Manual cinematic editing** in DaVinci Resolve / Premiere using the
+20 captured clips + title cards + music. **No more code changes are
+required for the trailer.** This is now a Phase 6 task (delivery sprint).
+
+### Deferred (only if time permits before Apr 24)
+
+- **Drone color refinement** — currently more yellow than amber
+- **Cold open at slower orbit speed** — current `--no_drones` orbit is
+  the same speed as the regular orbit; for a true "establishing shot"
+  feel, halve the orbit speed
+- **Cinematic 3-point lighting** in cyan tones
+- **Cloud/boid clip** with a fresh GCE training run (out of credits)
+- **Showcase script integration** — `scripts/showcase.py` already has
+  the 8-scene morphing logic if a single auto-edited cinematic is
+  preferred over manual editing
 
 ---
 

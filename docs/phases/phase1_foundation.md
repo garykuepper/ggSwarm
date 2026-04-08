@@ -2,6 +2,11 @@
 
 **Timeline:** Feb 5 -- Feb 17 (Weeks 5--6)  |  **Gate:** Isaac Lab environment operational with MAPPO training pipeline
 
+**Status: COMPLETE** (2026-02-17). Original Phase 2 codebase from this phase
+was archived on 2026-03-26 when the env was rebuilt from the Isaac Lab
+quadcopter reference; see [Phase 2](phase2_brain_development.md) for the
+fresh-start architecture that superseded the Phase 1 implementation.
+
 ## 1. Goals
 
 
