@@ -95,6 +95,13 @@ parser.add_argument(
     help="Use cloud/boid formation_mode at play time (centroid + KNN cohesion + separation, no rigid slots). Caveat: production checkpoint trained in polygon mode.",
 )
 parser.add_argument(
+    "--cam_mode",
+    type=str,
+    default="orbit",
+    choices=["orbit", "top_down", "low_angle", "chase"],
+    help="Camera mode for --tron play. orbit: rotate around centroid. top_down: locked overhead. low_angle: dramatic ground-level looking up. chase: trail the centroid.",
+)
+parser.add_argument(
     "--disable_fabric",
     action="store_true",
     default=False,
@@ -347,10 +354,23 @@ def main(
     tron_orbit = None
     if args_cli.tron:
         tron_orbit = {
+            "mode": args_cli.cam_mode,
             "angle_deg": 0.0,
-            "radius": 2.0,         # XY-plane orbit radius (m) — ~3x zoom vs 6.0
-            "height": 0.6,         # Z offset above swarm centroid (m)
-            "speed_deg": 0.6,      # degrees per frame (0.6 * 250 frames = 150°)
+            # orbit
+            "radius": 2.0,            # XY orbit radius (m)
+            "height": 0.6,            # Z offset above centroid for orbit (m)
+            "speed_deg": 0.6,         # orbit angular speed (deg/frame)
+            # top_down
+            "top_down_height": 3.0,   # Z above centroid for overhead view (m)
+            "top_down_yaw_deg": 0.0,  # subtle rotation about vertical (start facing +X)
+            "top_down_yaw_speed": 0.15,  # slow yaw drift per frame
+            # low_angle
+            "low_radius": 4.0,        # XY distance for low_angle (m)
+            "low_height": -0.4,       # camera Z (negative = below centroid, slight up-look)
+            "low_target_z": 0.4,      # look-at z above centroid for upward angle
+            # chase
+            "chase_back": 3.5,        # distance behind the centroid in -X direction
+            "chase_height": 1.2,      # Z above centroid
         }
 
         # Tron iter 1: remove all UsdLux lights from the stage (any type, any
@@ -857,8 +877,10 @@ def main(
             # env stepping
             obs, _, _, _, _ = env.step(actions)
 
-        # Advance Tron orbit camera (Z-up, drives env render camera so the
-        # recorded video follows the orbit, not just the live UI viewport)
+        # Advance Tron camera (Z-up, drives env render camera so the
+        # recorded video follows it, not just the live UI viewport).
+        # Branches on tron_orbit["mode"] to support orbit / top_down /
+        # low_angle / chase modes.
         if tron_orbit is not None:
             import math  # noqa: PLC0415
 
@@ -866,15 +888,65 @@ def main(
             A_cam = args_cli.num_agents
             centroid = base_for_cam._robot.data.root_pos_w[:A_cam].mean(dim=0).cpu()
             cx, cy, cz = float(centroid[0]), float(centroid[1]), float(centroid[2])
-            tron_orbit["angle_deg"] = (tron_orbit["angle_deg"] + tron_orbit["speed_deg"]) % 360.0
-            rad = math.radians(tron_orbit["angle_deg"])
-            eye_x = cx + tron_orbit["radius"] * math.sin(rad)
-            eye_y = cy + tron_orbit["radius"] * math.cos(rad)
-            eye_z = cz + tron_orbit["height"]
-            base_for_cam.sim.set_camera_view(
-                eye=(eye_x, eye_y, eye_z),
-                target=(cx, cy, cz),
-            )
+            _mode = tron_orbit["mode"]
+
+            if _mode == "orbit":
+                tron_orbit["angle_deg"] = (tron_orbit["angle_deg"] + tron_orbit["speed_deg"]) % 360.0
+                rad = math.radians(tron_orbit["angle_deg"])
+                eye = (
+                    cx + tron_orbit["radius"] * math.sin(rad),
+                    cy + tron_orbit["radius"] * math.cos(rad),
+                    cz + tron_orbit["height"],
+                )
+                target = (cx, cy, cz)
+
+            elif _mode == "top_down":
+                # Locked overhead with a subtle yaw drift so the formation
+                # rotates within the frame slowly. Eye directly above
+                # centroid; lookat at centroid; the yaw is encoded by
+                # offsetting the lookat slightly along the rotated axis.
+                tron_orbit["top_down_yaw_deg"] = (
+                    tron_orbit["top_down_yaw_deg"] + tron_orbit["top_down_yaw_speed"]
+                ) % 360.0
+                eye = (cx, cy, cz + tron_orbit["top_down_height"])
+                # We need a target slightly off-center so the camera has a
+                # defined orientation that we can rotate via the yaw drift.
+                # Offset of 1mm along the rotated axis is enough to control roll.
+                yaw_rad = math.radians(tron_orbit["top_down_yaw_deg"])
+                target = (
+                    cx + 0.001 * math.sin(yaw_rad),
+                    cy + 0.001 * math.cos(yaw_rad),
+                    cz,
+                )
+
+            elif _mode == "low_angle":
+                # Dramatic ground-level shot looking up at the swarm. Slowly
+                # arcs around at a slow speed (use the orbit angle for this).
+                tron_orbit["angle_deg"] = (tron_orbit["angle_deg"] + tron_orbit["speed_deg"] * 0.5) % 360.0
+                rad = math.radians(tron_orbit["angle_deg"])
+                eye = (
+                    cx + tron_orbit["low_radius"] * math.sin(rad),
+                    cy + tron_orbit["low_radius"] * math.cos(rad),
+                    cz + tron_orbit["low_height"],
+                )
+                target = (cx, cy, cz + tron_orbit["low_target_z"])
+
+            elif _mode == "chase":
+                # Trail behind the centroid in -X direction (the centroid
+                # advances +X in forest mode), slightly above. No rotation —
+                # camera just follows.
+                eye = (
+                    cx - tron_orbit["chase_back"],
+                    cy,
+                    cz + tron_orbit["chase_height"],
+                )
+                target = (cx, cy, cz)
+
+            else:  # fallback
+                eye = (cx + 6.0, cy, cz + 2.0)
+                target = (cx, cy, cz)
+
+            base_for_cam.sim.set_camera_view(eye=eye, target=target)
 
         # Record trajectory data (first swarm group)
         if args_cli.trajectories:
