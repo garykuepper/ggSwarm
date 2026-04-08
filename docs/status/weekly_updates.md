@@ -17,6 +17,102 @@ Baseline timeline is in the [Proposal](../project/proposal.md#7-timeline-and-mil
 
 ---
 
+## Week 14 Update (2026-04-08) — Phase 5 sub-A complete, 17 cinematic clips captured
+
+### Headline
+
+Phase 5 sub-phase A is **done**. The Tron-styled cinematic pipeline is
+fully wired into `--tron` on play.py, with four camera modes and clean
+visual baseline. **17 stitchable clips** captured across orbit /
+top-down / chase camera modes for octagon, triangle, grid, letter G
+(8 + 16 agents), 20-agent scale-up, dropout, forest navigation, and
+forest with red wireframe trees. Enough material to manually stitch
+the cinematic trailer in DaVinci Resolve / Premiere without further
+code changes.
+
+### What happened
+
+- **Tron baseline locked in (commit `eb958dd0`).** After two days of
+  guess-and-check that ended in researching the [IsaacLab GitHub
+  issue #622](https://github.com/isaac-sim/IsaacLab/issues/622) and
+  finding the root cause (USD instancing freezes visuals at the
+  prototype level — `make_uninstanceable` first), the working Tron
+  pipeline is: remove default lights via stage traversal,
+  `make_uninstanceable` on each Drone, edit the existing `DroneMat`
+  shader's `diffuseColor`/`emissiveColor` to amber linear-RGB
+  `(1.0, 0.262, 0.0)`, remove the texture-based terrain, spawn a
+  custom 50m flat plane + 102 thin teal grid line quads. Drives the
+  env render camera via `env.unwrapped.sim.set_camera_view()` per
+  frame (NOT `viewport.set_active_camera`, which only updates the
+  live Kit viewport — NvencRecorder reads from `env.render()`).
+  Phase 5 doc § 0 captures the full setup + all the
+  things-that-look-like-they-should-work-but-don't traps. See the
+  changelog for the full debugging journey.
+
+- **Forest cylinder wireframe (commit `b0070351`).** When `--tron`
+  and `--forest` are both set, each forest cylinder is restyled as a
+  Tron wireframe: cylinder body painted black (silhouette), 24 thin
+  red vertical strips around the circumference, 5 mid-height annulus
+  rings + 1 thicker top-edge ring. Annulus rings are constructed as
+  flat torus-like meshes (32 angular segments between an inner and
+  outer radius), NOT solid cylinder primitives — those rendered as
+  disks because Cylinder is a solid volume. Forest navigation
+  behavior is unchanged.
+
+- **`--cam_mode` flag with 4 modes (commit `2d15fa03`).** orbit
+  (default, slow rotation around centroid), top_down (locked
+  overhead at 3m + subtle yaw drift), low_angle (dramatic
+  ground-level looking up, slow arcing), chase (trails behind the
+  centroid in -X for forest fly-through). All four modes drive
+  `sim.set_camera_view()` per frame so the recorded video follows
+  the chosen view. Tunable knobs in the `tron_orbit` dict at the
+  top of the `--tron` block.
+
+- **`--cloud` flag (in commit `b0070351`).** Sets
+  `formation_mode = "cloud"` before `gym.make()` so play time uses
+  the boid-like cloud reward path. **Off-distribution** for the
+  polygon-trained `p4-revert-4` checkpoint, so the result is not
+  used for the final cinematic. A fresh cloud-mode training run is
+  deferred — out of GCE credits.
+
+### 17 captured clips
+
+Inventory in [`videos/showcase/`](../../videos/showcase/) at the repo
+root. Phase 5 doc § 0 has the full table with mode + formation +
+agent count + length per clip. All renderable from a single play.py
+invocation with flag combinations against the `p4-revert-4`
+production checkpoint:
+
+- **Orbit (10s × 8, 15s × 1)**: octagon, triangle, grid,
+  letter_G (8 + 16 agents), letter_G-16-15s, scale-20 (polygon),
+  dropout (triangle + dropout), forest with wireframe trees
+- **Top-down (10s × 5, 15s × 1)**: triangle, octagon, grid,
+  letter_G-16, letter_G-16-15s, forest
+- **Chase (15s × 1)**: forest navigation
+- **Off-distribution (10s × 1)**: orbit cloud-mode (not used)
+
+### Next
+
+Manual cinematic editing in DaVinci Resolve / Premiere using the
+captured clips + title cards + music. **No more code changes
+needed for the trailer.** Phase 5 sub-B/C/D (cinematic lighting,
+scene morphing sequencer, full automated cinematic) all deferred —
+the manual workflow with 17 clips covers the Capstone Festival
+deliverable.
+
+Open items (only if there's time):
+
+- Drone color refinement (currently reads more yellow than amber —
+  the linear-RGB gamma trap from the debugging journey)
+- Cold open clip (no drones in frame) — needs a small `--no_drones`
+  flag
+- HD upgrade — re-render best clips at 60fps instead of current 30fps
+- Lift Tron color constants into `GgswarmEnvCfg` for cleaner config
+
+- **Timeline:** 16 days remain to deadline (Apr 24).
+
+---
+
 ## Week 13 Update (2026-04-07) — Phase 4 mid-flight: regression recovery + forest fix
 
 ### Headline

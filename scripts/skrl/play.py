@@ -102,6 +102,12 @@ parser.add_argument(
     help="Camera mode for --tron play. orbit: rotate around centroid. top_down: locked overhead. low_angle: dramatic ground-level looking up. chase: trail the centroid.",
 )
 parser.add_argument(
+    "--no_drones",
+    action="store_true",
+    default=False,
+    help="Hide all drone visuals (cold-open style — env only). Drones still execute physics, the camera still tracks their centroid, but they're not rendered.",
+)
+parser.add_argument(
     "--disable_fabric",
     action="store_true",
     default=False,
@@ -435,6 +441,25 @@ def main(
             else:
                 _shader.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(_AMBER_BRIGHT)
         print(f"[INFO] Tron iter 2: updated DroneMat on {_updated}/{_A_iter} drones to amber #ff8c00")
+
+        # Tron iter 8: optional --no_drones for cold-open shots. Hides every
+        # drone prim entirely (visibility = invisible) AND disables the
+        # KNN/altitude debug overlay. Drones still execute physics and the
+        # orbit camera still tracks their centroid, but they don't render.
+        # Use with --tron to capture environment-only clips.
+        if args_cli.no_drones:
+            _hidden = 0
+            for _i in range(_A_iter):
+                _drone_root = f"/World/envs/env_{_i}/Drone_0"
+                _root_prim = _stage.GetPrimAtPath(_drone_root)
+                if _root_prim.IsValid():
+                    UsdGeom.Imageable(_root_prim).MakeInvisible()
+                    _hidden += 1
+            # Suppress the KNN debug edge overlay (drawn per-frame by the env
+            # from drone positions). The env guards every draw with
+            # `if self._debug_draw is not None`, so setting it to None is enough.
+            env.unwrapped._debug_draw = None
+            print(f"[INFO] Tron iter 8: hid {_hidden} drone(s) + disabled debug_draw for --no_drones cold-open")
 
         # Tron iter 5: replace the terrain grid with a custom emissive teal
         # plane. The default Isaac Lab terrain uses a baked grid texture that

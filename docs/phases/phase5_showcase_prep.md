@@ -126,7 +126,99 @@ env_isaaclab/Scripts/python.exe scripts/skrl/play.py --task ggswarm-v0 \
 | `_spacing` (iter 6) | 2.0 | Distance between grid lines (m) |
 | Lines emissive | `(0.3, 3.0, 2.8)` | Bright cyan glow on lines, linear RGB |
 
-### Next iterations (planned, not yet built)
+### Iter 7 — forest cylinder wireframe (commit `b0070351`)
+
+When `--tron` and `--forest` are both passed, each forest cylinder is
+restyled as a Tron wireframe in red:
+
+1. Existing `/World/envs/env_*/Obstacle_*` cylinder bodies become
+   `make_uninstanceable` + paint their existing PreviewSurface fully
+   black. The cylinder body stays as a solid silhouette so the
+   wireframe has a 3D occluder.
+2. **24 vertical red strips** per cylinder, evenly distributed every
+   15° around the circumference, each a 3.6cm × 1.5m thin tangent quad
+   at radius * 1.02. All combined into one mesh at
+   `/World/TronObstacleStrips`.
+3. **5 mid-height annulus rings + 1 thicker top-edge ring** per
+   cylinder, all in one mesh at `/World/TronObstacleRings`. Annulus =
+   32 angular segments between an inner and outer radius. **Important:
+   the previous "ring" attempts used `UsdGeom.Cylinder` primitives,
+   which rendered as solid disks** because Cylinder is a solid volume.
+   An annulus mesh is the actual ring shape with a hole in the middle.
+
+Total per cylinder: 24 strips + 6 rings = 30 wireframe features. Forest
+navigation behavior is unchanged — only visuals.
+
+### `--cam_mode` flag (commit `2d15fa03`)
+
+Adds `--cam_mode {orbit, top_down, low_angle, chase}` to play.py. The
+mode is stored in `tron_orbit["mode"]` and the per-frame camera step
+branches on it; all four use the same live-centroid tracking via
+`env.unwrapped.sim.set_camera_view()` so they record correctly.
+
+| Mode | Description | Best for |
+| :--- | :--- | :--- |
+| `orbit` (default) | radius 2m, height 0.6m, 0.6 deg/frame slow rotation | Single-formation reveal shots |
+| `top_down` | locked overhead at 3m above centroid + 0.15 deg/frame yaw drift | Formation shape reveal (octagon, grid, letter G) |
+| `low_angle` | radius 4m, z=-0.4 below centroid, looks up at z+0.4. Slow arcing | Dropout / drama scenes |
+| `chase` | trails centroid in -X at distance 3.5m, height 1.2m, no rotation | Forest navigation — "flying with the swarm" |
+
+Tunable knobs are stored in the `tron_orbit` dict at the top of the
+`--tron` block — radius, height, speed, top_down_height, chase_back, etc.
+
+### Tunable knobs (all in `play.py` `--tron` block)
+
+| Variable | Current | What it controls |
+| :--- | :--- | :--- |
+| `tron_orbit["radius"]` | 2.0 | XY orbit radius around centroid (m) |
+| `tron_orbit["height"]` | 0.6 | Z offset above centroid for orbit (m) |
+| `tron_orbit["speed_deg"]` | 0.6 | Orbit angular speed (deg/frame) |
+| `tron_orbit["top_down_height"]` | 3.0 | Z above centroid for top-down (m) |
+| `tron_orbit["top_down_yaw_speed"]` | 0.15 | Top-down yaw drift (deg/frame) |
+| `tron_orbit["chase_back"]` | 3.5 | Chase camera distance behind (m) |
+| `tron_orbit["chase_height"]` | 1.2 | Chase camera Z offset (m) |
+| `_AMBER` | `(1.0, 0.262, 0.0)` | Drone diffuse linear RGB |
+| `_AMBER_BRIGHT` | `(1.5, 0.39, 0.0)` | Drone emissive linear RGB |
+| `_size` (iter 5) | 50.0 | Half-extent of base plane + grid (m) |
+| `_line_w` (iter 6) | 0.01 | Half-width of grid line quads (m) |
+| `_spacing` (iter 6) | 2.0 | Distance between grid lines (m) |
+| Lines emissive | `(0.3, 3.0, 2.8)` | Bright cyan grid lines, linear RGB |
+| `_n_strips` (iter 7) | 24 | Vertical red strips per forest cylinder |
+| `_strip_w` (iter 7) | 0.018 | Half-width of cylinder strips (m) |
+| `_ring_fracs` (iter 7) | `[0.1, 0.275, 0.45, 0.625, 0.8]` | Z fractions of mid-height rings |
+| `_top_outer` (iter 7) | `r * 1.18` | Outer radius of top edge ring |
+
+### Captured clip inventory (Phase 5 sub-A wrap, 2026-04-08)
+
+All in [`videos/showcase/`](../../videos/showcase/) at the repo root.
+17 stitchable clips, all rendered against the production checkpoint
+`p4-revert-4` (`logs/skrl/ggswarm/p4/2026-04-06_21-09-24_ppo_torch/`).
+
+| Clip | Mode | Formation | N | Length | Notes |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `p5-baseline-orbit-zoom2` | orbit | triangle | 8 | 5s | Baseline reference |
+| `p5-orbit-octagon-10s` | orbit | polygon | 8 | 10s | Scene 3 |
+| `p5-orbit-triangle-10s` | orbit | triangle | 8 | 10s | Scene 2/3 |
+| `p5-orbit-grid-10s` | orbit | grid | 8 | 10s | Scene 4 |
+| `p5-orbit-letter-G-10s` | orbit | letter_G | 8 | 10s | Scene 6 |
+| `p5-orbit-letter-G-16` | orbit | letter_G | 16 | 10s | Bigger letter G |
+| `p5-orbit-letter-G-16-15s` | orbit | letter_G | 16 | 15s | Extended letter G |
+| `p5-orbit-scale-20` | orbit | polygon | 20 | 10s | Scene 9 scale-up |
+| `p5-orbit-dropout` | orbit | triangle + `--dropout` | 8 | 10s | Scenes 7-8 |
+| `p5-orbit-forest-wireframe3` | orbit | triangle + `--forest` | 8 | 10s | Forest with red wireframe trees |
+| `p5-orbit-cloud-10s` | orbit | `--cloud` | 8 | 10s | Off-distribution boid attempt |
+| `p5-topdown-triangle-3m` | top_down | triangle | 8 | 10s | Scene 4 reveal |
+| `p5-topdown-octagon` | top_down | polygon | 8 | 10s | Scene 4 reveal |
+| `p5-topdown-grid` | top_down | grid | 8 | 10s | Scene 5 reveal |
+| `p5-topdown-letter-G-16` | top_down | letter_G | 16 | 10s | Scene 6 reveal |
+| `p5-topdown-letter-G-16-15s` | top_down | letter_G | 16 | 15s | Extended scene 6 |
+| `p5-topdown-forest` | top_down | triangle + `--forest` | 8 | 10s | Forest from above |
+| `p5-chase-forest-15s` | chase | triangle + `--forest` | 8 | 15s | Forest fly-through |
+
+**That's enough material to manually stitch the cinematic trailer in
+DaVinci Resolve / Premiere with title cards + transitions + music.**
+
+### Next iterations (deferred — only if needed beyond manual stitching)
 
 - **Drone color refinement** — currently more yellow than amber. Try
   bumping linear green even lower to compensate for renderer tone
@@ -134,13 +226,19 @@ env_isaaclab/Scripts/python.exe scripts/skrl/play.py --task ggswarm-v0 \
 - **Cinematic 3-point lighting** in cyan tones for proper shading.
   Drones currently lit only by grid emission and look flat.
 - **Volumetric fog** for atmosphere. Risky — caused white-outs in
-  earlier tron_env attempts. Add carefully if needed.
+  earlier `tron_env` attempts. Add carefully if needed.
 - **Lift `TRON_AMBER`, `TRON_TEAL`, `TRON_LINE_WIDTH` etc. into
   `GgswarmEnvCfg`** as named constants per the user's earlier
   suggestion. Currently hardcoded in play.py.
-- **Story scene clips** — formation morphing, dropout, scale-up, etc.
-  Each should compose on top of the baseline (`--tron --formation
-  grid`, `--tron --dropout`, etc.) without further visual changes.
+- **Cold open** — needs `--no_drones` flag or a separate minimal entry
+  script that spawns just the Tron environment with no agents. Scene 1.
+- **Cloud / boid retraining** — would need a fresh GCE training run with
+  `formation_mode = "cloud"` for ~500 iterations. Currently out of GCE
+  credits, so deferred.
+- **Showcase script integration** (`scripts/showcase.py` already
+  exists with full 8-scene morphing logic) — would produce a single
+  auto-edited cinematic instead of clips for manual editing. Not
+  needed if the manual workflow is sufficient.
 
 ## 1. Goals
 

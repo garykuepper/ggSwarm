@@ -1234,3 +1234,71 @@ matching) were irrelevant — the policy was receiving garbage inputs during eva
   amber), maybe bigger grid + tile pattern, fog (carefully — caused
   white-out in earlier attempts), then story scenes from the Phase 5
   storyboard (cold open, formation morphing, dropout, etc.).
+- [2026-04-08] **`--cloud` flag (commit `b0070351`).** Sets
+  `env_cfg.formation_mode = "cloud"` before `gym.make()` so play
+  time uses the boid-like cloud reward path (centroid + KNN cohesion
+  + separation) instead of polygon slot tracking. Caveat: production
+  checkpoint `p4-revert-4` was trained in polygon mode, so cloud
+  play is off-distribution and may behave clumsily. Captured once
+  (`videos/showcase/p5-orbit-cloud-10s-episode-0.mp4`); not used
+  for the final cinematic. Out of GCE credits so a fresh cloud-mode
+  training run is deferred.
+- [2026-04-08] **Tron iter 7 — forest cylinder wireframe (commit
+  `b0070351`).** Only fires when `--tron` and `--forest` are both
+  set. Three sub-steps:
+  (a) For each `/World/envs/env_*/Obstacle_*` cylinder:
+      `make_uninstanceable` + paint the existing PreviewSurface
+      `ObstacleMat` fully black. The cylinder body stays as a solid
+      silhouette so the wireframe has a 3D occluder.
+  (b) **24 vertical red strips** per cylinder, evenly distributed
+      every 15° around the circumference, each a 3.6cm × 1.5m thin
+      tangent quad at radius * 1.02. All combined into one mesh at
+      `/World/TronObstacleStrips` with a bright red emissive
+      `UsdPreviewSurface` material.
+  (c) **5 mid-height annulus rings + 1 thicker top-edge ring** per
+      cylinder, all combined into one mesh at
+      `/World/TronObstacleRings`. Annulus = 32 angular segments
+      between an inner and outer radius (the previous "ring"
+      attempts used `UsdGeom.Cylinder` primitives, which rendered
+      as **solid disks** because Cylinder is a solid volume —
+      annulus mesh is the actual ring shape with a hole in the
+      middle). Top ring is bigger radius and wider radial extent
+      for emphasis.
+  Total per cylinder: 24 strips + 6 rings = 30 wireframe features.
+  Across 9 obstacles that's 216 strips + 54 rings. Forest
+  navigation behavior is unchanged — only visuals were modified.
+- [2026-04-08] **`--cam_mode` flag with 4 modes (commit
+  `2d15fa03`).** Adds `--cam_mode {orbit, top_down, low_angle,
+  chase}` to play.py. The mode is stored in `tron_orbit["mode"]`
+  and the per-frame camera step branches on it; all four use the
+  same live-centroid tracking via
+  `env.unwrapped.sim.set_camera_view()` so they record correctly.
+  - `orbit` (default): radius 2m, height 0.6m, 0.6 deg/frame
+  - `top_down`: locked overhead at 3m above the centroid with a
+    subtle 0.15 deg/frame yaw drift. Best for formation reveal.
+  - `low_angle`: dramatic ground-level shot at radius 4m, z=-0.4
+    relative to centroid, looking up at z+0.4. Slow arcing motion.
+    Best for the dropout/crash scenes.
+  - `chase`: trails the centroid in -X direction at distance 3.5m,
+    height 1.2m. No rotation. Best for forest navigation —
+    "flying with the swarm" perspective.
+  Tunables baked into the `tron_orbit` dict at the top of the
+  `--tron` block so per-mode params are easy to find.
+- [2026-04-08] **Phase 5 sub-A complete — full clip inventory.**
+  17 stitchable clips captured in `videos/showcase/`:
+  - **Orbit (10s)**: octagon, triangle, grid, letter_G (8 + 16 agents),
+    scale-20 (polygon), dropout (triangle + dropout), forest with
+    wireframe trees
+  - **Orbit (15s)**: letter_G with 16 agents
+  - **Top-down (10s)**: triangle, octagon, grid, letter_G (16 agents),
+    forest
+  - **Top-down (15s)**: letter_G with 16 agents
+  - **Chase (10s and 15s)**: forest navigation
+  - **Off-distribution**: orbit cloud-mode (not used)
+  All renderable from a single play.py invocation against the
+  `p4-revert-4` production checkpoint. No new training, no env
+  code changes, no new files. Phase 5 sub-A wraps; sub-B/C/D
+  (cinematic lighting, scene morphing, full sequencer) are
+  deferred — the manual stitching workflow with these clips +
+  external editor (DaVinci Resolve / Premiere) covers the
+  Capstone Festival deliverable.
