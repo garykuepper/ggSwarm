@@ -89,6 +89,12 @@ parser.add_argument(
     help="Enable Tron-styled cinematic environment (black void, fog, emissive grid, orbit camera).",
 )
 parser.add_argument(
+    "--cloud",
+    action="store_true",
+    default=False,
+    help="Use cloud/boid formation_mode at play time (centroid + KNN cohesion + separation, no rigid slots). Caveat: production checkpoint trained in polygon mode.",
+)
+parser.add_argument(
     "--disable_fabric",
     action="store_true",
     default=False,
@@ -256,6 +262,14 @@ def main(
     if args_cli.no_minco:
         env_cfg.minco_enabled = False
         print("[INFO] MINCO trajectory filter DISABLED (--no-minco)")
+
+    # Cloud / boid mode at play time. Caveat: production checkpoint p4-revert-4
+    # was trained in formation_mode="polygon" so cloud-mode play is an
+    # off-distribution test — drones may behave clumsily. This is the cheap
+    # experiment, not a trained-from-scratch boid policy.
+    if args_cli.cloud:
+        env_cfg.formation_mode = "cloud"
+        print("[INFO] Cloud / boid formation_mode enabled (off-distribution for polygon-trained checkpoint)")
 
     # Forest obstacle navigation
     if args_cli.forest:
@@ -511,6 +525,189 @@ def main(
             UsdShade.Material(_lines_mat_prim)
         )
         print(f"[INFO] Tron iter 6: spawned {2 * (2 * _n + 1)} grid line quads at /World/TronGridLines")
+
+        # Tron iter 7: black forest cylinders wrapped with red emissive ring
+        # stack. Same dark-base-with-bright-glowing-structure idea as the
+        # floor. Two parts:
+        #   (a) make existing cylinders uninstanceable + set their material
+        #       to pure black so the body itself is invisible against the void
+        #   (b) spawn 5 thin red emissive rings per unique obstacle, slightly
+        #       outside the cylinder surface, evenly distributed in height
+        if args_cli.forest:
+            base_unwrapped_iter = env.unwrapped
+
+            # (a) Set existing obstacle cylinder bodies to black. The body is
+            # still a solid that occludes anything behind it, but we want
+            # that — it gives the wireframe its silhouette and reads as a
+            # 3D object instead of a translucent mesh.
+            _BLACK = Gf.Vec3f(0.0, 0.0, 0.0)
+            for _prim in _stage.Traverse():
+                _path_str = str(_prim.GetPath())
+                if "/Obstacle_" not in _path_str or _prim.GetTypeName() != "Cylinder":
+                    continue
+                sim_utils.make_uninstanceable(_path_str)
+                _shader_prim = _stage.GetPrimAtPath(_path_str + "/ObstacleMat/Shader")
+                if not _shader_prim.IsValid():
+                    continue
+                _cyl_shader = UsdShade.Shader(_shader_prim)
+                _cyl_diff = _cyl_shader.GetInput("diffuseColor")
+                if _cyl_diff:
+                    _cyl_diff.Set(_BLACK)
+                _cyl_em = _cyl_shader.GetInput("emissiveColor")
+                if _cyl_em:
+                    _cyl_em.Set(_BLACK)
+                else:
+                    _cyl_shader.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(_BLACK)
+
+            # (b) Spawn red wireframe on each unique obstacle: dense vertical
+            # strips + horizontal rings + a thicker bright ring at the top
+            # edge for emphasis. Strips are tangent quads in one combined mesh.
+            # Rings are thin Cylinder primitives.
+            import math as _cyl_math  # noqa: PLC0415
+
+            _h = base_unwrapped_iter.cfg.forest_obstacle_height
+            _r = base_unwrapped_iter.cfg.forest_obstacle_radius
+            _strip_w = 0.018      # half-width: 3.6cm wide strips (thicker so each one is visible at more angles)
+            _strip_r = _r * 1.02  # 2% outside the cylinder surface
+            _n_strips = 24        # denser vertical lines around each cylinder
+
+            _obs_pos = (
+                base_unwrapped_iter._obstacle_pos.cpu().tolist()
+                if base_unwrapped_iter._obstacle_pos is not None else []
+            )
+
+            _strip_points: list[Gf.Vec3f] = []
+            _strip_face_counts: list[int] = []
+            _strip_face_indices: list[int] = []
+            _strip_normals: list[Gf.Vec3f] = []
+            _vidx = 0
+            for _opos in _obs_pos:
+                _cx, _cy, _cz = float(_opos[0]), float(_opos[1]), float(_opos[2])
+                _z_top = _cz + _h / 2.0
+                _z_bot = _cz - _h / 2.0
+                for _i in range(_n_strips):
+                    _theta = (_i / _n_strips) * 2.0 * _cyl_math.pi
+                    _ct, _st = _cyl_math.cos(_theta), _cyl_math.sin(_theta)
+                    # Strip center on the cylinder surface at angle theta
+                    _scx = _cx + _strip_r * _ct
+                    _scy = _cy + _strip_r * _st
+                    # Tangent direction = (-sin theta, cos theta, 0)
+                    _tx, _ty = -_st, _ct
+                    # Quad corners: (-w,-h), (+w,-h), (+w,+h), (-w,+h) along tangent×Z
+                    _strip_points.extend([
+                        Gf.Vec3f(_scx - _strip_w * _tx, _scy - _strip_w * _ty, _z_bot),
+                        Gf.Vec3f(_scx + _strip_w * _tx, _scy + _strip_w * _ty, _z_bot),
+                        Gf.Vec3f(_scx + _strip_w * _tx, _scy + _strip_w * _ty, _z_top),
+                        Gf.Vec3f(_scx - _strip_w * _tx, _scy - _strip_w * _ty, _z_top),
+                    ])
+                    _strip_face_counts.append(4)
+                    _strip_face_indices.extend([_vidx, _vidx + 1, _vidx + 2, _vidx + 3])
+                    # Outward-facing radial normal
+                    _strip_normals.extend([Gf.Vec3f(_ct, _st, 0.0)] * 4)
+                    _vidx += 4
+
+            _strips_path = "/World/TronObstacleStrips"
+            _strips_mesh = UsdGeom.Mesh.Define(_stage, _strips_path)
+            _strips_mesh.CreatePointsAttr(_strip_points)
+            _strips_mesh.CreateFaceVertexCountsAttr(_strip_face_counts)
+            _strips_mesh.CreateFaceVertexIndicesAttr(_strip_face_indices)
+            _strips_mesh.CreateNormalsAttr(_strip_normals)
+
+            _strip_mat_path = "/World/Looks/TronCylStripMat"
+            sim_utils.spawn_preview_surface(
+                _strip_mat_path,
+                sim_utils.PreviewSurfaceCfg(
+                    diffuse_color=(0.5, 0.0, 0.0),
+                    emissive_color=(2.0, 0.0, 0.0),
+                    roughness=0.4,
+                ),
+            )
+            _strip_mat_prim = _stage.GetPrimAtPath(_strip_mat_path)
+            UsdShade.MaterialBindingAPI.Apply(_strips_mesh.GetPrim())
+            UsdShade.MaterialBindingAPI(_strips_mesh.GetPrim()).Bind(
+                UsdShade.Material(_strip_mat_prim)
+            )
+            _strip_count = len(_obs_pos) * _n_strips
+            print(f"[INFO] Tron iter 7a: {_strip_count} red vertical strips ({len(_obs_pos)} obstacles × {_n_strips})")
+
+            # (c) Horizontal annulus rings on each cylinder. Built as flat
+            # ring meshes (NOT solid cylinders — those rendered as disks
+            # because Cylinder is a solid volume). Each annulus is N angular
+            # segments between an inner and outer radius, all at one z height.
+            _ring_segs = 32
+            _ring_inner = _r * 1.04
+            _ring_outer = _r * 1.10
+            _top_inner = _r * 1.05
+            _top_outer = _r * 1.18         # thicker top edge ring
+            _ring_fracs = [0.1, 0.275, 0.45, 0.625, 0.8]  # 5 mid-height rings
+
+            def _ring_pts_and_faces(cx, cy, z, r_in, r_out, n_seg, base_idx):
+                pts: list[Gf.Vec3f] = []
+                idx_pairs: list[int] = []
+                for j in range(n_seg):
+                    th = (j / n_seg) * 2.0 * _cyl_math.pi
+                    ct, st = _cyl_math.cos(th), _cyl_math.sin(th)
+                    pts.append(Gf.Vec3f(cx + r_in * ct, cy + r_in * st, z))
+                    pts.append(Gf.Vec3f(cx + r_out * ct, cy + r_out * st, z))
+                faces: list[int] = []
+                fcounts: list[int] = []
+                for j in range(n_seg):
+                    i_in = base_idx + 2 * j
+                    i_out = base_idx + 2 * j + 1
+                    nj = (j + 1) % n_seg
+                    n_in = base_idx + 2 * nj
+                    n_out = base_idx + 2 * nj + 1
+                    faces.extend([i_in, i_out, n_out, n_in])
+                    fcounts.append(4)
+                return pts, faces, fcounts
+
+            _ring_points: list[Gf.Vec3f] = []
+            _ring_face_indices: list[int] = []
+            _ring_face_counts: list[int] = []
+            _ring_normals: list[Gf.Vec3f] = []
+            _vidx_r = 0
+            _ring_idx = 0
+            for _k, _opos in enumerate(_obs_pos):
+                _cx, _cy, _cz = float(_opos[0]), float(_opos[1]), float(_opos[2])
+                _z_top = _cz + _h / 2.0
+                _z_bot = _cz - _h / 2.0
+                # Mid-height rings
+                for _frac in _ring_fracs:
+                    _z = _z_bot + _frac * _h
+                    _pts, _faces, _fcs = _ring_pts_and_faces(
+                        _cx, _cy, _z, _ring_inner, _ring_outer, _ring_segs, _vidx_r
+                    )
+                    _ring_points.extend(_pts)
+                    _ring_face_indices.extend(_faces)
+                    _ring_face_counts.extend(_fcs)
+                    _ring_normals.extend([Gf.Vec3f(0, 0, 1)] * len(_pts))
+                    _vidx_r += len(_pts)
+                    _ring_idx += 1
+                # Top edge ring (thicker)
+                _pts, _faces, _fcs = _ring_pts_and_faces(
+                    _cx, _cy, _z_top, _top_inner, _top_outer, _ring_segs, _vidx_r
+                )
+                _ring_points.extend(_pts)
+                _ring_face_indices.extend(_faces)
+                _ring_face_counts.extend(_fcs)
+                _ring_normals.extend([Gf.Vec3f(0, 0, 1)] * len(_pts))
+                _vidx_r += len(_pts)
+                _ring_idx += 1
+
+            _rings_path = "/World/TronObstacleRings"
+            _rings_mesh = UsdGeom.Mesh.Define(_stage, _rings_path)
+            _rings_mesh.CreatePointsAttr(_ring_points)
+            _rings_mesh.CreateFaceVertexCountsAttr(_ring_face_counts)
+            _rings_mesh.CreateFaceVertexIndicesAttr(_ring_face_indices)
+            _rings_mesh.CreateNormalsAttr(_ring_normals)
+            _rings_mesh.GetPrim().CreateAttribute(
+                "doubleSided", Sdf.ValueTypeNames.Bool
+            ).Set(True)
+            UsdShade.MaterialBindingAPI.Apply(_rings_mesh.GetPrim())
+            UsdShade.MaterialBindingAPI(_rings_mesh.GetPrim()).Bind(
+                UsdShade.Material(_strip_mat_prim)
+            )
+            print(f"[INFO] Tron iter 7b: {_ring_idx} annulus rings (3 mid + 1 top per cylinder)")
 
         print("[INFO] Tron orbit camera enabled (sim.set_camera_view, vanilla scene).")
 
