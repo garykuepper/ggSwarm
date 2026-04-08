@@ -1132,3 +1132,105 @@ matching) were irrelevant — the policy was receiving garbage inputs during eva
   with the corrected obstacle metric and a new § 5.5 documenting the
   rebuild week. Phase 5 (Showcase Prep) begins 2026-04-07 — original
   schedule had it starting Apr 14.
+
+## Phase 5: Showcase Prep (Apr 7 onwards)
+
+- [2026-04-07] **Phase 5 sub-phase A — `--tron` flag wiring (commit
+  `e5dcbb7c`).** Added `--tron` flag to `scripts/skrl/play.py`. Skipped
+  the existing `setup_tron_environment()` from `scripts/tron_env.py`
+  because the all-in-one approach (remove lights + render mode + fog +
+  grid + lighting + materials, all at once) made it impossible to
+  bisect what was painting the scene red/white. Instead, the `--tron`
+  block uses a Z-up orbit camera positioned per-frame via
+  `env.unwrapped.sim.set_camera_view()`. The previous approach with
+  `TronCameraRig` + `viewport.set_active_camera()` only updated the
+  live Kit viewport — `NvencRecorder` reads from `env.render()` which
+  uses Isaac Lab's internal viewer camera (the same one driven by
+  `ViewportCameraController.update_view_location` →
+  `sim.set_camera_view`). The fix is one line: call
+  `sim.set_camera_view(eye, target)` directly each frame. Z-up orbit
+  math at radius 2m, height 0.6m, 0.6 deg/frame. `--tron` videos go
+  to `videos/showcase/` at the repo root for easy stitching.
+- [2026-04-07] **Tron iter 1 (commit `4795c7f5`).** Single change on
+  top of the baseline orbit camera: traverse the USD stage and remove
+  every `UsdLux` light by type name (`DistantLight`, `DomeLight`,
+  `RectLight`, `SphereLight`, `DiskLight`, `CylinderLight`,
+  `GeometryLight`). In the production scene this removes
+  `/World/ground/terrain/SphereLight` and `/World/Light`. The
+  hardcoded path list in the legacy `_set_black_void()` was missing
+  the SphereLight nested inside the terrain — a stage traversal
+  catches it. **Result: black background, no fog, no render-mode
+  changes, no sky sphere needed**. The previous "white-out" was
+  caused by these two default lights, not by anything else
+  `setup_tron_environment()` was doing.
+- [2026-04-07] **Tron iters 2-3 — multiple failed attempts at drone
+  color and grid color via direct shader edits.** Five attempts to
+  change drone material (`OmniPBR` recursive bind, lower emissive
+  intensity, drop metallic, modify existing `DroneMat` `diffuseColor`
+  in place, gamma-correct linear values) all returned "updated 8/8
+  drones" in the log but produced ZERO visual change. One attempt at
+  the grid produced a one-frame cyan flash that immediately reverted
+  to white. Hours lost to guess-and-check. Eventually paused and
+  researched root cause via the [Isaac Lab GitHub issue #622: How to
+  change USD visual color?](https://github.com/isaac-sim/IsaacLab/issues/622).
+- [2026-04-07] **Root cause found: USD instancing.** Per the issue and
+  the docstring of `sim_utils.make_uninstanceable` at
+  `IsaacLab/source/isaaclab/isaaclab/sim/utils/prims.py:272`:
+  *"Since the asset is instanceable, you cannot change the properties
+  of its visual meshes (this includes the material assigned to them).
+  You will first need to make the asset uninstanceable."* The
+  Crazyflie asset is instanceable. The env's `_setup_scene()` binds a
+  yellow material to the body BEFORE `clone_environments()` so the
+  prototype is yellow and all 8 instances reference it correctly. But
+  at PLAY TIME (after `gym.make()`), modifying the shader's
+  `diffuseColor` input on the cached instance doesn't propagate — the
+  visuals are frozen at the prototype level. The grid problem has the
+  same root cause plus an additional layer: the terrain grid is
+  texture-based (the visible lines are baked into a sampled texture),
+  so even if the constant `diffuseColor` were modifiable, the texture
+  would re-paint over the constant base. The cyan flash was the
+  constant briefly tinting the base for one frame before the texture
+  sampler kicked in. **Color space, separately confirmed**: Isaac
+  Lab's `visual_materials.py` line 30 docstring says *"All color
+  inputs are in linear color space (RGB)"* — sRGB → linear gamma
+  decoding required.
+- [2026-04-07] **Tron iter 4 — `make_uninstanceable` (rolled into
+  commit `eb958dd0`).** Single new step: call
+  `sim_utils.make_uninstanceable(f"/World/envs/env_{i}/Drone_0")` for
+  each drone BEFORE the iter 2 material modification. Must run after
+  `gym.make()` but before `env.reset()` so physics shapes aren't yet
+  active; the `--tron` block is at exactly that point. After this,
+  the iter 2 `diffuseColor` edits actually propagate to the renderer.
+  No physics errors observed. Drones still read as more yellow than
+  amber but are clearly modifiable now (the prior 5 iter 2 attempts
+  were no-ops; this one isn't).
+- [2026-04-07] **Tron iter 5 — replace terrain with custom plane
+  (rolled into commit `eb958dd0`).** Single new step: remove
+  `/World/ground` entirely and spawn a custom 50m × 50m flat quad in
+  the XY plane at z=0 with a pure-black `UsdPreviewSurface` material
+  via `sim_utils.spawn_preview_surface`. The plane is invisible against
+  the black void but exists as a flat substrate. Modifying the existing
+  texture-based terrain shader was hopeless; replacing with our own
+  geometry is straightforward.
+- [2026-04-07] **Tron iter 6 — bright cyan grid line geometry (rolled
+  into commit `eb958dd0`).** Single new step: spawn 102 thin quad
+  meshes (51 vertical + 51 horizontal, 2cm wide × 50m long, 2m
+  spacing) at z=0.005 to avoid z-fighting with the base plane, all in
+  one combined mesh at `/World/TronGridLines`. Bright emissive cyan
+  `UsdPreviewSurface` material at `(0.3, 3.0, 2.8)` linear → very
+  bright glow. The lines are the only visible thing on the floor —
+  they ARE the grid visually. Tunable knobs in play.py: `_line_w`
+  (half-width), `_spacing`, `_size`, emissive color/intensity.
+- [2026-04-07] **Phase 5 baseline locked in (commit `eb958dd0`).** Final
+  --tron pipeline produces: **black sky** (default lights removed),
+  **black floor** (custom plane, all-zero material), **bright cyan
+  grid lines** (custom geometry, 2m spacing), **amber-ish drones**
+  (modified via instancing fix), **Z-up orbit camera** (radius 2m,
+  height 0.6m). All in `scripts/skrl/play.py` behind `--tron`,
+  self-contained, no changes to `tron_env.py` or `showcase.py`.
+  `videos/showcase/p5-iter6-grid-tuned-episode-0.mp4` is the
+  canonical baseline clip. Next iterations: cinematic 3-point
+  lighting, drone color refinement (currently more yellow than
+  amber), maybe bigger grid + tile pattern, fog (carefully — caused
+  white-out in earlier attempts), then story scenes from the Phase 5
+  storyboard (cold open, formation morphing, dropout, etc.).

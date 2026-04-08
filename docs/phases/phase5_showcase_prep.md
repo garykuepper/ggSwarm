@@ -12,6 +12,136 @@ before moving to the Tron-styled trailer.
 (reward 66.83, ep_len 307.74, formation tracking + flock-aligned forest
 navigation).
 
+## 0. Tron Baseline — Setup Reference (commit `eb958dd0`)
+
+**This section locks in the working Tron baseline so we don't have to
+re-derive it next time we touch visuals.** It took two days, hours of
+guess-and-check, and an Isaac Lab GitHub issue to get here. The baseline
+is implemented entirely in [scripts/skrl/play.py](../../scripts/skrl/play.py)
+behind `--tron`. Both `tron_env.py` and `showcase.py` are unchanged and
+unused — the all-in-one `setup_tron_environment()` from `tron_env.py`
+made debugging impossible (it does ~6 things at once: light removal,
+render mode change, fog, grid, lighting, materials), so the rebuild
+adds each Tron feature as a single inline step in `play.py`.
+
+### Final pipeline (in order, all inside `if args_cli.tron:`)
+
+| Iter | What | Why |
+| :--- | :--- | :--- |
+| **1** | Traverse stage, remove every `UsdLux` light by type name | Default lights painted the scene; the hardcoded path list in `tron_env._set_black_void` missed `/World/ground/terrain/SphereLight` |
+| **4** | `sim_utils.make_uninstanceable` on each drone | Crazyflie is instanceable; without this, all `diffuseColor.Set()` calls below silently no-op (visuals frozen at the prototype) |
+| **2** | Edit existing `DroneMat` shader's `diffuseColor`/`emissiveColor` in place to amber linear `(1.0, 0.262, 0.0)` | Reuses the env's existing material instead of fighting binding strength with a new one |
+| **5** | Remove `/World/ground`, spawn 50m flat black quad via `sim_utils.spawn_preview_surface` | Terrain has a baked grid texture that overrides constant `diffuseColor`; replace with a flat invisible substrate |
+| **6** | Spawn 102 thin quads (51 H + 51 V, 2cm × 50m, 2m spacing) at z=0.005 with bright cyan emissive material `(0.3, 3.0, 2.8)` linear | The lines ARE the visible grid — geometry can't be defeated by sampler caches |
+
+The orbit camera is positioned per-frame via direct
+`env.unwrapped.sim.set_camera_view(eye, target)` calls in the play loop
+— **not** via `TronCameraRig` or `viewport.set_active_camera`, both of
+which only updated the live Kit viewport instead of the env render
+camera that `NvencRecorder` actually reads from. Z-up math (Isaac Lab
+convention, not the Y-up that `TronCameraRig` assumed):
+
+```text
+angle += speed_deg
+rad = radians(angle)
+eye_x = centroid_x + radius * sin(rad)
+eye_y = centroid_y + radius * cos(rad)
+eye_z = centroid_z + height
+target = (centroid_x, centroid_y, centroid_z)
+```
+
+Defaults: `radius=2.0m`, `height=0.6m`, `speed=0.6 deg/frame`. At 250
+frames per clip that's 150° of arc — about 40% of a full orbit, enough
+parallax for a cinematic shot.
+
+### Things that look like they should work but don't
+
+These are the traps the rebuild walked into. Documenting so we don't
+re-walk them:
+
+- **Setting `diffuseColor` on an instanceable Crazyflie shader.** Returns
+  a valid `UsdShadeInput`, accepts the `Set()` call, looks like it works
+  in the USD layer dump. Has zero visual effect because the prototype
+  visuals are cached. Always `make_uninstanceable` first when targeting
+  Isaac Lab assets that came from a USD reference.
+- **Modifying the terrain's grid color.** The grid lines are baked into
+  a tileable texture sampled by the terrain shader. The constant
+  `diffuseColor` only tints the base; the texture re-paints the lines on
+  top every frame. The "cyan flash" at the start of the iter 3 attempt
+  was the constant briefly winning before the sampler kicked in.
+- **`viewport.set_active_camera()` for video recording.** Updates the
+  live Kit viewport but **NvencRecorder reads from `env.render()`**,
+  which uses the env's internal viewer driven by
+  `ViewportCameraController.update_view_location` →
+  `sim.set_camera_view()`. Two separate camera pipelines.
+- **`TronCameraRig` math from `tron_env.py`.** It's Y-up, Isaac Lab is
+  Z-up. The rig's `_update_orbit` formula puts the camera at
+  `y = target.y + height` which in Z-up is *horizontal offset*, not
+  *up*. The drones end up small and offset in the frame.
+- **Path tracing (`/rtx/rendermode = PathTracing`).** When you remove
+  the dome light, path tracing loses its environment to sample from and
+  paints the background red as a fallback. `RaytracedLighting` (real-time
+  RT) respects `/rtx/backgroundColor*` settings and was the right choice.
+  Even better: with the geometric `make_uninstanceable` + custom plane
+  approach, render mode doesn't really matter — the visible surface is
+  geometry, not a fallback color.
+- **`spawn_preview_surface(diffuse_color=(1.0, 0.55, 0.0))` displaying
+  as orange.** All Isaac Lab visual material color inputs are LINEAR RGB
+  (per `IsaacLab/source/isaaclab/isaaclab/sim/spawners/materials/visual_materials.py`
+  line 30 docstring). To display sRGB `#ff8c00 = (1.0, 0.549, 0.0)`,
+  pass linear `(1.0, 0.262, 0.0)` (gamma decode `0.549^2.2 ≈ 0.262`).
+  The amber drones in the current baseline still read as more yellow
+  than amber in the final video — this is a known refinement target,
+  not a known bug.
+
+### Reference video
+
+[`videos/showcase/p5-iter6-grid-tuned-episode-0.mp4`](../../videos/showcase/p5-iter6-grid-tuned-episode-0.mp4)
+— canonical baseline clip. Black sky, black floor, bright cyan grid
+(2m cells, 2cm lines), amber-ish drones in triangle formation,
+orbit camera around the swarm centroid.
+
+### Reproducing the baseline
+
+```text
+env_isaaclab/Scripts/python.exe scripts/skrl/play.py --task ggswarm-v0 \
+  --num_agents 8 \
+  --checkpoint logs/skrl/ggswarm/p4/2026-04-06_21-09-24_ppo_torch/checkpoints/best_agent.pt \
+  --tron --formation triangle \
+  --video --video_length 250 --play_length 250 \
+  --prefix p5-baseline
+```
+
+### Tunable knobs (all in `play.py` `--tron` block)
+
+| Variable | Current | What it controls |
+| :--- | :--- | :--- |
+| `tron_orbit["radius"]` | 2.0 | XY orbit radius around centroid (m) |
+| `tron_orbit["height"]` | 0.6 | Z offset above centroid (m) |
+| `tron_orbit["speed_deg"]` | 0.6 | degrees per frame (0.6 × 250 = 150° per clip) |
+| `_AMBER` | `(1.0, 0.262, 0.0)` | Drone diffuse linear RGB (sRGB `#ff8c00`) |
+| `_AMBER_BRIGHT` | `(1.5, 0.39, 0.0)` | Drone emissive linear RGB |
+| `_size` (iter 5) | 50.0 | Half-extent of base plane and grid (m) |
+| `_line_w` (iter 6) | 0.01 | Half-width of grid line quads (m) |
+| `_spacing` (iter 6) | 2.0 | Distance between grid lines (m) |
+| Lines emissive | `(0.3, 3.0, 2.8)` | Bright cyan glow on lines, linear RGB |
+
+### Next iterations (planned, not yet built)
+
+- **Drone color refinement** — currently more yellow than amber. Try
+  bumping linear green even lower to compensate for renderer tone
+  mapping, or try a magenta/red instead.
+- **Cinematic 3-point lighting** in cyan tones for proper shading.
+  Drones currently lit only by grid emission and look flat.
+- **Volumetric fog** for atmosphere. Risky — caused white-outs in
+  earlier tron_env attempts. Add carefully if needed.
+- **Lift `TRON_AMBER`, `TRON_TEAL`, `TRON_LINE_WIDTH` etc. into
+  `GgswarmEnvCfg`** as named constants per the user's earlier
+  suggestion. Currently hardcoded in play.py.
+- **Story scene clips** — formation morphing, dropout, scale-up, etc.
+  Each should compose on top of the baseline (`--tron --formation
+  grid`, `--tron --dropout`, etc.) without further visual changes.
+
 ## 1. Goals
 
 | ID | Goal | Success Criteria |
