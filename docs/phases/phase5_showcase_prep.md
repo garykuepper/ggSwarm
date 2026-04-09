@@ -2,8 +2,11 @@
 
 **Timeline:** Apr 14 -- Apr 20  |  **Gate:** M4 -- HD showcase and Testing Report delivered
 
-**Status: Sub-phase A COMPLETE** (2026-04-08). Started 2026-04-07,
-**6 days ahead of the original Apr 14 schedule.** Phase 4 wrapped after the
+**Status: COMPLETE** (2026-04-08). Started 2026-04-07,
+**12 days ahead of the original Apr 20 gate.** Cinematic trailer
+edited and published to YouTube; project banner added to README.
+Sub-phases B/C/D remain deferred (see below) — the manual edit of the
+20 captured clips fully satisfies the M4 deliverable. Phase 4 wrapped after the
 forest-deflection rebuild produced clean obstacle navigation
 (`p4-revert-4` checkpoint, 0 body penetrations through 0.20m-radius trunks).
 

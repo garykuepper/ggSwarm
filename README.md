@@ -1,11 +1,13 @@
 # ggSwarm: Decentralized Formation Control for Drone Swarms
 
+![ggSwarm — A Decentralized Drone Swarm](docs/assets/banner.jpg)
+
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/)
 [![Isaac Lab](https://img.shields.io/badge/Isaac%20Lab-2.3-76B900?logo=nvidia&logoColor=white)](https://isaac-sim.github.io/IsaacLab/)
 [![Isaac Sim](https://img.shields.io/badge/Isaac%20Sim-5.1-76B900?logo=nvidia&logoColor=white)](https://developer.nvidia.com/isaac-sim)
-![Status](https://img.shields.io/badge/Status-Phase%203%20Complete-green)
+![Status](https://img.shields.io/badge/Status-Phase%205%20Complete-green)
 
 `ggSwarm` develops a decentralized UAV swarm controller in NVIDIA Isaac Lab using
 CTDE (Centralized Training, Decentralized Execution) with a shared PPO policy
@@ -13,7 +15,8 @@ and staged milestone delivery.
 
 **Current capabilities:** 8-drone cloud formation with GATv2 GNN (L2), MINCO
 minimum-jerk trajectory smoothing (L3), CBF collision avoidance (L4), SwarmRaft
-agent dropout/recovery, virtual collision detection, and KNN-based scalable cohesion.
+agent dropout/recovery, virtual collision detection, KNN-based scalable cohesion,
+obstacle navigation (Phase 4), and a Tron-styled HD cinematic pipeline (Phase 5).
 
 > Developed with [Claude Code](https://claude.com/claude-code)
 
@@ -113,10 +116,10 @@ tensorboard --logdir logs/skrl/ggswarm
 | :--- | :--- | :--- | :--- |
 | 1. Foundation | Feb 5 - Feb 17 | - | Complete |
 | 2. Brain Development | Feb 25 - Mar 24 | M1 (Mar 25) | Complete |
-| 3. Muscle Refinement | Mar 25 - Mar 29 | M2 (Mar 29) | **Complete (9 days early)** |
-| 4. Stress Testing | Mar 30 - Apr 13 | M3 (Apr 13) | Next |
-| 5. Showcase Prep | Apr 14 - Apr 20 | M4 (Apr 20) | - |
-| 6. Delivery | Apr 21 - Apr 24 | **Final: Apr 24** | - |
+| 3. Muscle Refinement | Mar 25 - Mar 29 | M2 (Mar 29) | Complete (9 days early) |
+| 4. Stress Testing | Mar 30 - Apr 13 | M3 (Apr 13) | Complete |
+| 5. Showcase Prep | Apr 14 - Apr 20 | M4 (Apr 20) | Complete |
+| 6. Delivery | Apr 21 - Apr 24 | **Final: Apr 24** | **In progress** |
 
 Full timeline: [`docs/project/proposal.md`](docs/project/proposal.md#7-timeline-and-milestones)
 | Progress: [`docs/status/weekly_updates.md`](docs/status/weekly_updates.md)

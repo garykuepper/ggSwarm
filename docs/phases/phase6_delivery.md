@@ -2,11 +2,11 @@
 
 **Timeline:** Apr 21 -- Apr 24  |  **Gate:** Final -- Capstone Festival presentation and all submissions
 
-**Status: Pre-sprint.** Phase 5 sub-phase A wrapped 2026-04-08 with 20
-captured cinematic clips (see [Phase 5](phase5_showcase_prep.md) § 5).
-The next concrete step is **manual cinematic editing** in DaVinci
-Resolve / Premiere using the captured clips — this is now the headline
-Phase 6 task and is documented in the updated task list below.
+**Status: In progress.** Phase 5 wrapped 2026-04-08 — cinematic
+trailer edited and published to YouTube, project banner added to
+README. Remaining Phase 6 work: Capstone Festival presentation,
+Portfolio + Learning Journal submission, final documentation sweep,
+and reproducibility check from a clean clone.
 
 **16 days remaining to deadline (as of 2026-04-08).** All training is
 done. Production checkpoint locked in (`p4-revert-4`). No more code

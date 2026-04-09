@@ -17,6 +17,35 @@ Baseline timeline is in the [Proposal](../project/proposal.md#7-timeline-and-mil
 
 ---
 
+## Week 15 Update (2026-04-08) — Phase 5 COMPLETE, Phase 6 kickoff
+
+### Headline
+
+**Phase 5 is done, 12 days ahead of the M4 gate.** The cinematic
+trailer was edited from the 20 captured clips and published to
+YouTube. A new project banner (`docs/assets/banner.jpg`) was added to
+the README, and the README schedule + status badge were rolled
+forward to reflect Phases 4 and 5 complete. **Phase 6 (Delivery) is
+now in progress** — focus shifts to the Capstone Festival
+presentation, Portfolio + Learning Journal submissions, final
+documentation sweep, and a clean-clone reproducibility check.
+
+### What happened
+
+- Cinematic trailer cut and uploaded to YouTube (general-audience
+  description targeting drones / AI / reinforcement learning).
+- README banner added; schedule table and status badge updated to
+  Phase 5 Complete.
+- Phase 5 and Phase 6 docs updated to reflect new status.
+
+### Next
+
+- Manual rehearsal of the Capstone Festival presentation.
+- Portfolio + Learning Journal final pass.
+- Reproduce repo from a clean clone using only the README.
+
+---
+
 ## Week 14 Update (2026-04-08) — Phase 5 sub-A complete, 20 cinematic clips captured
 
 ### Headline
