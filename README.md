@@ -9,9 +9,31 @@
 [![Isaac Sim](https://img.shields.io/badge/Isaac%20Sim-5.1-76B900?logo=nvidia&logoColor=white)](https://developer.nvidia.com/isaac-sim)
 ![Status](https://img.shields.io/badge/Status-Phase%205%20Complete-green)
 
-`ggSwarm` develops a decentralized UAV swarm controller in NVIDIA Isaac Lab using
-CTDE (Centralized Training, Decentralized Execution) with a shared PPO policy
-and staged milestone delivery.
+## The Question
+
+**Can a learned GNN policy replace hand-designed multi-agent coordination
+logic for drone swarm formation control?**
+
+That is the thesis `ggSwarm` tests. Classical multi-agent coordination
+relies on carefully hand-tuned potential fields, consensus protocols, or
+auction-based slot assignment. This project asks whether a single Graph
+Attention Network (GATv2) policy, trained end-to-end with PPO, can learn
+equivalent coordination purely from reward — no hand-designed
+coordination logic.
+
+**The answer (as of Phase 4):** Yes, within tested scope. Eight drones
+hold triangle, polygon, and letter-G formations with <0.3m steady-state
+error, recover from mid-episode dropout within 2s (SwarmRaft), navigate
+cylinder forests, and the same policy generalizes to 20 agents without
+retraining. See [Testing Report](docs/project/testing_report.md) for
+M3 gate results.
+
+## Approach
+
+`ggSwarm` is a high-fidelity multi-drone simulation built on NVIDIA
+Isaac Lab + PhysX, running 4096 parallel envs on one GPU. It uses CTDE
+(Centralized Training, Decentralized Execution) with a shared PPO
+policy and staged milestone delivery.
 
 **Current capabilities:** 8-drone cloud formation with GATv2 GNN (L2), MINCO
 minimum-jerk trajectory smoothing (L3), CBF collision avoidance (L4), SwarmRaft
