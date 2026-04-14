@@ -44,6 +44,11 @@ obstacle navigation (Phase 4), and a Tron-styled HD cinematic pipeline (Phase 5)
 - [Phase 4: Stress Testing](docs/phases/phase4_stress_testing.md) — agent loss, obstacles, scale
 - [Phase 5: Showcase Prep](docs/phases/phase5_showcase_prep.md) — HD demo, Testing Report
 - [Phase 6: Delivery](docs/phases/phase6_delivery.md) — Capstone Festival, submissions
+- [Phase 7: Post-Capstone Plan](docs/phases/phase7_post_capstone.md) — deferred work backlog
+
+### Learning Reference
+
+- [Concepts](docs/concepts.md) — ML / RL / GNN glossary scoped to this project
 
 ### Status
 

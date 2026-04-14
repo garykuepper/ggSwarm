@@ -98,7 +98,9 @@ inventory. Phase 6 is editing, polish, and submission.
 
 - Build poster/slide deck (10 slides: title, problem, GNSC architecture,
   Phase 2 results, Phase 3 GNN, Phase 4 stress tests + obstacle navigation,
-  Phase 5 cinematic, results vs objectives, lessons learned, future work)
+  Phase 5 cinematic, results vs objectives, lessons learned, future work —
+  pull the future-work slide from
+  [Phase 7: Post-Capstone Plan](phase7_post_capstone.md))
 - Export demo video with QR code linking to the GitHub repo
 - Prepare live demo machine
 
@@ -139,3 +141,4 @@ documentation + presentation polish.
 
 - [Proposal](../project/proposal.md)
 - [Phase 5: Showcase Prep](phase5_showcase_prep.md)
+- [Phase 7: Post-Capstone Plan](phase7_post_capstone.md)

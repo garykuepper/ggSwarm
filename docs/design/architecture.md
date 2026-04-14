@@ -96,6 +96,16 @@ flowchart TD
 
 **Key file:** `gnn_policy.py`
 
+> **Post-capstone enhancement:** `GATv2Conv` is currently called without
+> `edge_dim`, so attention conditions only on node features. The obs
+> already carries per-neighbor relative positions (`rel_pos_n0`,
+> `rel_pos_n1` at obs[12:18]) that are discarded as node features today.
+> Wiring these in as `edge_attr` (with `edge_dim=3`) would let attention
+> condition on *how far and in what direction* each neighbor sits —
+> typically a meaningful gain for spatial GNN tasks. Deferred until after
+> the Apr 24, 2026 capstone freeze; see
+> [Phase 7: Post-Capstone Plan § A1](../phases/phase7_post_capstone.md#a1-gatv2-edge-features).
+
 ### L3: MINCO Minimum-Jerk Filter
 
 Single-segment minimum-jerk (s=3) trajectory optimization. Computes the
@@ -230,6 +240,23 @@ flowchart LR
 | Robot | Bitcraze Crazyflie 2.x (~0.027 kg, 92mm motor-to-motor) |
 | Training | GCE NVIDIA L4 (24GB VRAM), 4096 envs |
 | Play/Video | Local NVIDIA RTX 3070 (8GB VRAM) |
+
+---
+
+## Post-Capstone Enhancements
+
+Backlog of non-critical architectural upgrades deferred until after the
+Apr 24, 2026 capstone freeze. Full index with effort/impact ranking
+lives in
+[Phase 7: Post-Capstone Plan](../phases/phase7_post_capstone.md).
+
+Architecture-relevant items:
+
+- **A1. GATv2 edge features (`edge_dim=3`)** — pass per-neighbor
+  relative position (already in `obs[12:18]`) as `edge_attr` so attention
+  conditions on spatial geometry, not just node state.
+- **E1. Semi-decentralized slot allocation** — give drones slot-preference
+  logits and let the env resolve conflicts; keeps CTDE batch inference.
 
 ---
 

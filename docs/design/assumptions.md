@@ -84,7 +84,8 @@ destroy training throughput.
 4. GNN learns emergent spatial reasoning ("I'm on the right, prefer rightmost slot")
 
 This would give drones agency in slot selection while keeping conflict
-resolution centralized — practical within CTDE constraints.
+resolution centralized — practical within CTDE constraints. Tracked as
+[Phase 7 § E1](../phases/phase7_post_capstone.md#e1-semi-decentralized-slot-allocation).
 
 ## 5. Homogeneous Agents
 
