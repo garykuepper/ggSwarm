@@ -13,6 +13,21 @@
 
 ## 1. Executive Summary
 
+> `[Scope Clarification 2026-04-13]` **The research question this
+> project tests:** *Can a learned GNN policy replace hand-designed
+> multi-agent coordination logic for drone swarm formation control?*
+> The project deliberately scopes itself to the **coordination layer**
+> (GNN, MINCO, SwarmRaft). Low-level single-drone stabilization is
+> left to classical control — it is a solved problem with decades of
+> theory, stability proofs, and certification precedent, and
+> reinventing it in a neural net would be strictly worse than PID/LQR
+> on every axis aerospace cares about. For productionization, the
+> learned policy would feed a classical tracking controller
+> (neural-net-as-trajectory-generator → PID/LQR inner loop), keeping
+> learned intelligence where it helps and classical control where
+> safety lives. See
+> [architecture.md § Scope](../design/architecture.md#scope-coordination-not-stabilization).
+
 This capstone project introduces a decentralized coordination framework to overcome
 the single point of failure and high latency of centralized control in large UAV
 swarms, crucial for high-stakes applications. The system achieves robust,

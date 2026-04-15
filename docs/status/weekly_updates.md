@@ -9,44 +9,74 @@ Baseline timeline is in the [Proposal](../project/proposal.md#7-timeline-and-mil
 | Weeks | Dates | Phase | Activity | Milestone |
 | :--- | :--- | :--- | :--- | :--- |
 | 5–6 | Feb 5 – Feb 17 | 1. Foundation | Isaac Lab setup, env implementation | - |
-| 7–8 | Feb 25 – Mar 24 | 2. Brain Development | PPO hover + formation control | M1 (Mar 25): **Complete** |
-| 9–11 | Mar 25 – Mar 29 | 3. Muscle Refinement | MINCO, CBF, SwarmRaft | M2 (Mar 29): **Complete, 9 days early** |
-| 12–13 | Mar 30 – Apr 13 | 4. Stress Testing | Agent loss, obstacles, scale benchmarks | M3 (Apr 13): Mission validation |
-| 14–15 | Apr 14 – Apr 20 | 5. Showcase Prep | RTX rendering, HD demo, Testing Report | M4 (Apr 20): HD showcase |
-| 16 | Apr 21 – Apr 24 | 6. Delivery | Capstone Festival, submissions | **Final: Apr 24** |
+| 7–11 | Feb 25 – Mar 24 | 2. Brain Development | PPO hover + formation control | M1 (Mar 25): **Complete** |
+| 12 | Mar 25 – Mar 31 | 3. Muscle Refinement | MINCO, CBF, SwarmRaft | M2 (Mar 29): **Complete, 9 days early** |
+| 13 | Apr 1 – Apr 7 | 4. Stress Testing | Agent loss, obstacles, scale benchmarks | M3 (Apr 7): **Complete, 7 days early** |
+| 14 | Apr 8 – Apr 14 | 5. Showcase Prep | Tron cinematic, trailer, Testing Report | M4 (Apr 8): **Complete, 12 days early** |
+| 15–16 | Apr 15 – Apr 24 | 6. Delivery | Capstone Festival, submissions | **Final: Apr 24** |
 
 ---
 
-## Week 15 Update (2026-04-08) — Phase 5 COMPLETE, Phase 6 kickoff
+## Week 14 Update (2026-04-14) — Phase 5 COMPLETE, Phase 6 in flight, thesis clarified
 
 ### Headline
 
-**Phase 5 is done, 12 days ahead of the M4 gate.** The cinematic
-trailer was edited from the 20 captured clips and published to
-YouTube. A new project banner (`docs/assets/banner.jpg`) was added to
-the README, and the README schedule + status badge were rolled
-forward to reflect Phases 4 and 5 complete. **Phase 6 (Delivery) is
-now in progress** — focus shifts to the Capstone Festival
-presentation, Portfolio + Learning Journal submissions, final
-documentation sweep, and a clean-clone reproducibility check.
+**Phase 5 done 12 days ahead of the M4 gate, Phase 6 underway.** The
+cinematic trailer was edited from the 20 captured clips and published
+to YouTube early in the week. The back half of the week shifted to
+documentation and framing — project banner, README thesis pass,
+concepts reference for ML/RL/GNN, and a scope clarification added to
+both the proposal and the architecture doc to make the research
+question explicit: *coordination, not stabilization.* **10 days
+remain to the Apr 24 deadline.** No training is planned; only
+editing, rehearsal, and submission remain.
 
 ### What happened
 
-- Cinematic trailer cut and uploaded to YouTube (general-audience
-  description targeting drones / AI / reinforcement learning).
-- README banner added; schedule table and status badge updated to
-  Phase 5 Complete.
-- Phase 5 and Phase 6 docs updated to reflect new status.
+- **Cinematic trailer published (Apr 8).** Trailer cut in DaVinci /
+  Premiere from the 20 clips captured in Phase 5 sub-A and uploaded
+  to YouTube with a general-audience description (drones / AI / RL).
+- **Phase 5 Testing Report compiled (Apr 8).** Results consolidated
+  from Phase 4 M3 gate evidence — checkpoint, metrics, obstacle /
+  dropout / scale claims with the corrected body-radius measurement.
+- **README polish (Apr 8, Apr 13).** Project banner
+  (`docs/assets/banner.jpg`) added; schedule table and status badge
+  rolled forward to Phase 6. Followed on Apr 13 by a thesis +
+  approach rewrite and a new concepts reference explaining ML / RL
+  / GNN for the portfolio audience.
+- **Scope clarification (Apr 13).** Added a *"Coordination, Not
+  Stabilization"* section to `docs/design/architecture.md` and a
+  matching scope note at the top of the proposal's executive summary.
+  States the research question explicitly — *can a learned GNN
+  policy replace hand-designed multi-agent coordination logic* —
+  and the architectural consequence: the learned policy lives at
+  Layer 2 and would feed a classical PID/LQR inner loop in any
+  production deployment. Closes a recurring framing gap when
+  explaining the project to non-RL audiences.
+- **Phase 5 and Phase 6 docs updated** to reflect Phase 5 Complete
+  and Phase 6 in progress.
 
-### Next
+### Next (Week 15, Apr 15 – Apr 21)
 
-- Manual rehearsal of the Capstone Festival presentation.
-- Portfolio + Learning Journal final pass.
-- Reproduce repo from a clean clone using only the README.
+- **Presentation narration.** Record voiceover against the already-cut
+  cinematic clips — story beats: research question, GNN coordination
+  layer, dropout / obstacle / scale results, what worked and what
+  didn't. Cinematic videos are already done; this week is pure
+  narration + edit pass.
+- **Testing Report wrap-up.** Close out `docs/project/testing_report.md`
+  — final metrics tables, figures, and the corrected body-radius
+  obstacle claims. This is the written companion to the narrated
+  video.
+- Portfolio + Learning Journal final pass (submission Apr 24).
+- Clean-clone reproducibility check against README only.
+- Final doc sweep: changelog close-out, phase doc status sync,
+  v1.0.0-capstone git tag.
+
+- **Timeline:** 10 days remain to deadline (Apr 24).
 
 ---
 
-## Week 14 Update (2026-04-08) — Phase 5 sub-A complete, 20 cinematic clips captured
+## Mid-week milestone (2026-04-08) — Phase 5 sub-A complete, 20 cinematic clips captured
 
 ### Headline
 

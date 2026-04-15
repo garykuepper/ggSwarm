@@ -10,6 +10,41 @@ with a shared PPO policy trained across all drones simultaneously.
 MINCO trajectory smoothing, CBF collision avoidance, SwarmRaft fault recovery,
 and virtual collision detection.
 
+### Scope: Coordination, Not Stabilization
+
+**The research question:** Can a learned GNN policy replace hand-designed
+multi-agent coordination logic for drone swarm formation control?
+
+**What this project is:** a test of whether a single GATv2 policy, trained
+end-to-end with PPO, can learn scalable multi-drone coordination
+(formation geometry, dropout recovery, obstacle negotiation) purely from
+reward — without hand-designed coordination primitives like potential
+fields, consensus protocols, or auction-based slot assignment.
+
+**What this project is *not*:** a reinvention of low-level flight
+stabilization. Single-drone attitude control is a solved problem —
+PID, LQR, and MPC controllers have decades of theory, stability
+proofs, and certification precedent behind them. Reinventing that
+layer in a neural net would be wasted effort and would produce a
+result that's strictly worse than classical control on every axis
+aerospace cares about (interpretability, bounded failure modes,
+certifiability).
+
+**Architectural consequence:** the GNN policy sits at Layer 2
+(coordination) of the five-layer stack below. Layers 4–5 (safety
+shields, thrust/moment mapping, physics integration) are classical
+components that the policy feeds into. In a production deployment,
+this split naturally maps to **neural-net-as-trajectory-generator
+feeding a classical tracking controller** — the learned policy
+decides *where the drone should go*, and a PID/LQR inner loop
+decides *how to fly there safely*. This keeps the learned
+intelligence where it helps (hard-to-hand-design coordination) and
+the classical control where safety lives (low-level stabilization).
+
+This scoping decision is deliberate and is the reason the project
+focuses on the GNN, MINCO, and SwarmRaft layers rather than motor-level
+control.
+
 ## 2. GNSC 5-Layer Architecture
 
 ```mermaid
