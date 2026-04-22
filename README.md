@@ -9,6 +9,8 @@
 [![Isaac Sim](https://img.shields.io/badge/Isaac%20Sim-5.1-76B900?logo=nvidia&logoColor=white)](https://developer.nvidia.com/isaac-sim)
 ![Status](https://img.shields.io/badge/Status-Phase%205%20Complete-green)
 
+![ggSwarm highlight](docs/assets/ggswarm-highlight.gif)
+
 ## The Question
 
 **Can a learned GNN policy replace hand-designed multi-agent coordination
@@ -40,16 +42,26 @@ minimum-jerk trajectory smoothing (L3), CBF collision avoidance (L4), SwarmRaft
 agent dropout/recovery, virtual collision detection, KNN-based scalable cohesion,
 obstacle navigation (Phase 4), and a Tron-styled HD cinematic pipeline (Phase 5).
 
-> Developed with [Claude Code](https://claude.com/claude-code)
+
+
+
 
 ## Table of Contents
 
-- [Project Navigation](#project-navigation)
-- [Quickstart](#quickstart)
-- [Training and Playback](#training-and-playback)
-- [Schedule and Milestones](#schedule-and-milestones)
-- [Troubleshooting](#troubleshooting)
-- [License](#license)
+- [ggSwarm: Decentralized Formation Control for Drone Swarms](#ggswarm-decentralized-formation-control-for-drone-swarms)
+  - [The Question](#the-question)
+  - [Approach](#approach)
+  - [Table of Contents](#table-of-contents)
+  - [Project Navigation](#project-navigation)
+    - [Design](#design)
+    - [Phases](#phases)
+    - [Learning Reference](#learning-reference)
+    - [Status](#status)
+  - [Quickstart](#quickstart)
+  - [Training and Playback](#training-and-playback)
+  - [Schedule and Milestones](#schedule-and-milestones)
+  - [Troubleshooting](#troubleshooting)
+  - [License](#license)
 
 ## Project Navigation
 
@@ -163,5 +175,7 @@ Full timeline: [`docs/project/proposal.md`](docs/project/proposal.md#7-timeline-
   - Run: `pip install "h5py>=3.9.0,<3.12" --force-reinstall`
 
 ## License
+
+> Developed with [Claude Code](https://claude.com/claude-code)
 
 This project is licensed under the MIT License. See [`LICENSE`](LICENSE).
