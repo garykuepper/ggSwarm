@@ -1,6 +1,9 @@
 # ggSwarm v2: Research Program Requirements & Phase Plan
 
-*Living document, v0.1. Reverse-engineered from the vision endpoint.*
+*Living document, v0.2. Post-capstone planning. Solo pace, no timeline.
+Reverse-engineered from the vision endpoint, adjusted as the picture
+sharpens. Snapshot of capstone-state-before-v2 lives at tag
+`v1.0.0-capstone` and branch `capstone`.*
 
 ---
 
@@ -78,7 +81,8 @@ no central controller.*
 
 Reverse-engineered from the endpoint backward to where the capstone left off.
 Each phase is framed as: what new capability it adds, what it deliberately
-keeps simple, and what the deliverable looks like.
+keeps simple, and what the milestone artifact is (typically a recorded
+demo, a social-media post, or a repo release, not a paper).
 
 ### Phase 0: Capstone Baseline (complete)
 
@@ -96,13 +100,19 @@ enters the training distribution.
 
 - 8 drones in one shared Isaac physics scene per env (replaces 8 isolated envs)
 - Still perfect state, still centrally precomputed slots. *Isolate the aero variable.*
+- Downwash modeling: analytic force model ported from gym-pybullet-drones
+  [[Panerati 2021]](references.md#panerati2021), or learned residual on
+  the relative-pose graph following Neural-Swarm2
+  [[Shi 2022]](references.md#shi2022), or both as an ablation. Shared
+  scene alone only gives contact/collision coupling; explicit downwash is
+  a modeling layer you add on top.
 - Retrain shared GATv2 policy; compare against Phase 0 checkpoint
 
 **Keeps simple:** perfect GPS, no peer ranging, no assignment, no outdoor, no obstacles.
 
-**Deliverable:** updated checkpoint, ablation analysis (shared-scene vs
-isolated-scene formation quality), workshop-paper material or supplementary
-to Paper 1.
+**Milestone artifact:** side-by-side comparison video (shared-scene vs
+isolated-scene) + updated checkpoint in the repo + short write-up on
+social media about what changed when aero entered the loop.
 
 **Why first:** all downstream work inherits the policy that was trained here.
 If shared-scene training breaks something, you need to know before you're
@@ -110,7 +120,7 @@ debugging it on a real drone.
 
 ---
 
-### Phase 2: Sim-to-Real Baseline *(Paper 1)*
+### Phase 2: Sim-to-Real Baseline
 
 **New capability:** policy runs on real hardware.
 
@@ -123,21 +133,30 @@ debugging it on a real drone.
 - Domain randomization during training: mass, inertia, motor response, sensor latency, UWB noise, battery voltage sag, thrust-to-weight variance
 - Offboard radio link from laptop for command injection (drones still execute onboard)
 
+> **Fork in the road: Pegasus Simulator.** Pegasus
+> [[Jacinto 2024]](references.md#jacinto2024) is an Isaac Sim extension
+> that already ships the stack Phase 2 needs (multi-vehicle, PX4, ROS 2,
+> magnetometer/GPS/barometer sensors). Building on it instead of rolling
+> custom PX4 integration could save months. Risk: single-thesis project,
+> sustainability uncertain. **Evaluate before Phase 2 starts.** See
+> [references.md § 2](references.md#2-simulator-ecosystem).
+
 **Keeps simple:** anchors still in play, no peer ranging, no distributed
 assignment, no letters/arbitrary shapes, no outdoor, no obstacles, no
 multi-dropout.
 
-**Deliverable (Paper 1):** *"Sim-to-real GNN-based decentralized formation
-control on micro-quadrotors."* Core contribution: closing the sim-to-real
-gap for a GATv2-policy-based multi-agent formation system; demonstrated
-single-dropout recovery.
+**Milestone artifact:** first real-hardware formation-hold video. Target
+post: "Here is a GATv2 policy trained entirely in sim flying a real
+Crazyflie swarm in formation for the first time." Repo release tagged
+v2.0.0-sim2real.
 
-**Risk hot-spots:** motor saturation not captured in sim; UWB latency ≠ sim
-latency; battery sag changing thrust-to-weight mid-flight.
+**Risk hot-spots:** motor saturation not captured in sim; UWB latency
+differs from sim latency; battery sag changing thrust-to-weight
+mid-flight.
 
 ---
 
-### Phase 3: Decentralized Assignment + Peer Ranging *(Paper 2)*
+### Phase 3: Decentralized Assignment + Peer Ranging
 
 **New capability:** no fixed infrastructure.
 
@@ -152,9 +171,10 @@ latency; battery sag changing thrust-to-weight mid-flight.
 **Keeps simple:** still 3–5 Crazyflies, still indoor, still static shapes,
 still single-dropout only.
 
-**Deliverable (Paper 2):** *"Fully decentralized GPS-denied formation control
-with peer-range localization."* Core contribution: the four decentralized
-subsystems composed together and end-to-end validated on real hardware.
+**Milestone artifact:** demo video of a Crazyflie swarm holding formation
+with all fixed anchors removed and only peer ranging active. Social-media
+framing: "No anchors, no GPS, no ground station. The drones localize each
+other."
 
 **Risk hot-spots:** peer-range localization accuracy may be insufficient for
 tight formation error targets; auction convergence under realistic comms
@@ -162,7 +182,7 @@ loss; centroid drift in relative-frame operation.
 
 ---
 
-### Phase 4: Scale & Expressive Shapes *(Paper 3)*
+### Phase 4: Scale & Expressive Shapes
 
 **New capability:** formation library + size-agnostic policy.
 
@@ -176,8 +196,9 @@ loss; centroid drift in relative-frame operation.
 **Keeps simple:** still indoor, still Crazyflie, still no obstacles, still
 limited fault modes.
 
-**Deliverable (Paper 3):** *"Scalable multi-shape formation control with a
-single shared policy: alphanumeric and time-varying targets."*
+**Milestone artifact:** video reel of the swarm cycling through a dozen
+shapes including letters, numbers, and a morph between two of them.
+Social-media framing: "Same policy. Different shapes. No retraining."
 
 **Risk hot-spots:** assignment complexity grows with N (auction convergence
 time); policy generalization to out-of-distribution shapes; crazyflie
@@ -185,7 +206,72 @@ formation density limits (downwash becomes dominant at close spacing).
 
 ---
 
-### Phase 5: Outdoor + Extended Fault Tolerance *(Paper 4)*
+### Phase 4b: Drone Show Capability (income stream)
+
+**New capability:** small-venue drone show performance as a repeatable
+revenue stream. Builds on Phase 4's formation library and Phase 2's
+sim-to-real pipeline. Funds the hardware upgrades needed for Phases 5–7.
+
+**Scope:**
+
+- Music-synced choreography on top of Phase 4's formation library
+- Staged LED / color changes synchronized with shape morphs
+- Outdoor ops targeted as the primary venue (indoor space and Crazyflie
+  noise make indoor shows impractical beyond a few drones)
+- Minimum viable show duration (3–5 minutes) with graceful failure modes
+  (one drone drops, show continues)
+- Safety stack: pre-flight checklist, geofencing, emergency land triggers,
+  visible observer and pilot-in-command roles defined
+
+**Regulatory infrastructure (first-class, not deferred):**
+
+- Part 107 Remote Pilot Certificate for the operator. Prerequisite for
+  any paid outdoor flying. Cost ~$175 plus study time.
+- Waiver under 14 CFR § 107.35 ("operation of multiple small unmanned
+  aircraft"). Required for one pilot to operate more than one drone
+  simultaneously outdoors. Granted via FAA safety case; multiple small
+  companies hold these (Sky Elements, Verge Aero, Pixis Drones). Months
+  of paperwork and iteration expected.
+- Airspace authorizations (LAANC for controlled airspace near airports;
+  not needed in Class G rural areas).
+- Insurance: commercial UAS liability policy, typically $1M to $2M
+  coverage.
+
+Note: private land ownership does not waive any of the above. FAA
+jurisdiction runs from the ground up. Indoor ops are the only Part 107
+exemption, and indoor space plus Crazyflie noise scaling make that path
+impractical for shows beyond a few drones.
+
+**Purpose in the roadmap:** **revenue stream.** Small-scale shows fund
+the hardware upgrades (Holybro outdoor airframes, Jetson Orin compute)
+that Phases 5 and 6 need, where per-drone cost jumps 10x to 100x over
+Crazyflie.
+
+**Milestone artifacts:**
+
+- Part 107 certificate (individual milestone, ~1 month)
+- § 107.35 waiver granted (paperwork milestone)
+- First paid booking completed
+- Recorded show video + social-media posts
+
+**Staged entry plan:**
+
+1. Get Part 107 certificate.
+2. Start single-drone outdoor cinematic content for social media while
+   the § 107.35 waiver application is in flight.
+3. Multi-drone rehearsals on own or rented private land after waiver
+   granted.
+4. First small paid booking when reliability clears an internal bar.
+
+**Risk hot-spots:** § 107.35 waiver timeline and grant likelihood;
+outdoor sim-to-real gap for the Crazyflie formation work (wind, GPS
+vs LPS, battery); choreography authoring tooling ergonomics; reliability
+under live performance constraints (one crashed drone during a paid show
+costs the booking).
+
+---
+
+### Phase 5: Outdoor + Extended Fault Tolerance
 
 **New capability:** outdoor calm environment + broader fault model.
 
@@ -200,16 +286,19 @@ formation density limits (downwash becomes dominant at close spacing).
 **Keeps simple:** still no obstacles, policy inference may still be offboard
 (phase 6 problem).
 
-**Deliverable (Paper 4):** *"Fault-tolerant decentralized formation control
-in outdoor calm conditions."*
+**Milestone artifact:** outdoor demo video of a swarm holding formation
+through wind gusts, with one or two drones intentionally cut to
+demonstrate recovery. Social-media framing: "Wind, GPS denied, one drone
+down. Swarm holds."
 
-**Risk hot-spots:** entire hardware stack changes, so the sim-to-real gap
-re-opens; UWB range-finding outdoors has different multipath characteristics;
-battery scaling implications on swarm; recovering test hardware after crashes.
+**Risk hot-spots:** entire hardware stack changes, so the sim-to-real
+gap re-opens; UWB range-finding outdoors has different multipath
+characteristics; battery scaling implications on swarm; recovering test
+hardware after crashes.
 
 ---
 
-### Phase 6: Onboard Compute + Obstacle-Aware Navigation *(Paper 5)*
+### Phase 6: Onboard Compute + Obstacle-Aware Navigation
 
 **New capability:** unknown-environment navigation.
 
@@ -218,14 +307,22 @@ battery scaling implications on swarm; recovering test hardware after crashes.
 - Upgrade to Jetson Orin Nano-class airframes (ModalAI VOXL2, or custom Jetson-Orin-Nano carrier on Holybro frame)
 - Onboard GATv2 inference (≥ 50 Hz target)
 - Onboard perception: stereo depth or lidar, VIO for self-motion
-- Reactive obstacle avoidance composed with formation control (CBFs treating obstacles as virtual agents, as explored in your capstone Phase 4)
+- Reactive obstacle avoidance composed with formation control (CBFs
+  treating obstacles as virtual agents, as explored in your capstone
+  Phase 4)
 - Unknown environments (no prior map)
+- Reference implementations to study: Agilicious
+  [[Foehn 2022]](references.md#foehn2022) is the closest open-source
+  analogue for onboard-compute agile quadrotors with BEM-based
+  aerodynamics.
 
 **Keeps simple:** may reduce scale temporarily (5–10 drones) due to hardware
 cost; single platform only.
 
-**Deliverable (Paper 5):** *"Obstacle-aware decentralized formation control
-in unknown outdoor environments."*
+**Milestone artifact:** outdoor demo video of a swarm flying through a
+novel, unmapped obstacle environment with all inference onboard. Repo
+release with the onboard inference binary. Social-media framing: "No map.
+No offboard compute. The drones see and plan themselves."
 
 **Risk hot-spots:** real-time GATv2 inference budget on Orin Nano; CBF QP
 solve time onboard; perception failure modes (reflective surfaces, shadows,
@@ -234,7 +331,7 @@ dynamics.
 
 ---
 
-### Phase 7: Hardware-Agnostic & General-Purpose *(Paper 6, stretch)*
+### Phase 7: Hardware-Agnostic & General-Purpose (stretch)
 
 **New capability:** platform transfer + mission generalization.
 
@@ -245,8 +342,9 @@ dynamics.
 - Expand mission set: formation + area-coverage search + escort + navigation
 - Task-conditioned policy or mission-parameter observation extension
 
-**Deliverable (Paper 6):** *"Hardware-agnostic policy transfer for
-multi-mission decentralized drone swarms."*
+**Milestone artifact:** split-screen video of the same policy checkpoint
+flying on two different airframes. Social-media framing: "One brain.
+Different bodies. No retraining."
 
 ---
 
@@ -256,26 +354,29 @@ multi-mission decentralized drone swarms."*
 Phase 0 (capstone) ─→ Phase 1 (shared-scene)
                           │
                           ▼
-                     Phase 2 (sim-to-real, Crazyflie+LPS)   ← Paper 1
+                     Phase 2 (sim-to-real, Crazyflie+LPS)
                           │
                           ▼
-                     Phase 3 (decentralized)               ← Paper 2
+                     Phase 3 (decentralized)
                           │
                           ├─────────────────────┐
                           ▼                     ▼
                      Phase 4 (scale+shapes)   Phase 5 (outdoor+faults)
-                     ← Paper 3                ← Paper 4
                           │                     │
+                          ▼                     │
+                     Phase 4b (drone shows)     │
+                       (revenue stream)         │
                           └─────────┬───────────┘
                                     ▼
-                             Phase 6 (onboard+obstacles)   ← Paper 5
+                             Phase 6 (onboard+obstacles)
                                     │
                                     ▼
-                             Phase 7 (platform transfer)   ← Paper 6
+                             Phase 7 (platform transfer)
 ```
 
 Phases 4 and 5 can execute in parallel if hardware budget allows two test
-stacks. Everything else is strictly sequential.
+stacks. Phase 4b gates Phase 5 hardware spend in practice: show revenue
+funds the airframe upgrades. Everything else is strictly sequential.
 
 ---
 
@@ -289,7 +390,7 @@ Work that serves multiple phases and needs to be built once:
 - **Test environments.** Indoor volume (phases 2–4), outdoor calm field (phase 5+), outdoor obstacle course (phase 6).
 - **Evaluation benchmarks.** A fixed set of repeatable scenarios run at the end of each phase to detect regressions.
 - **Safety systems.** Emergency land triggers, geofences, kill switch, log-everything black-box.
-- **Documentation.** Per-phase report, per-paper manuscript, open-source repo hygiene.
+- **Documentation.** Per-phase write-up, repo-release notes, social-media post drafts, open-source repo hygiene.
 
 ---
 
@@ -302,12 +403,18 @@ Work that serves multiple phases and needs to be built once:
 | 2 | Battery sag breaks policy | Voltage as explicit observation or randomized thrust scaling |
 | 3 | Peer-range localization too noisy for target formation error | Accept larger formation error, or add lightweight visual fiducials |
 | 3 | Auction assignment doesn't converge with packet loss | Stale-aware bidding; eventual-consistency assignment |
-| 4 | Auction doesn't scale to 20+ drones | Hierarchical clustering or consensus-based bundle algorithm |
+| 4 | Auction doesn't scale to 20+ drones (see note) | Hierarchical clustering or consensus-based bundle algorithm |
 | 5 | Wind exceeds DR envelope | Data-collection from real flights → retrain |
 | 5 | Hardware crashes destroy budget | Start with 3 larger drones, not 10 |
 | 6 | Onboard inference can't hit 50 Hz | Policy distillation; MLP fallback from GATv2 teacher |
 | 6 | Perception fails in edge-case environments | Narrow the "unknown environment" definition in the paper |
 | 7 | Platform transfer doesn't generalize | Frame as "family of platforms within randomization envelope," not true zero-shot |
+
+Note on Phase 4 auction scale: simulator throughput is not the
+bottleneck. Aerial Gym [[Kulkarni 2023]](references.md#kulkarni2023) has
+already demonstrated thousands of multirotors in parallel on Isaac Gym.
+The limiter is auction convergence time under realistic comms loss, not
+how many drones the simulator can push.
 
 Budget risks (cross-cutting):
 
@@ -325,10 +432,21 @@ Budget risks (cross-cutting):
 4. **Operator interface.** How is a command issued? Physical controller? CLI? Web UI? Natural language?
 5. **Safety envelope.** Geofence rules, max altitude, emergency procedures, pre-flight checklist.
 6. **Evaluation benchmark design.** What fixed scenarios define "phase passed"?
-7. **Publishing venues.** ICRA/IROS/RSS/L4DC per paper?
+7. **Sharing strategy.** Which platforms (YouTube long-form, Twitter/X threads, Instagram reels, TikTok, personal blog, Hacker News) best match each milestone artifact?
 8. **Open-source strategy.** Fully open? Core open, applications reserved?
 9. **Hardware platform decisions** per phase (Phase 5 and 6 specifically: Crazyflie replacement and Jetson carrier).
 10. **Realistic self-funded hardware budget ceiling.** Informs phase sequencing and parallelism.
+
+---
+
+---
+
+## 11. References and Ecosystem Watch
+
+All academic references, simulator ecosystem entries, and hardware
+comparisons live in [`references.md`](references.md). Growing resource;
+this plan links into it by author-year anchors
+(e.g. `[Shi 2022]` → `references.md#shi2022`).
 
 ---
 
