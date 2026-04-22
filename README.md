@@ -1,7 +1,3 @@
-# ggSwarm: Decentralized Formation Control for Drone Swarms
-
-![ggSwarm — A Decentralized Drone Swarm](docs/assets/banner.jpg)
-
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/)
@@ -9,12 +5,14 @@
 [![Isaac Sim](https://img.shields.io/badge/Isaac%20Sim-5.1-76B900?logo=nvidia&logoColor=white)](https://developer.nvidia.com/isaac-sim)
 ![Status](https://img.shields.io/badge/Status-Phase%205%20Complete-green)
 
-![ggSwarm highlight](docs/assets/ggswarm-highlight.gif)
+![ggSwarm — A Decentralized Drone Swarm](docs/assets/banner.jpg)
 
 ## The Question
 
 **Can a learned GNN policy replace hand-designed multi-agent coordination
 logic for drone swarm formation control?**
+
+![ggSwarm highlight](docs/assets/ggswarm-highlight.gif)
 
 That is the thesis `ggSwarm` tests. Classical multi-agent coordination
 relies on carefully hand-tuned potential fields, consensus protocols, or
@@ -48,20 +46,19 @@ obstacle navigation (Phase 4), and a Tron-styled HD cinematic pipeline (Phase 5)
 
 ## Table of Contents
 
-- [ggSwarm: Decentralized Formation Control for Drone Swarms](#ggswarm-decentralized-formation-control-for-drone-swarms)
-  - [The Question](#the-question)
-  - [Approach](#approach)
-  - [Table of Contents](#table-of-contents)
-  - [Project Navigation](#project-navigation)
-    - [Design](#design)
-    - [Phases](#phases)
-    - [Learning Reference](#learning-reference)
-    - [Status](#status)
-  - [Quickstart](#quickstart)
-  - [Training and Playback](#training-and-playback)
-  - [Schedule and Milestones](#schedule-and-milestones)
-  - [Troubleshooting](#troubleshooting)
-  - [License](#license)
+- [The Question](#the-question)
+- [Approach](#approach)
+- [Table of Contents](#table-of-contents)
+- [Project Navigation](#project-navigation)
+  - [Design](#design)
+  - [Phases](#phases)
+  - [Learning Reference](#learning-reference)
+  - [Status](#status)
+- [Quickstart](#quickstart)
+- [Training and Playback](#training-and-playback)
+- [Schedule and Milestones](#schedule-and-milestones)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
 
 ## Project Navigation
 
