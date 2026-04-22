@@ -1,5 +1,10 @@
 # References and Ecosystem Watch
 
+<!-- markdownlint-disable MD033 -->
+<!-- MD033 disabled: inline <a id="..."></a> anchors are intentional so
+     inline citations in other docs (e.g. [Shi 2022] in ggswarm_v2_plan.md)
+     can link to individual papers, not just section headers. -->
+
 *Living document. Bibliography and ecosystem watch for ggSwarm v1
 (capstone) and ongoing post-capstone work. Grows over time. Remove items
 only if they become irrelevant or inaccurate.*
@@ -299,6 +304,83 @@ Vendor references:
 - ModalAI Seeker: <https://www.modalai.com/products/seeker>
 - ModalAI VOXL2: <https://www.modalai.com/products/voxl-2>
 - NVIDIA Jetson Orin Nano: <https://developer.nvidia.com/embedded/jetson-orin-nano>
+
+---
+
+## 4. Flight Stacks and Middleware
+
+Open-source flight stacks, wire protocols, and middleware. Relevant to
+v2 Phase 5+ when real airframes larger than Crazyflie enter the picture.
+Phase 2 on Crazyflie uses a different stack (CRTP over Crazyswarm2, see
+§ 2) and bypasses this layer entirely.
+
+### PX4 Autopilot (chosen)
+
+Open-source flight stack for multirotor, fixed-wing, VTOL, and rover
+platforms. Runs on Pixhawk-family flight controllers plus ModalAI
+VOXL2. Modular codebase, strong research ecosystem, native integration
+with Pegasus Simulator and `uosm.isaac.px4_bridge` (see § 2). BSD-3,
+actively maintained.
+
+**Chosen as the v2 flight stack from Phase 5 onward.** Rationale:
+dominant in research multi-vehicle work, Isaac Sim tooling targets it
+first (Pegasus is PX4-only), Agilicious and most cited academic
+quadrotor work runs on it.
+
+- <https://px4.io/>
+- <https://docs.px4.io/>
+
+### ArduPilot (alternative, not chosen)
+
+Older open-source flight stack, broader platform coverage (copter,
+plane, rover, boat, sub). More production-proven, larger community.
+Listed for completeness; v2 is standardizing on PX4 instead.
+
+- <https://ardupilot.org/>
+
+### MAVLink
+
+Lightweight message-marshalling protocol for micro air vehicles. Wire
+format used by both PX4 and ArduPilot to talk to companion computers,
+ground stations (QGroundControl, Mission Planner), and telemetry radios.
+You consume it via a library (`mavlink`, `pymavlink`, or via MAVROS
+below), not by implementing it.
+
+- <https://mavlink.io/>
+
+### ROS 2
+
+Robot Operating System 2. Middleware on the companion computer that
+hosts the GATv2 policy, perception, decentralized algorithms (peer
+ranging, auction, gossip), and any other application logic. DDS-based
+pub/sub. Humble is the LTS as of 2025.
+
+- <https://docs.ros.org/>
+
+### MAVROS
+
+Classic bridge between MAVLink and ROS. Subscribes to MAVLink over
+serial/UDP, republishes as ROS topics (and vice versa). Mature but
+adds a translation hop.
+
+- <https://github.com/mavlink/mavros>
+
+### uXRCE-DDS (PX4 native ROS 2 bridge)
+
+PX4's newer native DDS integration. No MAVLink translation for onboard
+traffic: PX4 publishes uORB topics directly as DDS/ROS 2 topics via the
+uXRCE-DDS agent. Lower latency, less overhead than MAVROS. This is what
+the `uosm.isaac.px4_bridge` extension uses internally.
+
+- <https://docs.px4.io/main/en/middleware/uxrce_dds.html>
+
+### QGroundControl
+
+Cross-platform ground station for PX4 and ArduPilot. Mission planning,
+parameter tuning, firmware flashing, telemetry visualization. Not in the
+flight-critical path; used during bring-up and tuning.
+
+- <http://qgroundcontrol.com/>
 
 ---
 

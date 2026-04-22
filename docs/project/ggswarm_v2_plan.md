@@ -386,6 +386,16 @@ Work that serves multiple phases and needs to be built once:
 
 - **Simulation environment.** Isaac Lab 2.3 scene templates, domain randomization rig, deterministic eval harness.
 - **Training infrastructure.** Local RTX 3070 for debugging, cloud L4/A100 for sweeps; checkpoint versioning; experiment tracking (W&B or equivalent).
+- **Flight stack (Phase 5+).** **PX4** autopilot on the flight controller;
+  **MAVLink** as the wire protocol between autopilot and companion
+  computer; **ROS 2** on the companion computer hosting policy,
+  perception, and decentralized algorithms; **MAVROS** or the newer
+  **uXRCE-DDS** bridge translating between MAVLink and ROS 2. ArduPilot
+  is the main alternative but not chosen: PX4 has the dominant research
+  ecosystem (Pegasus Simulator, Agilicious, most multi-vehicle academic
+  work) and native Isaac Sim bridges. Phase 2 on Crazyflie bypasses this
+  stack entirely (CRTP over Crazyswarm2). See
+  [references.md § 4](references.md#4-flight-stacks-and-middleware).
 - **Hardware pipeline.** Drone build process, pre-flight checklist, spare parts stock, battery rotation, crash-recovery SOPs.
 - **Test environments.** Indoor volume (phases 2–4), outdoor calm field (phase 5+), outdoor obstacle course (phase 6).
 - **Evaluation benchmarks.** A fixed set of repeatable scenarios run at the end of each phase to detect regressions.
