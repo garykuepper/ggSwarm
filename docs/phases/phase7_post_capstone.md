@@ -8,6 +8,10 @@ intentionally deferred from Phases 1–6 so the capstone could ship on
 time. Nothing here is on the critical path for the Apr 24, 2026
 deadline — see [Phase 6: Delivery](phase6_delivery.md) for that.
 
+> **See also:** [ggSwarm v2 Research Program](../project/ggswarm_v2_plan.md)
+> for the broader sim-to-real and hardware-track vision beyond this
+> deferred-items backlog.
+
 Sources that previously held these items individually:
 
 - [docs/design/architecture.md](../design/architecture.md) §

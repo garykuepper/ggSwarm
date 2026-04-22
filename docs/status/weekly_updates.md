@@ -17,6 +17,46 @@ Baseline timeline is in the [Proposal](../project/proposal.md#7-timeline-and-mil
 
 ---
 
+## Week 15 Update (2026-04-21) — Project wrapped, Testing Report locked, draft presentation cut
+
+### Headline
+
+**Project wrapped for the Capstone Festival.** Testing Report closed out,
+draft presentation video recorded against the Phase 5 cinematic clips, and
+the README got a final polish including an embedded 8-drone highlight GIF.
+**3 days remain to the Apr 24 deadline** — remaining work is rehearsal,
+portfolio/journal submission, and the v1.0.0-capstone tag.
+
+### What happened
+
+- **Testing Report finalized** ([`docs/project/testing_report.md`](../project/testing_report.md)).
+  Closed out with final metrics tables, figures, and the corrected
+  body-radius obstacle claims promised in the Week 14 "Next" section.
+  This is the written companion to the narrated presentation video.
+- **Draft presentation video recorded.** Voiceover cut against the
+  cinematic clips from Phase 5 sub-A — story beats: research question,
+  GNN coordination layer, dropout / obstacle / scale results, what
+  worked and what didn't. Draft status; one rehearsal/edit pass
+  remains before the final lock.
+- **README polish (Apr 21).** Embedded a 6s cinematic highlight GIF
+  near the thesis block — source GIF was 19 MB, optimized to 8.7 MB
+  via two-pass ffmpeg palette encode (640×432, 15 fps), clearing
+  GitHub's 10 MB autoplay threshold so it loops inline without
+  click-to-play. Table of Contents restructured, redundant title line
+  removed.
+
+### Next (Week 16, Apr 22 – Apr 24)
+
+- Final presentation rehearsal + edit pass against the draft video.
+- Portfolio + Learning Journal submission.
+- Capstone Festival presentation (Apr 24).
+- Post-festival: v1.0.0-capstone git tag, changelog close-out, phase
+  doc status sync to Phase 6 Complete.
+
+- **Timeline:** 3 days remain to deadline (Apr 24).
+
+---
+
 ## Week 14 Update (2026-04-14) — Phase 5 COMPLETE, Phase 6 in flight, thesis clarified
 
 ### Headline
