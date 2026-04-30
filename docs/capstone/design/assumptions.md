@@ -85,7 +85,7 @@ destroy training throughput.
 
 This would give drones agency in slot selection while keeping conflict
 resolution centralized — practical within CTDE constraints. Tracked as
-[Phase 7 § E1](../phases/phase7_post_capstone.md#e1-semi-decentralized-slot-allocation).
+[ggSwarm Live backlog § E1](../../ggswarm_live/backlog.md#e1-semi-decentralized-slot-allocation).
 
 ## 5. Homogeneous Agents
 

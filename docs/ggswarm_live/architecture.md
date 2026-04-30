@@ -32,7 +32,7 @@ This document covers the end-to-end pipeline from show design in Skybrush Studio
 
 Three candidate architectures were evaluated for integrating Skybrush choreography with ggSwarm RL execution. The following diagram compares them side by side.
 
-![Architecture Options Comparison](options_comparison.png)
+![Architecture Options Comparison](../assets/options_comparison.png)
 *Figure 1: Architecture options comparison — Option A (pure Skybrush), Option B (RL overlay), Option C (full RL replacement)*
 
 ### 2.1 Option A: Pure Skybrush
@@ -55,7 +55,7 @@ The RL policy outputs motor commands directly, bypassing PX4's position controll
 
 The following diagram shows the full per-drone hardware and software stack for Option B deployed on PX4, including the failsafe cascade and inter-drone communication layer.
 
-![PX4 Architecture Detail](px4_architecture.png)
+![PX4 Architecture Detail](../assets/px4_architecture.png)
 *Figure 2: Option B per-drone stack on PX4 with failsafe cascade and swarm communication*
 
 ### 3.1 Skybrush choreography pipeline

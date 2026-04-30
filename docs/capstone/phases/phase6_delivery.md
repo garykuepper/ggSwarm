@@ -100,7 +100,7 @@ inventory. Phase 6 is editing, polish, and submission.
   Phase 2 results, Phase 3 GNN, Phase 4 stress tests + obstacle navigation,
   Phase 5 cinematic, results vs objectives, lessons learned, future work —
   pull the future-work slide from
-  [Phase 7: Post-Capstone Plan](phase7_post_capstone.md))
+  [ggSwarm Live backlog](../../ggswarm_live/backlog.md))
 - Export demo video with QR code linking to the GitHub repo
 - Prepare live demo machine
 
@@ -141,4 +141,4 @@ documentation + presentation polish.
 
 - [Proposal](../project/proposal.md)
 - [Phase 5: Showcase Prep](phase5_showcase_prep.md)
-- [Phase 7: Post-Capstone Plan](phase7_post_capstone.md)
+- [ggSwarm Live program](../../ggswarm_live/README.md)

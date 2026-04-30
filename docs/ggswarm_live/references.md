@@ -2,7 +2,7 @@
 
 <!-- markdownlint-disable MD033 -->
 <!-- MD033 disabled: inline <a id="..."></a> anchors are intentional so
-     inline citations in other docs (e.g. [Shi 2022] in ggswarm_v2_plan.md)
+     inline citations in other docs (e.g. [Shi 2022] in vision.md)
      can link to individual papers, not just section headers. -->
 
 *Living document. Bibliography and ecosystem watch for ggSwarm v1
@@ -386,6 +386,6 @@ flight-critical path; used during bring-up and tuning.
 
 ## See Also
 
-- [proposal.md § 13 References](proposal.md#13-references)
-- [concepts.md § 14 Further reading](../concepts.md)
-- [ggswarm_v2_plan.md § 11](ggswarm_v2_plan.md)
+- [proposal.md § 13 References](../capstone/project/proposal.md#13-references)
+- [concepts.md § 14 Further reading](../capstone/concepts.md)
+- [vision.md § 11](vision.md)

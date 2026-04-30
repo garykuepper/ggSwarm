@@ -232,7 +232,7 @@ concatenated. Each head can specialize.
 **Edge features** (optional): passing `edge_attr` with `edge_dim=N`
 lets attention condition on per-edge info (e.g., relative position).
 This project doesn't currently use them — tracked as
-[Phase 7 § A1](phases/phase7_post_capstone.md#a1-gatv2-edge-features).
+[ggSwarm Live backlog § A1](../ggswarm_live/backlog.md#a1-gatv2-edge-features).
 
 ## 11. CTDE — centralized training, decentralized execution
 
@@ -312,4 +312,4 @@ training run look like" is worth more than any single reading.
 - [Architecture](design/architecture.md)
 - [Tensor Shape Contracts](design/tensor_contracts.md)
 - [Assumptions](design/assumptions.md)
-- [Phase 7: Post-Capstone Plan](phases/phase7_post_capstone.md)
+- [ggSwarm Live program](../ggswarm_live/README.md) — successor to the deferred Phase 7 plan

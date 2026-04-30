@@ -242,7 +242,7 @@ DaVinci Resolve / Premiere with title cards + transitions + music.**
 ### Next iterations (deferred — only if needed beyond manual stitching)
 
 Tracked post-capstone as
-[Phase 7 § 7 Cinematic / Presentation Polish](phase7_post_capstone.md#7-cinematic--presentation-polish-f).
+capstone-frozen polish (not on the ggSwarm Live roadmap; see [backlog](../../ggswarm_live/backlog.md) row F1–F6).
 
 - **Drone color refinement** — currently more yellow than amber. Try
   bumping linear green even lower to compensate for renderer tone

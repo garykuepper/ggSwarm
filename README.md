@@ -3,91 +3,108 @@
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/)
 [![Isaac Lab](https://img.shields.io/badge/Isaac%20Lab-2.3-76B900?logo=nvidia&logoColor=white)](https://isaac-sim.github.io/IsaacLab/)
 [![Isaac Sim](https://img.shields.io/badge/Isaac%20Sim-5.1-76B900?logo=nvidia&logoColor=white)](https://developer.nvidia.com/isaac-sim)
-![Status](https://img.shields.io/badge/Status-Phase%205%20Complete-green)
+![Capstone](https://img.shields.io/badge/Capstone-Shipped%20Apr%202026-green)
+![Live](https://img.shields.io/badge/ggSwarm%20Live-Active-blue)
 
 ![ggSwarm — A Decentralized Drone Swarm](docs/assets/banner.jpg)
 
-## The Question
+A learned, graph-attention-based multi-drone formation policy — and the
+program building it out from a sim-only capstone into a real-hardware
+drone-show product.
 
-**Can a learned GNN policy replace hand-designed multi-agent coordination
-logic for drone swarm formation control?**
+## Two programs in one repo
+
+### ggSwarm Capstone (v1, shipped April 2026)
+
+A simulation-only multi-agent RL drone swarm. Tested whether a single
+GATv2 + PPO policy can replace hand-designed multi-agent coordination
+logic. **Yes, within tested scope:** 8 drones hold triangle, polygon,
+and letter-G formations with <0.3 m steady-state error, recover from
+mid-episode dropout within 2 s (SwarmRaft), navigate cylinder forests,
+and the same policy generalizes to 20 agents without retraining.
+
+Frozen at tag `v1.0.0-capstone` on the `capstone` branch. All
+documentation, phase write-ups, testing report, and run history live
+under [`docs/capstone/`](docs/capstone/).
 
 ![ggSwarm highlight](docs/assets/ggswarm-highlight.gif)
 
-That is the thesis `ggSwarm` tests. Classical multi-agent coordination
-relies on carefully hand-tuned potential fields, consensus protocols, or
-auction-based slot assignment. This project asks whether a single Graph
-Attention Network (GATv2) policy, trained end-to-end with PPO, can learn
-equivalent coordination purely from reward — no hand-designed
-coordination logic.
+### ggSwarm Live (active)
 
-**The answer (as of Phase 4):** Yes, within tested scope. Eight drones
-hold triangle, polygon, and letter-G formations with <0.3m steady-state
-error, recover from mid-episode dropout within 2s (SwarmRaft), navigate
-cylinder forests, and the same policy generalizes to 20 agents without
-retraining. See [Testing Report](docs/project/testing_report.md) for
-M3 gate results.
+Real-hardware deployment program. Takes the capstone policy out of
+simulation, onto PX4-based airframes, and delivers it as the adaptive
+execution layer underneath Skybrush drone-light-show choreography.
+Target: a paying drone-show product whose revenue funds the hardware
+upgrades for the longer-horizon swarm-autonomy goals (decentralized
+peer ranging, onboard compute, obstacle-aware navigation, hardware-
+agnostic policy transfer).
 
-## Approach
-
-`ggSwarm` is a high-fidelity multi-drone simulation built on NVIDIA
-Isaac Lab + PhysX, running 4096 parallel envs on one GPU. It uses CTDE
-(Centralized Training, Decentralized Execution) with a shared PPO
-policy and staged milestone delivery.
-
-**Current capabilities:** 8-drone cloud formation with GATv2 GNN (L2), MINCO
-minimum-jerk trajectory smoothing (L3), CBF collision avoidance (L4), SwarmRaft
-agent dropout/recovery, virtual collision detection, KNN-based scalable cohesion,
-obstacle navigation (Phase 4), and a Tron-styled HD cinematic pipeline (Phase 5).
-
-
-
-
+Target architecture: Skybrush CSV waypoints + RL-policy correction
+overlay → PX4 offboard mode, with four independent failsafe layers and
+a WiFi mesh that is explicitly **not** flight-critical infrastructure.
+See [`docs/ggswarm_live/architecture.md`](docs/ggswarm_live/architecture.md).
 
 ## Table of Contents
 
-- [The Question](#the-question)
-- [Approach](#approach)
-- [Table of Contents](#table-of-contents)
+- [Two programs in one repo](#two-programs-in-one-repo)
+  - [ggSwarm Capstone (v1, shipped April 2026)](#ggswarm-capstone-v1-shipped-april-2026)
+  - [ggSwarm Live (active)](#ggswarm-live-active)
 - [Project Navigation](#project-navigation)
-  - [Design](#design)
-  - [Phases](#phases)
-  - [Learning Reference](#learning-reference)
-  - [Status](#status)
+  - [ggSwarm Live](#ggswarm-live)
+  - [Capstone (frozen)](#capstone-frozen)
 - [Quickstart](#quickstart)
-- [Training and Playback](#training-and-playback)
-- [Schedule and Milestones](#schedule-and-milestones)
-- [Troubleshooting](#troubleshooting)
+- [Training and Playback (capstone-era sim)](#training-and-playback-capstone-era-sim)
 - [License](#license)
 
 ## Project Navigation
 
-### Design
+Top-level docs splitter: [`docs/README.md`](docs/README.md).
 
-- [Architecture](docs/design/architecture.md) — system design source of truth
-- [Proposal and project scope](docs/project/proposal.md)
+### ggSwarm Live
 
-### Phases
+- [Program overview](docs/ggswarm_live/README.md)
+- [Vision and requirements](docs/ggswarm_live/vision.md)
+- [Target architecture (Skybrush + RL on PX4)](docs/ggswarm_live/architecture.md)
+- Phases:
+  [0 capstone baseline](docs/ggswarm_live/phases/phase0_capstone_baseline.md) ·
+  [1 shared-scene sim](docs/ggswarm_live/phases/phase1_shared_scene_sim.md) ·
+  [2 sim-to-real](docs/ggswarm_live/phases/phase2_sim2real_baseline.md) ·
+  [3 decentralized](docs/ggswarm_live/phases/phase3_decentralized.md) ·
+  [4 scale + shapes](docs/ggswarm_live/phases/phase4_scale_shapes.md) ·
+  [4b drone shows](docs/ggswarm_live/phases/phase4b_drone_shows.md) ·
+  [5 outdoor + faults](docs/ggswarm_live/phases/phase5_outdoor_faults.md) ·
+  [6 onboard + obstacles](docs/ggswarm_live/phases/phase6_onboard_obstacles.md) ·
+  [7 hardware-agnostic](docs/ggswarm_live/phases/phase7_hardware_agnostic.md)
+- [Backlog](docs/ggswarm_live/backlog.md) — capstone deferrals + new work, mapped to phases
+- [References](docs/ggswarm_live/references.md)
+- Status: [changelog](docs/ggswarm_live/status/changelog.md) ·
+  [log](docs/ggswarm_live/status/log.md)
 
-- [Phase 1: Foundation](docs/phases/phase1_foundation.md) — Isaac Lab setup, env implementation
-- [Phase 2: Brain Development](docs/phases/phase2_brain_development.md) — hover, formation control
-- [Phase 3: Muscle Refinement](docs/phases/phase3_muscle_refinement.md) — CBF safety, SwarmRaft, MINCO
-- [Phase 4: Stress Testing](docs/phases/phase4_stress_testing.md) — agent loss, obstacles, scale
-- [Phase 5: Showcase Prep](docs/phases/phase5_showcase_prep.md) — HD demo, Testing Report
-- [Phase 6: Delivery](docs/phases/phase6_delivery.md) — Capstone Festival, submissions
-- [Phase 7: Post-Capstone Plan](docs/phases/phase7_post_capstone.md) — deferred work backlog
+### Capstone (frozen)
 
-### Learning Reference
-
-- [Concepts](docs/concepts.md) — ML / RL / GNN glossary scoped to this project
-
-### Status
-
-- [Weekly updates](docs/status/weekly_updates.md)
-- [Changelog](docs/status/changelog.md)
-- [Run history](docs/status/run_history.md)
+- [Capstone README](docs/capstone/README.md)
+- [Architecture](docs/capstone/design/architecture.md) ·
+  [Assumptions](docs/capstone/design/assumptions.md) ·
+  [Tensor contracts](docs/capstone/design/tensor_contracts.md)
+- [Proposal](docs/capstone/project/proposal.md) ·
+  [Testing Report](docs/capstone/project/testing_report.md)
+- Phases:
+  [1](docs/capstone/phases/phase1_foundation.md) ·
+  [2](docs/capstone/phases/phase2_brain_development.md) ·
+  [3](docs/capstone/phases/phase3_muscle_refinement.md) ·
+  [4](docs/capstone/phases/phase4_stress_testing.md) ·
+  [5](docs/capstone/phases/phase5_showcase_prep.md) ·
+  [6](docs/capstone/phases/phase6_delivery.md)
+- [Concepts](docs/capstone/concepts.md) — ML / RL / GNN glossary
+- Status: [weekly updates](docs/capstone/status/weekly_updates.md) ·
+  [changelog](docs/capstone/status/changelog.md) ·
+  [run history](docs/capstone/status/run_history.md)
 
 ## Quickstart
+
+The current installable code is the capstone simulation stack
+(`ggswarm-v0` Isaac Lab task). The ggSwarm Live hardware stack adds PX4
++ companion-computer pieces over time, on top of this same repo.
 
 > Isaac Lab is expected to be installed inside your Python virtual environment.
 > No sibling `IsaacLab` repository clone is required for this project setup.
@@ -123,7 +140,12 @@ obstacle navigation (Phase 4), and a Tron-styled HD cinematic pipeline (Phase 5)
    pip install "h5py>=3.9.0,<3.12" --force-reinstall
    ```
 
-## Training and Playback
+## Training and Playback (capstone-era sim)
+
+The capstone training and playback workflow still runs from this branch
+against `ggswarm-v0`. The capstone tree is frozen but the code path is
+not — Phase 1 of ggSwarm Live (shared-scene multi-drone training) builds
+on it directly.
 
 ```powershell
 # Train (local, headless)
@@ -146,19 +168,9 @@ python scripts/skrl/play.py --task ggswarm-v0 `
 tensorboard --logdir logs/skrl/ggswarm
 ```
 
-## Schedule and Milestones
-
-| Phase | Timeline | Gate | Status |
-| :--- | :--- | :--- | :--- |
-| 1. Foundation | Feb 5 - Feb 17 | - | Complete |
-| 2. Brain Development | Feb 25 - Mar 24 | M1 (Mar 25) | Complete |
-| 3. Muscle Refinement | Mar 25 - Mar 29 | M2 (Mar 29) | Complete (9 days early) |
-| 4. Stress Testing | Mar 30 - Apr 13 | M3 (Apr 13) | Complete |
-| 5. Showcase Prep | Apr 14 - Apr 20 | M4 (Apr 20) | Complete |
-| 6. Delivery | Apr 21 - Apr 24 | **Final: Apr 24** | **In progress** |
-
-Full timeline: [`docs/project/proposal.md`](docs/project/proposal.md#7-timeline-and-milestones)
-| Progress: [`docs/status/weekly_updates.md`](docs/status/weekly_updates.md)
+For capstone-era training operations (GCE launches, log-sync workflow,
+post-training analysis), see
+[`docs/capstone/ops/`](docs/capstone/ops/).
 
 ## Troubleshooting
 

@@ -5,6 +5,25 @@ All rules below are MANDATORY unless marked SHOULD.
 
 ---
 
+## Project state
+
+The repo hosts two programs:
+
+- **ggSwarm Capstone (v1)** — shipped 2026-04-24, frozen. Docs at
+  `docs/capstone/`. Snapshot tag `v1.0.0-capstone`, branch `capstone`.
+  The "Capstone-era rules" section below applied during that program and
+  is preserved as historical context.
+- **ggSwarm Live** — active program. Real-hardware deployment for drone
+  light shows on PX4 via Skybrush. Docs at `docs/ggswarm_live/`.
+
+Rules in this file currently target the Capstone-era workflow and need to
+be re-evaluated as ggSwarm Live work begins. Until that re-evaluation,
+the workflow rules below remain in effect for any sim-only / capstone-tree
+work, and a ggSwarm Live rules section will be added here as Phase 1
+starts.
+
+---
+
 ## Shell / Environment
 
 - **Shell is PowerShell on Windows.** Use Unix shell syntax in Bash tool calls (forward slashes, `/dev/null`), but observe the PowerShell rules below for any commands the user runs locally.
@@ -93,7 +112,7 @@ tensorboard --logdir logs/skrl/ggswarm
 ## Video Recording (MANDATORY)
 
 - Always pass `--video_prefix <run_label>` when recording video.
-- The run label must match the label used in `docs/status/run_history.md` for traceability.
+- The run label must match the label used in `docs/capstone/status/run_history.md` for traceability.
 - Videos use NVENC H.264 hardware encoding via `ggswarm.viz.nvenc_recorder`.
 - Default resolution: 1920×1080 (set in `GgswarmEnvCfg.viewer`).
 
@@ -103,7 +122,7 @@ tensorboard --logdir logs/skrl/ggswarm
 
 - Every reward term must have a scale in `GgswarmEnvCfg` and (if applicable) a sigma/threshold parameter.
 - Planned-but-disabled reward terms must be `0.0` in cfg (not commented out).
-- Any reward change must be logged in `docs/status/changelog.md` with rationale.
+- Any reward change must be logged in `docs/capstone/status/changelog.md` (frozen) or `docs/ggswarm_live/status/changelog.md` (active) with rationale.
 - No magic numbers in env core — all tunable constants must be cfg parameters.
 
 ## Tensor Shape Contracts (MANDATORY)
@@ -128,9 +147,10 @@ tensorboard --logdir logs/skrl/ggswarm
 
 | Document | Update trigger |
 | :--- | :--- |
-| `docs/status/changelog.md` | Every reward change, phase transition, or major bug fix |
-| `docs/status/weekly_updates.md` | Weekly snapshot (Tuesdays) |
-| `docs/phases/` | Phase start/completion |
+| `docs/ggswarm_live/status/changelog.md` | Every reward change, phase transition, or major bug fix (active program) |
+| `docs/ggswarm_live/status/log.md` | Rolling notes (no fixed cadence) |
+| `docs/ggswarm_live/phases/` | Phase start/completion |
+| `docs/capstone/**` | **Frozen.** Do not edit except to fix dangling links during reorgs. |
 
 ## Markdown Hygiene (MANDATORY)
 
@@ -143,18 +163,14 @@ tensorboard --logdir logs/skrl/ggswarm
 
 ---
 
-## Hard Deadline: Apr 24, 2026 (MANDATORY)
+## Hard Deadline: Apr 24, 2026 (RETIRED — capstone shipped)
 
-Capstone Festival presentation and all submissions due **Apr 24, 2026**.
+The capstone shipped on schedule. ggSwarm Live runs on solo pace with no
+fixed deadlines. The "must not propose extending any deadline" rule no
+longer applies; scope and pacing decisions for Live are open.
 
-### Decision authority
-
-Gary makes all scope-cut calls. The assistant **must not propose extending any deadline** — only propose what to cut.
-
-### Timeline references
-
-- Authoritative source: `docs/project/proposal.md` § 7.
-- Current status: `docs/status/weekly_updates.md`.
+For historical reference: capstone proposal `docs/capstone/project/proposal.md` § 7;
+weekly updates `docs/capstone/status/weekly_updates.md`.
 
 ## Post-Training Review (MANDATORY)
 
@@ -162,7 +178,7 @@ After every training run, before any reward change or relaunch:
 
 1. Check TB scalars (reward, episode length, policy std).
 2. Run play with `--trajectories` to verify behavior visually.
-3. Log results in `docs/status/changelog.md`.
+3. Log results in `docs/ggswarm_live/status/changelog.md`.
 
 ## Smoke Test Before GCE (MANDATORY)
 
