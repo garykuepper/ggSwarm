@@ -1,0 +1,53 @@
+{
+  "checkpoint_path": "logs/skrl/ggswarm/p4/2026-04-06_21-09-24_ppo_torch/checkpoints/best_agent.pt",
+  "checkpoint_sha256": "bde1049fc24d636536bceb05e1eff4645f2fbd05b41145bf8b5a67227c51b559",
+  "capstone_commit": "c33d339",
+  "capstone_tag": "v1.0.0-capstone",
+  "task": "ggswarm-v0",
+  "num_agents": 8,
+  "play_length": 500,
+  "seeds": [
+    7,
+    13,
+    21,
+    42,
+    99
+  ],
+  "collision_radius_m": 0.1,
+  "metrics": {
+    "mean_slot_error_m": {
+      "mean": 0.21893958672870165,
+      "std": 0.01876847322900038,
+      "per_seed": {
+        "7": 0.23533485382785246,
+        "13": 0.2357614967522479,
+        "21": 0.22516457359253658,
+        "42": 0.20372673597800028,
+        "99": 0.19471027349287096
+      }
+    },
+    "collision_pairs_per_step": {
+      "mean": 0.0,
+      "std": 0.0,
+      "per_seed": {
+        "7": 0.0,
+        "13": 0.0,
+        "21": 0.0,
+        "42": 0.0,
+        "99": 0.0
+      }
+    },
+    "final_distance_to_goal_m": {
+      "mean": 0.0938424334469182,
+      "std": 0.0002455064184870038,
+      "per_seed": {
+        "7": 0.09392989939158465,
+        "13": 0.09364404412089863,
+        "21": 0.0936757695383947,
+        "42": 0.09423399257581695,
+        "99": 0.09372846160789605
+      }
+    }
+  },
+  "notes": "episode_reward intentionally omitted: play.py does not surface per-rollout reward. Replay gate uses the three CSV-derivable metrics (mean_slot_error_m, collision_pairs_per_step, final_distance_to_goal_m) at 2-sigma tolerance."
+}

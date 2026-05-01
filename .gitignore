@@ -77,8 +77,12 @@ tests/
 # Virtual environment
 env_isaaclab/
 
-# Training logs (archived on GCS)
-logs/
+# Training logs (archived on GCS) — `logs/*` not `logs/` so we can
+# re-include subtrees like `logs/ref/` (gitignore can't re-include
+# children of a fully-ignored parent directory).
+logs/*
+# Exception: tracked reference rollouts (Phase 1a replay gate, etc.)
+!logs/ref/
 
 # Hydra outputs
 outputs/
