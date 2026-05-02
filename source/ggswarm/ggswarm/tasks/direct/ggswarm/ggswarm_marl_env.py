@@ -53,24 +53,26 @@ class GgswarmMarlEnv(DirectMARLEnv):
         self._global_step = 0
 
         # Pair indices for formation pairwise distance error
-        self._pair_indices: list[tuple[int, int]] = [
-            (i, j) for i in range(A) for j in range(i + 1, A)
-        ]
+        self._pair_indices: list[tuple[int, int]] = [(i, j) for i in range(A) for j in range(i + 1, A)]
 
         # Formation slot offsets — XYZ offset from env centroid per drone
         from ggswarm.formations import get_formation  # noqa: PLC0415
+
         spacing = self.cfg.formation_target_spacing
         radius = spacing / (2 * math.sin(math.pi / A))
         self._formation_offsets = get_formation(
-            self.cfg.formation_shape, A, radius=radius, spacing=spacing,
+            self.cfg.formation_shape,
+            A,
+            radius=radius,
+            spacing=spacing,
         ).to(device)  # [A, 3]
 
         # Per-drone scratch tensors (pre-allocated; reused every step)
-        self._actions = torch.zeros(N_drones, 4, device=device)               # [N_drones, 4]
-        self._smoothed_actions = torch.zeros(N_drones, 4, device=device)      # [N_drones, 4]
-        self._thrust = torch.zeros(N_drones, 1, 3, device=device)             # [N_drones, 1, 3]
-        self._moment = torch.zeros(N_drones, 1, 3, device=device)             # [N_drones, 1, 3]
-        self._desired_pos_w = torch.zeros(N_drones, 3, device=device)         # [N_drones, 3]
+        self._actions = torch.zeros(N_drones, 4, device=device)  # [N_drones, 4]
+        self._smoothed_actions = torch.zeros(N_drones, 4, device=device)  # [N_drones, 4]
+        self._thrust = torch.zeros(N_drones, 1, 3, device=device)  # [N_drones, 1, 3]
+        self._moment = torch.zeros(N_drones, 1, 3, device=device)  # [N_drones, 1, 3]
+        self._desired_pos_w = torch.zeros(N_drones, 3, device=device)  # [N_drones, 3]
 
         # MINCO trajectory state (per-drone)
         self._minco_pos = torch.zeros(N_drones, 4, device=device)
@@ -79,10 +81,10 @@ class GgswarmMarlEnv(DirectMARLEnv):
 
         # Cloud-mode per-env scratch buffers
         if self._cloud_mode:
-            self._group_goal_local = torch.zeros(N_envs, 3, device=device)        # [N_envs, 3]
-            self._cloud_centroid_dist = torch.zeros(N_envs, device=device)        # [N_envs]
-            self._cloud_spacing_penalty = torch.zeros(N_envs, A, device=device)   # [N_envs, A]
-            self._cloud_cohesion_reward = torch.zeros(N_envs, A, device=device)   # [N_envs, A]
+            self._group_goal_local = torch.zeros(N_envs, 3, device=device)  # [N_envs, 3]
+            self._cloud_centroid_dist = torch.zeros(N_envs, device=device)  # [N_envs]
+            self._cloud_spacing_penalty = torch.zeros(N_envs, A, device=device)  # [N_envs, A]
+            self._cloud_cohesion_reward = torch.zeros(N_envs, A, device=device)  # [N_envs, A]
 
         # KNN edge buffer for GNN message passing (per-drone, bidirectional)
         K = min(self.cfg.num_neighbors, A - 1)
@@ -93,9 +95,9 @@ class GgswarmMarlEnv(DirectMARLEnv):
             self._knn_src_pattern = torch.arange(A, device=device).unsqueeze(1).expand(A, K)  # [A, K]
 
         # Pre-allocated reward / collision aggregation buffers
-        self._zero_reward_drones = torch.zeros(N_drones, device=device)       # [N_drones]
-        self._formation_total_error = torch.zeros(N_envs, device=device)      # [N_envs]
-        self._collision_count = torch.zeros(N_envs, device=device)            # [N_envs]
+        self._zero_reward_drones = torch.zeros(N_drones, device=device)  # [N_drones]
+        self._formation_total_error = torch.zeros(N_envs, device=device)  # [N_envs]
+        self._collision_count = torch.zeros(N_envs, device=device)  # [N_envs]
 
         # SwarmRaft state (per-drone alive mask, per-env dropout step)
         self._agent_alive = torch.ones(N_drones, dtype=torch.bool, device=device)  # [N_drones]
@@ -103,12 +105,10 @@ class GgswarmMarlEnv(DirectMARLEnv):
 
         # Forest base goal (per-drone, used when forest_enabled)
         if self.cfg.forest_enabled:
-            self._forest_base_goal = torch.zeros(N_drones, 3, device=device)       # [N_drones, 3]
+            self._forest_base_goal = torch.zeros(N_drones, 3, device=device)  # [N_drones, 3]
 
         # Per-drone env origin broadcast (avoids per-step repeat_interleave)
-        self._env_origins_per_drone = self._terrain.env_origins.repeat_interleave(
-            A, dim=0
-        )  # [N_drones, 3]
+        self._env_origins_per_drone = self._terrain.env_origins.repeat_interleave(A, dim=0)  # [N_drones, 3]
 
         # Body index, mass, weight (regex Articulation: one "body" link per drone)
         self._body_id = self._robot.find_bodies("body")[0]
@@ -122,9 +122,11 @@ class GgswarmMarlEnv(DirectMARLEnv):
             for key in ("lin_vel", "ang_vel", "distance_to_goal", "formation")
         }
 
-        # Debug draw for altitude lines (best-effort)
+        # Debug draw for altitude lines + KNN neighbor edges (best-effort —
+        # only available when running with the Isaac Sim GUI).
         try:
             from isaacsim.util.debug_draw import _debug_draw  # noqa: PLC0415
+
             self._debug_draw = _debug_draw.acquire_debug_draw_interface()
         except Exception:
             self._debug_draw = None
@@ -199,6 +201,7 @@ class GgswarmMarlEnv(DirectMARLEnv):
 
     def _spawn_forest_cylinders(self, stage) -> None:
         from pxr import Gf, UsdGeom, UsdPhysics, UsdShade  # noqa: PLC0415
+
         r = self.cfg.forest_obstacle_radius
         h = self.cfg.forest_obstacle_height
         for k in range(self._obstacle_pos.shape[0]):
@@ -227,9 +230,7 @@ class GgswarmMarlEnv(DirectMARLEnv):
         # Pack per-agent [num_envs, 4] dict into per-drone [N_drones, 4] env-major.
         A = self._A
         N_envs = self.num_envs
-        stacked = torch.stack(
-            [actions[f"drone_{i}"].clamp(-1.0, 1.0) for i in range(A)], dim=1
-        )  # [N_envs, A, 4]
+        stacked = torch.stack([actions[f"drone_{i}"].clamp(-1.0, 1.0) for i in range(A)], dim=1)  # [N_envs, A, 4]
         self._actions.copy_(stacked.reshape(N_envs * A, 4))
 
         # Forest goal deflection (neighbor-velocity-guided)
@@ -256,9 +257,9 @@ class GgswarmMarlEnv(DirectMARLEnv):
             pair_dist = torch.cdist(pos_g, pos_g)
             pair_dist = pair_dist + torch.eye(A, device=self.device).unsqueeze(0) * 1e6
             _, knn_idx = torch.topk(pair_dist, K_nn, dim=2, largest=False)
-            knn_vel = vel_g.gather(
-                1, knn_idx.reshape(N_envs, A * K_nn, 1).expand(N_envs, A * K_nn, 2)
-            ).reshape(N_envs, A, K_nn, 2)
+            knn_vel = vel_g.gather(1, knn_idx.reshape(N_envs, A * K_nn, 1).expand(N_envs, A * K_nn, 2)).reshape(
+                N_envs, A, K_nn, 2
+            )
             neighbor_mean_vel = knn_vel.mean(dim=2).reshape(-1, 2)  # [N_drones, 2]
 
             for k in range(self._obstacle_pos.shape[0]):
@@ -293,10 +294,11 @@ class GgswarmMarlEnv(DirectMARLEnv):
             should_trigger = (self.episode_length_buf == self._dropout_step) & (self._dropout_step > 0)
             if should_trigger.any():
                 from ggswarm.formations import get_formation  # noqa: PLC0415
+
                 A_local = self._A
                 for g in should_trigger.nonzero(as_tuple=True)[0]:
                     drone_start = int(g) * A_local
-                    alive_in_env = self._agent_alive[drone_start:drone_start + A_local].nonzero(as_tuple=True)[0]
+                    alive_in_env = self._agent_alive[drone_start : drone_start + A_local].nonzero(as_tuple=True)[0]
                     if len(alive_in_env) > 2:
                         victim = alive_in_env[torch.randint(len(alive_in_env), (1,))]
                         self._agent_alive[drone_start + victim] = False
@@ -304,14 +306,17 @@ class GgswarmMarlEnv(DirectMARLEnv):
                         spacing = self.cfg.formation_target_spacing
                         radius = spacing / (2 * math.sin(math.pi / max(n_alive, 2)))
                         new_offsets = get_formation(
-                            self.cfg.formation_shape, n_alive, radius=radius, spacing=spacing,
+                            self.cfg.formation_shape,
+                            n_alive,
+                            radius=radius,
+                            spacing=spacing,
                         ).to(self.device)
-                        alive_mask = self._agent_alive[drone_start:drone_start + A_local]
+                        alive_mask = self._agent_alive[drone_start : drone_start + A_local]
                         alive_ids = alive_mask.nonzero(as_tuple=True)[0]
                         first_alive = drone_start + int(alive_ids[0])
                         centroid_w = self._desired_pos_w[first_alive] - self._formation_offsets[0]
                         slot_pos = centroid_w.unsqueeze(0) + new_offsets
-                        drone_pos = self._robot.data.root_pos_w[drone_start:drone_start + A_local][alive_mask]
+                        drone_pos = self._robot.data.root_pos_w[drone_start : drone_start + A_local][alive_mask]
                         dist_matrix = torch.cdist(drone_pos, slot_pos)
                         claimed = torch.zeros(n_alive, dtype=torch.bool, device=self.device)
                         for _ in range(n_alive):
@@ -327,6 +332,7 @@ class GgswarmMarlEnv(DirectMARLEnv):
         # MINCO smoothing or EMA fallback
         if self.cfg.minco_enabled:
             from ggswarm.minco import apply_minco  # noqa: PLC0415
+
             act = apply_minco(
                 self._actions,
                 self._minco_pos,
@@ -347,6 +353,7 @@ class GgswarmMarlEnv(DirectMARLEnv):
         # CBF safety shield
         if self.cfg.cbf_enabled:
             from ggswarm.cbf import apply_cbf  # noqa: PLC0415
+
             act = apply_cbf(
                 act,
                 self._robot.data.root_pos_w,
@@ -365,9 +372,7 @@ class GgswarmMarlEnv(DirectMARLEnv):
             act[~self._agent_alive] = 0.0
 
         # Compose thrust + moment
-        self._thrust[:, 0, 2] = (
-            self.cfg.thrust_to_weight * self._robot_weight * (act[:, 0] + 1.0) / 2.0
-        )
+        self._thrust[:, 0, 2] = self.cfg.thrust_to_weight * self._robot_weight * (act[:, 0] + 1.0) / 2.0
         self._moment[:, 0, :] = self.cfg.moment_scale * act[:, 1:]
 
     def _apply_action(self) -> None:
@@ -392,10 +397,10 @@ class GgswarmMarlEnv(DirectMARLEnv):
         # Per-drone 12D base obs
         base_obs = torch.cat(
             [
-                self._robot.data.root_lin_vel_b,        # [N_drones, 3]
-                self._robot.data.root_ang_vel_b,        # [N_drones, 3]
-                self._robot.data.projected_gravity_b,   # [N_drones, 3]
-                desired_pos_b,                          # [N_drones, 3]
+                self._robot.data.root_lin_vel_b,  # [N_drones, 3]
+                self._robot.data.root_ang_vel_b,  # [N_drones, 3]
+                self._robot.data.projected_gravity_b,  # [N_drones, 3]
+                desired_pos_b,  # [N_drones, 3]
             ],
             dim=-1,
         )  # [N_drones, 12]
@@ -409,7 +414,7 @@ class GgswarmMarlEnv(DirectMARLEnv):
         rel_parts: list[torch.Tensor] = []
         all_nearest_idx: list[torch.Tensor] = []
         for i in range(A):
-            diff = pos_grouped - pos_grouped[:, i:i + 1, :]
+            diff = pos_grouped - pos_grouped[:, i : i + 1, :]
             dists = torch.linalg.norm(diff, dim=2)
             dists[:, i] = float("inf")
             if dead_g is not None:
@@ -440,13 +445,55 @@ class GgswarmMarlEnv(DirectMARLEnv):
         self._knn_edge_index[1, half:] = global_src
         try:
             from ggswarm.gnn_policy import GgswarmGNNPolicy  # noqa: PLC0415
+
             GgswarmGNNPolicy.set_knn_edges(self._knn_edge_index, N_drones)
         except Exception:
             pass  # MLP policy path doesn't need edges
 
+        if self._debug_draw is not None:
+            self._draw_debug_overlay(A, K)
+
         # Reshape per-drone obs to per-agent dict
         obs_per_env_agent = full_obs.reshape(N_envs, A, -1)
         return {f"drone_{i}": obs_per_env_agent[:, i] for i in range(A)}
+
+    def _draw_debug_overlay(self, A: int, K: int) -> None:
+        """Render env_0 altitude lines + KNN edges via the Isaac Sim debug-draw API.
+
+        Best-effort visualization — only fires when running with the GUI
+        (the debug-draw interface is None in headless training). Each drone
+        gets a vertical line down to ground at its XY, colored from an HSV
+        wheel; KNN edges inherit the source drone's color so the graph
+        structure is readable. Dropped agents (alive mask false) are skipped.
+        """
+        import colorsys  # noqa: PLC0415
+
+        self._debug_draw.clear_lines()
+        colors = [(*colorsys.hsv_to_rgb(i / A, 0.9, 0.9), 0.9) for i in range(A)]
+        for i in range(A):
+            pos_i = self._robot.data.root_pos_w[i].cpu().tolist()
+            self._debug_draw.draw_lines(
+                [pos_i],
+                [[pos_i[0], pos_i[1], 0.0]],
+                [colors[i]],
+                [1.0],
+            )
+        # KNN neighbor edges (env_0 only). The first A*K entries of
+        # _knn_edge_index are forward edges, env-major; for env_0 those are
+        # indices 0..A*K-1, with src=drone_i, dst=neighbor.
+        for i in range(A):
+            if self.cfg.dropout_enabled and not self._agent_alive[i]:
+                continue
+            pos_i = self._robot.data.root_pos_w[i].cpu().tolist()
+            src_color = (*colors[i][:3], 0.6)
+            for k in range(K):
+                j = int(self._knn_edge_index[1, i * K + k])
+                if j >= A:  # only draw within env_0
+                    continue
+                if self.cfg.dropout_enabled and not self._agent_alive[j]:
+                    continue
+                pos_j = self._robot.data.root_pos_w[j].cpu().tolist()
+                self._debug_draw.draw_lines([pos_i], [pos_j], [src_color], [2.0])
 
     def _get_states(self) -> torch.Tensor:
         # state_space=-1 → DirectMARLEnv concatenates obs_dict for us.
@@ -462,19 +509,12 @@ class GgswarmMarlEnv(DirectMARLEnv):
         # Hover terms (per-drone)
         lin_vel = torch.sum(torch.square(self._robot.data.root_lin_vel_b), dim=1)
         ang_vel = torch.sum(torch.square(self._robot.data.root_ang_vel_b), dim=1)
-        distance_to_goal = torch.linalg.norm(
-            self._desired_pos_w - self._robot.data.root_pos_w, dim=1
-        )
-        distance_to_goal_mapped = 1 - torch.tanh(
-            distance_to_goal / self.cfg.distance_to_goal_sigma
-        )
+        distance_to_goal = torch.linalg.norm(self._desired_pos_w - self._robot.data.root_pos_w, dim=1)
+        distance_to_goal_mapped = 1 - torch.tanh(distance_to_goal / self.cfg.distance_to_goal_sigma)
         if self._cloud_mode:
             dtg_reward = self._zero_reward_drones
         else:
-            dtg_reward = (
-                self.cfg.distance_to_goal_reward_scale
-                * distance_to_goal_mapped * self.step_dt
-            )
+            dtg_reward = self.cfg.distance_to_goal_reward_scale * distance_to_goal_mapped * self.step_dt
 
         rewards_per_drone = {
             "lin_vel": self.cfg.lin_vel_reward_scale * lin_vel * self.step_dt,
@@ -502,10 +542,14 @@ class GgswarmMarlEnv(DirectMARLEnv):
         N_drones = self._N_drones
         pos_local = self._robot.data.root_pos_w - self._env_origins_per_drone  # [N_drones, 3]
         pos_grouped = pos_local.reshape(N_envs, A, 3)
-        alpha = min(1.0, max(0.0,
-            (self._global_step - self.cfg.formation_curriculum_start)
-            / max(1, self.cfg.formation_curriculum_end - self.cfg.formation_curriculum_start)
-        ))
+        alpha = min(
+            1.0,
+            max(
+                0.0,
+                (self._global_step - self.cfg.formation_curriculum_start)
+                / max(1, self.cfg.formation_curriculum_end - self.cfg.formation_curriculum_start),
+            ),
+        )
         if alpha <= 0.0:
             return self._zero_reward_drones
         self._formation_total_error.zero_()
@@ -514,9 +558,7 @@ class GgswarmMarlEnv(DirectMARLEnv):
             self._formation_total_error += torch.abs(dist - self.cfg.formation_target_spacing)
         mean_error = self._formation_total_error / len(self._pair_indices)
         formation_mapped = 1 - torch.tanh(mean_error / self.cfg.formation_reward_sigma)
-        formation_reward = (
-            alpha * self.cfg.formation_reward_scale * formation_mapped * self.step_dt
-        )
+        formation_reward = alpha * self.cfg.formation_reward_scale * formation_mapped * self.step_dt
         # Log to first agent's extras
         log0 = self.extras[self._agent_ids[0]].setdefault("log", {})
         log0["Metrics/mean_formation_error_m"] = mean_error.mean().item()
@@ -530,10 +572,14 @@ class GgswarmMarlEnv(DirectMARLEnv):
         K = self._K
         pos_local = self._robot.data.root_pos_w - self._env_origins_per_drone
         pos_grouped = pos_local.reshape(N_envs, A, 3)
-        alpha = min(1.0, max(0.0,
-            (self._global_step - self.cfg.formation_curriculum_start)
-            / max(1, self.cfg.formation_curriculum_end - self.cfg.formation_curriculum_start)
-        ))
+        alpha = min(
+            1.0,
+            max(
+                0.0,
+                (self._global_step - self.cfg.formation_curriculum_start)
+                / max(1, self.cfg.formation_curriculum_end - self.cfg.formation_curriculum_start),
+            ),
+        )
         if alpha <= 0.0:
             return self._zero_reward_drones
 
@@ -545,12 +591,8 @@ class GgswarmMarlEnv(DirectMARLEnv):
         else:
             centroid = pos_grouped.mean(dim=1, keepdim=True)
         centroid_squeezed = centroid.squeeze(1)
-        self._cloud_centroid_dist[:] = torch.linalg.norm(
-            centroid_squeezed - self._group_goal_local, dim=1
-        )
-        centroid_mapped = 1 - torch.tanh(
-            self._cloud_centroid_dist / self.cfg.cloud_centroid_goal_sigma
-        )
+        self._cloud_centroid_dist[:] = torch.linalg.norm(centroid_squeezed - self._group_goal_local, dim=1)
+        centroid_mapped = 1 - torch.tanh(self._cloud_centroid_dist / self.cfg.cloud_centroid_goal_sigma)
         centroid_reward = self.cfg.cloud_centroid_goal_scale * centroid_mapped * self.step_dt
         centroid_reward_broadcast = centroid_reward.unsqueeze(1).expand(N_envs, A)
 
@@ -558,7 +600,7 @@ class GgswarmMarlEnv(DirectMARLEnv):
         self._cloud_spacing_penalty.zero_()
         dead_g = ~self._agent_alive.reshape(N_envs, A) if self.cfg.dropout_enabled else None
         for i in range(A):
-            diff = pos_grouped - pos_grouped[:, i:i + 1, :]
+            diff = pos_grouped - pos_grouped[:, i : i + 1, :]
             dists = torch.linalg.norm(diff, dim=2)
             dists[:, i] = float("inf")
             if dead_g is not None:
@@ -566,20 +608,16 @@ class GgswarmMarlEnv(DirectMARLEnv):
             knn_dists, _ = torch.topk(dists, K, dim=1, largest=False)
             mean_knn = knn_dists.mean(dim=1)
             cohesion_mapped = 1 - torch.tanh(mean_knn / self.cfg.cloud_cohesion_sigma)
-            self._cloud_cohesion_reward[:, i] = (
-                self.cfg.cloud_cohesion_scale * cohesion_mapped * self.step_dt
-            )
+            self._cloud_cohesion_reward[:, i] = self.cfg.cloud_cohesion_scale * cohesion_mapped * self.step_dt
             nearest_dist = knn_dists[:, 0]
             too_far = torch.clamp(nearest_dist - self.cfg.cloud_max_neighbor_dist, min=0.0)
             too_close = torch.clamp(self.cfg.cloud_min_spacing - nearest_dist, min=0.0)
-            self._cloud_spacing_penalty[:, i] = -(
-                self.cfg.cloud_spacing_penalty * too_far
-                + self.cfg.cloud_separation_penalty * too_close
-            ) * self.step_dt
+            self._cloud_spacing_penalty[:, i] = (
+                -(self.cfg.cloud_spacing_penalty * too_far + self.cfg.cloud_separation_penalty * too_close)
+                * self.step_dt
+            )
 
-        total = alpha * (
-            centroid_reward_broadcast + self._cloud_cohesion_reward + self._cloud_spacing_penalty
-        )
+        total = alpha * (centroid_reward_broadcast + self._cloud_cohesion_reward + self._cloud_spacing_penalty)
         if dead_g is not None:
             total[dead_g] = 0.0
 
@@ -652,9 +690,7 @@ class GgswarmMarlEnv(DirectMARLEnv):
                 env_ids = torch.as_tensor(env_ids, device=self.device, dtype=torch.long)
 
         n_envs_reset = env_ids.shape[0]
-        drone_ids = (
-            env_ids.unsqueeze(1) * A + torch.arange(A, device=self.device)
-        ).reshape(-1)
+        drone_ids = (env_ids.unsqueeze(1) * A + torch.arange(A, device=self.device)).reshape(-1)
 
         # Log episode metrics
         final_distance_to_goal = torch.linalg.norm(
@@ -665,8 +701,16 @@ class GgswarmMarlEnv(DirectMARLEnv):
             avg = torch.mean(self._episode_sums[key][drone_ids])
             log0[f"Episode_Reward/{key}"] = (avg / self.max_episode_length_s).item()
             self._episode_sums[key][drone_ids] = 0.0
-        log0["Episode_Termination/died"] = torch.count_nonzero(self.terminated_dict[self._agent_ids[0]][env_ids]).item() if hasattr(self, "terminated_dict") else 0
-        log0["Episode_Termination/time_out"] = torch.count_nonzero(self.time_out_dict[self._agent_ids[0]][env_ids]).item() if hasattr(self, "time_out_dict") else 0
+        log0["Episode_Termination/died"] = (
+            torch.count_nonzero(self.terminated_dict[self._agent_ids[0]][env_ids]).item()
+            if hasattr(self, "terminated_dict")
+            else 0
+        )
+        log0["Episode_Termination/time_out"] = (
+            torch.count_nonzero(self.time_out_dict[self._agent_ids[0]][env_ids]).item()
+            if hasattr(self, "time_out_dict")
+            else 0
+        )
         log0["Metrics/final_distance_to_goal"] = final_distance_to_goal.item()
 
         # Articulation reset (drone-level instance ids)
@@ -675,9 +719,7 @@ class GgswarmMarlEnv(DirectMARLEnv):
 
         # Stagger episode lengths on full reset
         if all_envs and N_envs > 1:
-            self.episode_length_buf = torch.randint(
-                0, int(self.max_episode_length), (N_envs,), device=self.device
-            )
+            self.episode_length_buf = torch.randint(0, int(self.max_episode_length), (N_envs,), device=self.device)
 
         # Per-drone scratch reset
         self._actions[drone_ids] = 0.0
@@ -690,16 +732,16 @@ class GgswarmMarlEnv(DirectMARLEnv):
         # SwarmRaft: per-env dropout step
         if self.cfg.dropout_enabled:
             self._dropout_step[env_ids] = torch.randint(
-                self.cfg.dropout_step_min, self.cfg.dropout_step_max + 1,
-                (n_envs_reset,), device=self.device,
+                self.cfg.dropout_step_min,
+                self.cfg.dropout_step_max + 1,
+                (n_envs_reset,),
+                device=self.device,
             )
 
         # Sample formation centroid per env
         if self.cfg.formation_centroid is not None:
             fc = self.cfg.formation_centroid
-            centroid = torch.tensor(
-                [[fc[0], fc[1], fc[2]]], device=self.device
-            ).expand(n_envs_reset, 3).clone()
+            centroid = torch.tensor([[fc[0], fc[1], fc[2]]], device=self.device).expand(n_envs_reset, 3).clone()
         else:
             centroid_xy = torch.zeros(n_envs_reset, 2, device=self.device).uniform_(-0.5, 0.5)
             centroid_z = torch.zeros(n_envs_reset, 1, device=self.device).uniform_(0.5, 1.5)
@@ -718,9 +760,7 @@ class GgswarmMarlEnv(DirectMARLEnv):
                 e = int(env_ids[e_idx])
                 drone_start = e * A
                 origin_e = self._terrain.env_origins[e]
-                drone_pos_local = (
-                    self._robot.data.root_pos_w[drone_start:drone_start + A] - origin_e.unsqueeze(0)
-                )
+                drone_pos_local = self._robot.data.root_pos_w[drone_start : drone_start + A] - origin_e.unsqueeze(0)
                 slot_pos = centroid[e_idx] + self._formation_offsets
                 dist_matrix = torch.cdist(drone_pos_local, slot_pos)
                 claimed = torch.zeros(A, dtype=torch.bool, device=self.device)

@@ -4,10 +4,6 @@
 
 **Multi-Agent Drone Swarm with Adaptive Trajectory Execution**
 
-Gary Kuepper — KOZ Enterprises
-Long Beach, California
-DRAFT — April 2026
-
 ---
 
 ## 1. Introduction
