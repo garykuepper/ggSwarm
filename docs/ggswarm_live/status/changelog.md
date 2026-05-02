@@ -115,6 +115,55 @@ for the MAPPO recut.
 Tag: `phase1a-shared-scene-mappo`. Branch: `phase1a-shared-scene`.
 Plan file: `~/.claude/plans/bubbly-petting-platypus.md`.
 
+### MAPPO smoke training run (post-tag, 2026-05-01)
+
+First from-scratch MAPPO training to verify the GNN + GATv2 architecture
+trains end-to-end. 500 iters × 24 rollouts × 512 envs × 8 drones,
+2814 s wall-clock (~47 min). Checkpoint at
+`logs/skrl/ggswarm/p1a/2026-05-01_19-10-21_mappo_torch/checkpoints/best_agent.pt`.
+
+**Architecture verified working:**
+
+- TB reward / mean: −907.7 → −43.2 (21× improvement, n=100 logs)
+- TB instantaneous reward / mean: −47.5 → −2.0 (approaches near-optimal hover)
+- Parameter sharing confirmed: drone_0..drone_7 policy state_dicts bit-identical
+- KNN edge publication + GATv2 message passing: zero shape errors over 12,000
+  rollout steps
+- Centralized critic gradient flow: stable losses across all 8 agents
+- CBF safety shield: 0 collisions across 5-seed eval
+
+**Formation behavior NOT converged at 500 iters:**
+
+| metric | capstone (mean ± std) | MAPPO @500 (mean ± std) |
+| :--- | :--- | :--- |
+| mean_slot_error_m | 0.2189 ± 0.0188 | 1.1807 ± 0.0020 |
+| collision_pairs_per_step | 0.0 | 0.0 |
+| final_distance_to_goal_m | 0.0938 ± 0.0002 | 1.1972 ± 0.0613 |
+
+Drones cluster ~1.2 m off their formation slots — the policy converged to
+a local optimum (hover near env centroid) rather than spreading to a
+triangle formation. The very tight per-seed std on slot_err (0.002 m
+across 5 seeds) indicates the policy IS converged, just to the wrong
+basin. Capstone needed substantially more compute + iterative reward
+tuning to nail formation; 500 iters from random init under MAPPO is
+undertrained, not broken. Eval CSV at
+[`logs/sweeps/phase1a_replay_gate.txt`](../../../logs/sweeps/phase1a_replay_gate.txt)
+(now reflects MAPPO @500 result, replacing the earlier capstone-replay
+result; see git log for the prior numbers).
+
+**Next steps for formation convergence (not yet executed):**
+
+- Longer training run (1500–3000 iters) — most likely fix.
+- Warm-start from capstone actor weights — replay_gate already loads them
+  successfully; train.py needs a small hook for the same behavior.
+- Tune `formation_reward_scale` higher (cur 2.0; try 4.0–8.0) to outweigh
+  velocity penalties early in training.
+
+Also: extended `scripts/skrl/replay_gate.py:load_actor_weights()` to
+dispatch on checkpoint format (capstone single-agent PPO with top-level
+`policy` key vs MAPPO MARL with per-agent `drone_i.policy` dicts). Same
+script now evaluates either checkpoint in the shared-scene env.
+
 ## 2026-04-30 — Program kickoff
 
 - Reorganized `docs/` into `docs/capstone/` (frozen) and

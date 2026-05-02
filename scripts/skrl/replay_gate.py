@@ -71,15 +71,42 @@ def build_env(num_envs: int, play_length: int, forest: bool = False):
     return SkrlVecEnvWrapper(env, ml_framework="torch"), env_cfg
 
 
-def load_capstone_actor(checkpoint_path: str, actor: GgswarmGNNPolicy, device) -> dict | None:
+def load_actor_weights(checkpoint_path: str, actor: GgswarmGNNPolicy, device) -> dict | None:
+    """Loads actor weights from either a capstone single-agent PPO checkpoint
+    (top-level `policy`/`value`/`state_preprocessor` keys) or a MAPPO MARL
+    checkpoint (per-agent dicts keyed by `drone_0..drone_{A-1}`, each with the
+    same nested structure). Returns the state_preprocessor stats dict for
+    manual obs normalization, or None if absent.
+    """
     ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
-    policy_sd = ckpt["policy"] if isinstance(ckpt, dict) and "policy" in ckpt else ckpt
+    if not isinstance(ckpt, dict):
+        policy_sd = ckpt
+        sp = None
+    elif "policy" in ckpt:
+        # Single-agent PPO format (capstone)
+        policy_sd = ckpt["policy"]
+        sp = ckpt.get("state_preprocessor")
+        print("[INFO] Loading single-agent PPO checkpoint (capstone format)")
+    elif "drone_0" in ckpt:
+        # MAPPO format — all drones share weights, pull from drone_0
+        policy_sd = ckpt["drone_0"]["policy"]
+        sp = ckpt["drone_0"].get("state_preprocessor")
+        print("[INFO] Loading MAPPO checkpoint (per-agent dict format, "
+              "using drone_0's shared weights)")
+    else:
+        raise RuntimeError(
+            f"Unrecognized checkpoint structure. Top keys: {list(ckpt.keys())}"
+        )
     missing, unexpected = actor.load_state_dict(policy_sd, strict=False)
     if missing:
         print(f"[WARN] Missing keys in actor: {missing}")
     if unexpected:
         print(f"[WARN] Unexpected keys in checkpoint: {unexpected}")
-    return ckpt.get("state_preprocessor") if isinstance(ckpt, dict) else None
+    return sp
+
+
+# Backwards-compat alias for older callers / docs.
+load_capstone_actor = load_actor_weights
 
 
 def per_seed_metrics(positions: torch.Tensor, goals: torch.Tensor) -> dict[str, float]:
@@ -124,7 +151,7 @@ def main() -> int:
     )
     GgswarmGNNPolicy.init_edge_cache(memory_size=1, num_envs=env.num_envs * NUM_AGENTS)
 
-    state_preproc_stats = load_capstone_actor(args.checkpoint, actor, device)
+    state_preproc_stats = load_actor_weights(args.checkpoint, actor, device)
     actor.to(device)  # force move all params to device after state_dict load
     actor.train(False)  # inference mode (equivalent to .eval())
 
