@@ -101,6 +101,20 @@ reading; std broadening is the desired signal. Phase 1a's *purpose*
 is satisfied. Sweep CSV at
 [`logs/sweeps/phase1a_replay_gate.txt`](../../../logs/sweeps/phase1a_replay_gate.txt).
 
+### G1a-3 forest-mode play smoke (Task 9, R6 cleared)
+
+`replay_gate.py --forest --play_length 200` runs clean against the
+capstone checkpoint in the MARL env with `forest_enabled=True`. No
+shape errors in `_pre_physics_step`'s forest deflection block, no
+crashes in `_get_dones` collision detection or `_reset_idx` slot
+assignment. R6 (group plumbing collapse breaks forest mode) cleared
+for the MAPPO recut.
+
+### Phase 1a complete
+
+Tag: `phase1a-shared-scene-mappo`. Branch: `phase1a-shared-scene`.
+Plan file: `~/.claude/plans/bubbly-petting-platypus.md`.
+
 ## 2026-04-30 — Program kickoff
 
 - Reorganized `docs/` into `docs/capstone/` (frozen) and

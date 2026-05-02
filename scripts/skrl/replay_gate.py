@@ -38,6 +38,9 @@ parser.add_argument("--seeds", type=str, default="7,13,21,42,99",
 parser.add_argument("--ref_dir", type=str, default="logs/ref/v1.0.0-capstone",
                     help="Reference rollouts directory")
 parser.add_argument("--sigma_tol", type=float, default=2.0, help="Pass tolerance")
+parser.add_argument("--forest", action="store_true",
+                    help="G1a-3 forest-mode smoke: enable forest_enabled cfg, "
+                    "skip metric comparison; pass = no shape errors over play_length steps")
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
 args.headless = True
@@ -57,12 +60,13 @@ NUM_AGENTS = 8
 COLLISION_RADIUS_M = 0.10
 
 
-def build_env(num_envs: int, play_length: int):
+def build_env(num_envs: int, play_length: int, forest: bool = False):
     env_cfg = parse_env_cfg("ggswarm-marl-v0", num_envs=num_envs, use_fabric=True)
     env_cfg.scene.num_envs = num_envs
     env_cfg.episode_length_s = play_length * env_cfg.decimation * env_cfg.sim.dt + 1.0
     env_cfg.formation_centroid = (0.0, 0.0, 1.0)
     env_cfg.dropout_enabled = False
+    env_cfg.forest_enabled = forest
     env = gym.make("ggswarm-marl-v0", cfg=env_cfg)
     return SkrlVecEnvWrapper(env, ml_framework="torch"), env_cfg
 
@@ -104,8 +108,11 @@ def main() -> int:
     ref_meta = json.loads(Path(args.ref_dir, "rollouts_metadata.json").read_text())
     ref = ref_meta["metrics"]
 
-    env, env_cfg = build_env(args.num_envs, args.play_length)
+    env, env_cfg = build_env(args.num_envs, args.play_length, forest=args.forest)
     device = env.device
+    if args.forest:
+        print(f"[INFO] Forest-mode smoke (G1a-3): forest_enabled=True, "
+              f"play_length={args.play_length}, no metric comparison")
 
     agent0 = env.possible_agents[0]
     actor = GgswarmGNNPolicy(
@@ -134,6 +141,10 @@ def main() -> int:
 
     per_seed: dict[int, dict[str, float]] = {}
 
+    # Forest smoke: only run one seed, skip metric comparison.
+    if args.forest:
+        seeds = seeds[:1]
+
     for seed in seeds:
         env.unwrapped.seed(seed)
         obs_dict, _ = env.reset()
@@ -157,11 +168,20 @@ def main() -> int:
                 goals[t] = env.unwrapped._desired_pos_w[:NUM_AGENTS] - \
                     env.unwrapped._terrain.env_origins[0:1].repeat(NUM_AGENTS, 1)
 
+        if args.forest:
+            print(f"  forest smoke seed={seed}: {args.play_length} steps clean, no shape errors")
+            continue
         m = per_seed_metrics(positions, goals)
         print(f"  seed={seed}: slot_err={m['mean_slot_error_m']:.4f}, "
               f"final_dist={m['final_distance_to_goal_m']:.4f}, "
               f"coll/step={m['collision_pairs_per_step']:.4f}")
         per_seed[seed] = m
+
+    if args.forest:
+        print("\n=== Forest smoke (G1a-3) PASS — no shape errors ===")
+        env.close()
+        simulation_app.close()
+        return 0
 
     keys = ["mean_slot_error_m", "collision_pairs_per_step", "final_distance_to_goal_m"]
     aggregate = {

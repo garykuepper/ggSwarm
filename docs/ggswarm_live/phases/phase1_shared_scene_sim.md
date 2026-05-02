@@ -1,6 +1,24 @@
 # Phase 1: Shared-Scene Multi-Drone Training (sim only)
 
-**Status:** Planned. No timeline.
+**Status:** 1a complete (re-cut as MAPPO + DirectMARLEnv, 2026-05-01).
+1b/1c planned, no timeline.
+
+## Sub-phase status
+
+| Sub-phase | Status | Tag | Date |
+| :--- | :--- | :--- | :--- |
+| 1a | Complete — MAPPO + DirectMARLEnv shared-scene; mean preserved on replay gate, std broadens with real aero | `phase1a-shared-scene-mappo` | 2026-05-01 |
+| 1b | Planned — analytic + residual downwash ablation | — | — |
+| 1c | Planned — GATv2 `edge_dim=6` (ΔPos+ΔVel) | — | — |
+
+The original 1a plan (in-place facade refactor of single-agent
+`GgswarmEnv`) was abandoned mid-execution: Isaac Lab's scene cloner
+does not support multiple sibling Articulations per env, and
+`DirectRLEnv.num_envs` is hardcoded as the gym vec dim, so per-drone
+agents and shared PhysX scenes are framework-incompatible. Pivoted to
+`DirectMARLEnv` + SKRL `MAPPO` with shared GNN actor + shared
+centralized critic. See changelog 2026-05-01 entry.
+
 
 **New capability:** real inter-drone aerodynamics (downwash, wake
 turbulence) enters the training distribution.
