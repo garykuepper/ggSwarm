@@ -83,6 +83,9 @@ env_isaaclab/
 logs/*
 # Exception: tracked reference rollouts (Phase 1a replay gate, etc.)
 !logs/ref/
+# Exception: tracked sweep results (small CSVs durable across runs)
+!logs/sweeps/
+logs/sweeps/*.log
 
 # Hydra outputs
 outputs/
