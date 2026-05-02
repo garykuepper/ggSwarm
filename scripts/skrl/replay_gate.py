@@ -41,9 +41,17 @@ parser.add_argument("--sigma_tol", type=float, default=2.0, help="Pass tolerance
 parser.add_argument("--forest", action="store_true",
                     help="G1a-3 forest-mode smoke: enable forest_enabled cfg, "
                     "skip metric comparison; pass = no shape errors over play_length steps")
+parser.add_argument("--traj_dir", type=str, default="logs/replay_gate/trajectories",
+                    help="Directory to write per-seed trajectory CSVs "
+                    "(format: step, d{i}_{x,y,z,gx,gy,gz}). "
+                    "Use --no_traj to disable.")
+parser.add_argument("--no_traj", action="store_true",
+                    help="Disable per-seed trajectory CSV recording")
+parser.add_argument("--prefix", type=str, default=None,
+                    help="Trajectory CSV filename prefix; defaults to checkpoint stem")
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
-args.headless = True
+# Default: GUI on (visual playback). Pass --headless for the metrics-only gate run.
 app_launcher = AppLauncher(args)
 simulation_app = app_launcher.app
 
@@ -53,6 +61,7 @@ import torch  # noqa: E402
 import ggswarm.tasks  # noqa: F401, E402
 from isaaclab_rl.skrl import SkrlVecEnvWrapper  # noqa: E402
 from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
+from skrl.resources.preprocessors.torch import RunningStandardScaler  # noqa: E402
 
 from ggswarm.gnn_policy import GgswarmGNNPolicy  # noqa: E402
 
@@ -155,15 +164,23 @@ def main() -> int:
     actor.to(device)  # force move all params to device after state_dict load
     actor.train(False)  # inference mode (equivalent to .eval())
 
+    # Use SKRL's RunningStandardScaler module so we get the exact behavior
+    # the agent was trained with (eps placement, clipping at +/-clip_threshold).
+    # Manual `(x-mean)/sqrt(var+eps)` is wrong: missing clamp drives extreme
+    # actions on out-of-distribution obs and flips the drones at episode start.
+    state_preprocessor = None
     if state_preproc_stats is not None:
-        running_mean = state_preproc_stats["running_mean"].to(device=device, dtype=torch.float32)
-        running_var = state_preproc_stats["running_variance"].to(device=device, dtype=torch.float32)
-        eps = 1e-8
-        print(f"[INFO] Using capstone state_preprocessor (mean_avg={running_mean.mean():.4f},"
-              f" var_avg={running_var.mean():.4f}, count={state_preproc_stats['current_count']})")
+        state_preprocessor = RunningStandardScaler(
+            size=actor.observation_space, device=device,
+        )
+        state_preprocessor.load_state_dict(state_preproc_stats)
+        state_preprocessor.to(device)
+        state_preprocessor.train(False)
+        rm = state_preprocessor.running_mean
+        rv = state_preprocessor.running_variance
+        print(f"[INFO] Loaded state_preprocessor (mean_avg={rm.mean().item():.4f}, "
+              f"var_avg={rv.mean().item():.4f}, count={int(state_preprocessor.current_count.item())})")
     else:
-        running_mean = None
-        running_var = None
         print("[WARN] No state_preprocessor in checkpoint; running unnormalized")
 
     per_seed: dict[int, dict[str, float]] = {}
@@ -171,6 +188,14 @@ def main() -> int:
     # Forest smoke: only run one seed, skip metric comparison.
     if args.forest:
         seeds = seeds[:1]
+
+    # Trajectory CSV setup
+    traj_dir = None
+    if not args.no_traj:
+        prefix = args.prefix or Path(args.checkpoint).parent.parent.name
+        traj_dir = Path(args.traj_dir) / prefix
+        traj_dir.mkdir(parents=True, exist_ok=True)
+        print(f"[INFO] Recording trajectory CSVs to {traj_dir}/")
 
     for seed in seeds:
         env.unwrapped.seed(seed)
@@ -184,8 +209,8 @@ def main() -> int:
                 actions = {}
                 for agent_id in env.possible_agents:
                     o = obs_dict[agent_id]
-                    if running_mean is not None:
-                        o = (o - running_mean) / torch.sqrt(running_var + eps)
+                    if state_preprocessor is not None:
+                        o = state_preprocessor(o)
                     mean_action, _, _ = actor.compute({"states": o}, role="policy")
                     actions[agent_id] = mean_action.clamp(-1.0, 1.0)
                 obs_dict, _, _, _, _ = env.step(actions)
@@ -194,6 +219,31 @@ def main() -> int:
                     env.unwrapped._terrain.env_origins[0:1].repeat(NUM_AGENTS, 1)
                 goals[t] = env.unwrapped._desired_pos_w[:NUM_AGENTS] - \
                     env.unwrapped._terrain.env_origins[0:1].repeat(NUM_AGENTS, 1)
+
+        # Write trajectory CSV (same column layout as the capstone reference rollouts)
+        if traj_dir is not None:
+            csv_path = traj_dir / f"seed{seed}-trajectory_data.csv"
+            with csv_path.open("w") as f:
+                # Header
+                cols = ["step"]
+                for d in range(NUM_AGENTS):
+                    cols += [f"d{d}_x", f"d{d}_y", f"d{d}_z",
+                             f"d{d}_gx", f"d{d}_gy", f"d{d}_gz"]
+                f.write(",".join(cols) + "\n")
+                # Rows
+                pos_cpu = positions.cpu()
+                goal_cpu = goals.cpu()
+                for t in range(args.play_length):
+                    row = [str(t)]
+                    for d in range(NUM_AGENTS):
+                        row += [f"{pos_cpu[t, d, 0]:.4f}",
+                                f"{pos_cpu[t, d, 1]:.4f}",
+                                f"{pos_cpu[t, d, 2]:.4f}",
+                                f"{goal_cpu[t, d, 0]:.4f}",
+                                f"{goal_cpu[t, d, 1]:.4f}",
+                                f"{goal_cpu[t, d, 2]:.4f}"]
+                    f.write(",".join(row) + "\n")
+            print(f"  wrote {csv_path}")
 
         if args.forest:
             print(f"  forest smoke seed={seed}: {args.play_length} steps clean, no shape errors")

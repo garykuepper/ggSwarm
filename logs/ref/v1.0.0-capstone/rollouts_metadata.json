@@ -1,5 +1,5 @@
 {
-  "checkpoint_path": "logs/skrl/ggswarm/p4/2026-04-06_21-09-24_ppo_torch/checkpoints/best_agent.pt",
+  "checkpoint_path": "logs/ref/v1.0.0-capstone/best_agent.pt",
   "checkpoint_sha256": "bde1049fc24d636536bceb05e1eff4645f2fbd05b41145bf8b5a67227c51b559",
   "capstone_commit": "c33d339",
   "capstone_tag": "v1.0.0-capstone",
@@ -49,5 +49,6 @@
       }
     }
   },
-  "notes": "episode_reward intentionally omitted: play.py does not surface per-rollout reward. Replay gate uses the three CSV-derivable metrics (mean_slot_error_m, collision_pairs_per_step, final_distance_to_goal_m) at 2-sigma tolerance."
+  "notes": "episode_reward intentionally omitted: play.py does not surface per-rollout reward. Replay gate uses the three CSV-derivable metrics (mean_slot_error_m, collision_pairs_per_step, final_distance_to_goal_m) at 2-sigma tolerance.",
+  "original_archive_path": "logs/skrl/ggswarm/_capstone_archive/p4/2026-04-06_21-09-24_ppo_torch/checkpoints/best_agent.pt"
 }

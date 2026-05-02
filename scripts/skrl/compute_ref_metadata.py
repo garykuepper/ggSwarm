@@ -17,9 +17,11 @@ import statistics
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-SRC_DIR = REPO / "logs/skrl/ggswarm/p4/2026-04-06_21-09-24_ppo_torch/trajectories"
+# Capstone training tree lives under _capstone_archive/ post 2026-05-01.
+SRC_DIR = REPO / "logs/skrl/ggswarm/_capstone_archive/p4/2026-04-06_21-09-24_ppo_torch/trajectories"
 DST_DIR = REPO / "logs/ref/v1.0.0-capstone"
-CKPT = REPO / "logs/skrl/ggswarm/p4/2026-04-06_21-09-24_ppo_torch/checkpoints/best_agent.pt"
+# Promoted canonical checkpoint location (independent of the archive path).
+CKPT = REPO / "logs/ref/v1.0.0-capstone/best_agent.pt"
 SEEDS = [7, 13, 21, 42, 99]
 NUM_AGENTS = 8
 PLAY_LENGTH = 500
