@@ -19,9 +19,7 @@ from isaaclab.app import AppLauncher
 
 # Argument parsing for command-line configuration
 parser = argparse.ArgumentParser(description="Train an RL agent with skrl.")
-parser.add_argument(
-    "--video", action="store_true", default=False, help="Record videos during training."
-)
+parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
 parser.add_argument(
     "--video_length",
     type=int,
@@ -34,15 +32,18 @@ parser.add_argument(
     default=2000,
     help="Interval between video recordings (in steps).",
 )
+parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument(
-    "--num_envs", type=int, default=None, help="Number of environments to simulate."
-)
-parser.add_argument(
-    "--num_agents", type=int, default=8,
+    "--num_agents",
+    type=int,
+    default=8,
     help="Drones per swarm group. >1 enables SwarmWrapper for formation training.",
 )
 parser.add_argument(
-    "--policy", type=str, default="gnn", choices=["mlp", "gnn"],
+    "--policy",
+    type=str,
+    default="gnn",
+    choices=["mlp", "gnn"],
     help="Policy architecture: gnn (default, GATv2) or mlp.",
 )
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
@@ -55,9 +56,7 @@ parser.add_argument(
         "--algorithm is used to determine the default agent configuration entry point."
     ),
 )
-parser.add_argument(
-    "--seed", type=int, default=None, help="Seed used for the environment"
-)
+parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
 parser.add_argument(
     "--distributed",
     action="store_true",
@@ -76,9 +75,7 @@ parser.add_argument(
     default=None,
     help="Subdirectory under experiment directory (e.g. phase2a, phase2b).",
 )
-parser.add_argument(
-    "--max_iterations", type=int, default=4800, help="RL Policy training iterations."
-)
+parser.add_argument("--max_iterations", type=int, default=4800, help="RL Policy training iterations.")
 parser.add_argument(
     "--no-minco",
     action="store_true",
@@ -104,6 +101,16 @@ parser.add_argument(
     default="PPO",
     choices=["AMP", "PPO", "IPPO", "MAPPO"],
     help="The RL algorithm used for training the skrl agent.",
+)
+parser.add_argument(
+    "--warm_start",
+    type=str,
+    default=None,
+    help="Path to a capstone single-agent PPO checkpoint to warm-start the "
+    "MAPPO actor + per-agent state_preprocessor. The actor architecture is "
+    "shared between capstone and MAPPO so the policy state_dict transfers "
+    "directly. Critic + shared_state_preprocessor still start fresh. Only "
+    "honored when --algorithm MAPPO.",
 )
 parser.add_argument(
     "--ray-proc-id",
@@ -173,15 +180,12 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 logger = logging.getLogger(__name__)
 
 import ggswarm.tasks  # noqa: F401
+from ggswarm.checkpoint_utils import load_actor_weights
 
 # Determine the agent configuration entry point based on algorithm or explicit argument
 if args_cli.agent is None:
     algorithm = args_cli.algorithm.lower()
-    agent_cfg_entry_point = (
-        "skrl_cfg_entry_point"
-        if algorithm in ["ppo"]
-        else f"skrl_{algorithm}_cfg_entry_point"
-    )
+    agent_cfg_entry_point = "skrl_cfg_entry_point" if algorithm in ["ppo"] else f"skrl_{algorithm}_cfg_entry_point"
 else:
     agent_cfg_entry_point = args_cli.agent
     algorithm = agent_cfg_entry_point.split("_cfg")[0].split("skrl_")[-1].lower()
@@ -190,24 +194,27 @@ else:
 # Decorator to load the task and agent configuration using Hydra
 # It automatically merges default configs with the entry point specified
 @hydra_task_config(args_cli.task, agent_cfg_entry_point)
-def main(
-    env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: dict
-):
+def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: dict):
     """Train with skrl agent."""
     # Configure environment overrides from CLI
-    env_cfg.scene.num_envs = (
-        args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
-    )
-    env_cfg.sim.device = (
-        args_cli.device if args_cli.device is not None else env_cfg.sim.device
-    )
+    env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
+    env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
 
-    # Apply num_agents and expand observation space for formation
+    # Apply num_agents and expand observation space for formation. The MARL
+    # cfg already declares per-agent observation_spaces dicts, so skip the
+    # single-agent observation_space override for that path.
     env_cfg.num_agents = args_cli.num_agents
-    if args_cli.num_agents > 1:
+    if isinstance(env_cfg, DirectMARLEnvCfg):
+        print(
+            f"[INFO] MARL cfg: {args_cli.num_agents} agents in shared scene per env, "
+            f"K={env_cfg.num_neighbors} neighbors"
+        )
+    elif args_cli.num_agents > 1:
         env_cfg.observation_space = 12 + env_cfg.num_neighbors * 3
-        print(f"[INFO] Formation mode: {args_cli.num_agents} agents/swarm, "
-              f"K={env_cfg.num_neighbors} neighbors, obs_space={env_cfg.observation_space}")
+        print(
+            f"[INFO] Formation mode: {args_cli.num_agents} agents/swarm, "
+            f"K={env_cfg.num_neighbors} neighbors, obs_space={env_cfg.observation_space}"
+        )
     else:
         env_cfg.observation_space = 12
 
@@ -217,11 +224,7 @@ def main(
         print("[INFO] MINCO trajectory filter DISABLED (--no-minco)")
 
     # Check for invalid combination of CPU device with distributed training
-    if (
-        args_cli.distributed
-        and args_cli.device is not None
-        and "cpu" in args_cli.device
-    ):
+    if args_cli.distributed and args_cli.device is not None and "cpu" in args_cli.device:
         raise ValueError(
             "Distributed training is not supported when using CPU device. "
             "Please use GPU device (e.g., --device cuda) for distributed training."
@@ -233,9 +236,7 @@ def main(
 
     # Set training duration and ML framework backend
     if args_cli.max_iterations:
-        agent_cfg["trainer"]["timesteps"] = (
-            args_cli.max_iterations * agent_cfg["agent"]["rollouts"]
-        )
+        agent_cfg["trainer"]["timesteps"] = args_cli.max_iterations * agent_cfg["agent"]["rollouts"]
     agent_cfg["trainer"]["close_environment_at_exit"] = False
 
     if args_cli.ml_framework.startswith("jax"):
@@ -244,25 +245,18 @@ def main(
     # Initialize seeds for both the agent (skrl) and the environment (Isaac Lab)
     if args_cli.seed == -1:
         args_cli.seed = random.randint(0, 10000)
-    agent_cfg["seed"] = (
-        args_cli.seed if args_cli.seed is not None else agent_cfg["seed"]
-    )
+    agent_cfg["seed"] = args_cli.seed if args_cli.seed is not None else agent_cfg["seed"]
     env_cfg.seed = agent_cfg["seed"]
 
     # Define the base log root and the specific run directory (timestamped)
-    log_root_path = os.path.join(
-        "logs", "skrl", agent_cfg["agent"]["experiment"]["directory"]
-    )
+    log_root_path = os.path.join("logs", "skrl", agent_cfg["agent"]["experiment"]["directory"])
     if args_cli.log_subdir:
         log_root_path = os.path.join(log_root_path, args_cli.log_subdir)
     log_root_path = os.path.abspath(log_root_path)
     print(f"[INFO] Logging experiment in directory: {log_root_path}")
 
     # Run name includes timestamp, algorithm, and framework
-    log_dir = (
-        datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        + f"_{algorithm}_{args_cli.ml_framework}"
-    )
+    log_dir = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + f"_{algorithm}_{args_cli.ml_framework}"
     if agent_cfg["agent"]["experiment"]["experiment_name"]:
         log_dir += f"_{agent_cfg['agent']['experiment']['experiment_name']}"
 
@@ -276,9 +270,7 @@ def main(
     dump_yaml(os.path.join(log_dir, "params", "agent.yaml"), agent_cfg)
 
     # Get checkpoint path (to resume training)
-    resume_path = (
-        retrieve_file_path(args_cli.checkpoint) if args_cli.checkpoint else None
-    )
+    resume_path = retrieve_file_path(args_cli.checkpoint) if args_cli.checkpoint else None
 
     # Set the IO descriptors export flag if requested (supported for manager-based envs)
     if isinstance(env_cfg, ManagerBasedRLEnvCfg):
@@ -292,9 +284,7 @@ def main(
     env_cfg.log_dir = log_dir
 
     # Create the Isaac Lab environment through Gymnasium
-    env = gym.make(
-        args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None
-    )
+    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
 
     # Some algorithms (like standard PPO) require a single-agent observation/action space
     if isinstance(env.unwrapped, DirectMARLEnv) and algorithm in ["ppo"]:
@@ -317,16 +307,161 @@ def main(
     # Wrap environment for skrl compatibility (handles device and data format conversion)
     env = SkrlVecEnvWrapper(env, ml_framework=args_cli.ml_framework)
 
+    # ------------------------------------------------------------------
+    # MAPPO custom path: shared GNN actor + shared centralized critic.
+    # All A drone-agents reuse the same Python model objects so updates
+    # train one parameter set (the standard MAPPO + parameter-sharing
+    # recipe for homogeneous agents).
+    # ------------------------------------------------------------------
+    if algorithm == "mappo":
+        from ggswarm.gnn_policy import GgswarmCentralizedValue, GgswarmGNNPolicy
+        from skrl.memories.torch import RandomMemory
+        from skrl.multi_agents.torch.mappo import MAPPO, MAPPO_DEFAULT_CONFIG
+        from skrl.resources.preprocessors.torch import RunningStandardScaler
+        from skrl.trainers.torch import SequentialTrainer
+
+        possible_agents = list(env.possible_agents)
+        agent0 = possible_agents[0]
+
+        # Decentralized actor (per-drone GNN, parameter-shared).
+        shared_actor = GgswarmGNNPolicy(
+            observation_space=env.observation_space(agent0),
+            action_space=env.action_space(agent0),
+            device=env.device,
+            num_neighbors=env_cfg.num_neighbors,
+            num_agents=args_cli.num_agents,
+        )
+        GgswarmGNNPolicy.init_edge_cache(
+            memory_size=agent_cfg["agent"]["rollouts"],
+            num_envs=env.num_envs * args_cli.num_agents,
+        )
+
+        # Centralized critic (sees concatenation of all A drone obs per env).
+        shared_critic = GgswarmCentralizedValue(
+            observation_space=env.state_space(agent0),
+            action_space=env.action_space(agent0),
+            device=env.device,
+        )
+
+        # Build per-agent model dict reusing the same shared instances.
+        models = {agent: {"policy": shared_actor, "value": shared_critic} for agent in possible_agents}
+
+        # Per-agent rollout memory (separate buffers per agent — same size).
+        memories = {
+            agent: RandomMemory(
+                memory_size=agent_cfg["agent"]["rollouts"],
+                num_envs=env.num_envs,
+                device=env.device,
+            )
+            for agent in possible_agents
+        }
+
+        observation_spaces = {a: env.observation_space(a) for a in possible_agents}
+        action_spaces = {a: env.action_space(a) for a in possible_agents}
+        shared_observation_spaces = {a: env.state_space(a) for a in possible_agents}
+
+        mappo_cfg = MAPPO_DEFAULT_CONFIG.copy()
+        for k in (
+            "rollouts",
+            "learning_epochs",
+            "mini_batches",
+            "discount_factor",
+            "lambda",
+            "learning_rate",
+            "grad_norm_clip",
+            "ratio_clip",
+            "value_clip",
+            "clip_predicted_values",
+            "entropy_loss_scale",
+            "value_loss_scale",
+            "kl_threshold",
+            "rewards_shaper_scale",
+            "time_limit_bootstrap",
+            "random_timesteps",
+            "learning_starts",
+        ):
+            if k in agent_cfg["agent"]:
+                mappo_cfg[k] = agent_cfg["agent"][k]
+        mappo_cfg["state_preprocessor"] = RunningStandardScaler
+        mappo_cfg["state_preprocessor_kwargs"] = {
+            "size": env.observation_space(agent0),
+            "device": env.device,
+        }
+        mappo_cfg["shared_state_preprocessor"] = RunningStandardScaler
+        mappo_cfg["shared_state_preprocessor_kwargs"] = {
+            "size": env.state_space(agent0),
+            "device": env.device,
+        }
+        mappo_cfg["value_preprocessor"] = RunningStandardScaler
+        mappo_cfg["value_preprocessor_kwargs"] = {"size": 1, "device": env.device}
+        mappo_cfg["experiment"] = {
+            "directory": log_root_path,
+            "experiment_name": log_dir,
+            "write_interval": "auto",
+            "checkpoint_interval": "auto",
+        }
+
+        agent = MAPPO(
+            possible_agents=possible_agents,
+            models=models,
+            memories=memories,
+            observation_spaces=observation_spaces,
+            action_spaces=action_spaces,
+            shared_observation_spaces=shared_observation_spaces,
+            device=env.device,
+            cfg=mappo_cfg,
+        )
+
+        # SequentialTrainer's constructor calls agent.init(), which is where
+        # the state_preprocessor / shared_state_preprocessor / value_preprocessor
+        # instances are actually created (the cfg holds class refs until then).
+        trainer = SequentialTrainer(
+            env=env,
+            agents=agent,
+            cfg={
+                "timesteps": agent_cfg["trainer"]["timesteps"],
+                "close_environment_at_exit": False,
+            },
+        )
+
+        # Warm-start hook (after init so preprocessor instances exist).
+        if args_cli.warm_start:
+            print(f"[INFO] MAPPO warm-start from: {args_cli.warm_start}")
+            sp_stats = load_actor_weights(args_cli.warm_start, shared_actor, env.device)
+            shared_actor.to(env.device)
+            # Per-agent state_preprocessor: same capstone stats into each.
+            if sp_stats is not None:
+                for uid in possible_agents:
+                    sp = agent._state_preprocessor[uid]
+                    if sp is not None and hasattr(sp, "load_state_dict"):
+                        sp.load_state_dict(sp_stats)
+                        sp.to(env.device)
+                print(
+                    f"  [INFO] Copied capstone state_preprocessor stats into per-agent "
+                    f"preprocessors (count={int(sp_stats['current_count'].item())})"
+                )
+            print(
+                "  Centralized critic + shared_state_preprocessor remain fresh "
+                "(by design — different shapes from capstone)."
+            )
+        elif resume_path:
+            print(f"[INFO] Loading MAPPO checkpoint from: {resume_path}")
+            agent.load(resume_path)
+        print("[INFO] Using MAPPO with shared GNN actor + shared centralized critic")
+        trainer.train()
+        print(f"Training time: {round(time.time() - start_time, 2)} seconds")
+        env.close()
+        return
+
     # Initialize the skrl Runner to manage the training loop
     # Docs: https://skrl.readthedocs.io/en/latest/api/utils/runner.html
     if args_cli.policy == "gnn":
         # GNN policy: manually create agent with custom GATv2 model
+        from ggswarm.gnn_policy import GgswarmGNNPolicy
         from skrl.agents.torch.ppo import PPO, PPO_DEFAULT_CONFIG
         from skrl.memories.torch import RandomMemory
         from skrl.resources.preprocessors.torch import RunningStandardScaler
         from skrl.trainers.torch import SequentialTrainer
-
-        from ggswarm.gnn_policy import GgswarmGNNPolicy
 
         memory = RandomMemory(memory_size=agent_cfg["agent"]["rollouts"], num_envs=env.num_envs, device=env.device)
 
@@ -344,31 +479,33 @@ def main(
         models = {"policy": gnn_model, "value": gnn_model}
 
         ppo_cfg = PPO_DEFAULT_CONFIG.copy()
-        ppo_cfg.update({
-            "rollouts": agent_cfg["agent"]["rollouts"],
-            "learning_epochs": agent_cfg["agent"]["learning_epochs"],
-            "mini_batches": agent_cfg["agent"]["mini_batches"],
-            "discount_factor": agent_cfg["agent"]["discount_factor"],
-            "lambda": agent_cfg["agent"]["lambda"],
-            "learning_rate": agent_cfg["agent"]["learning_rate"],
-            "grad_norm_clip": agent_cfg["agent"]["grad_norm_clip"],
-            "ratio_clip": agent_cfg["agent"]["ratio_clip"],
-            "value_clip": agent_cfg["agent"]["value_clip"],
-            "clip_predicted_values": agent_cfg["agent"]["clip_predicted_values"],
-            "entropy_loss_scale": agent_cfg["agent"]["entropy_loss_scale"],
-            "value_loss_scale": agent_cfg["agent"]["value_loss_scale"],
-            "rewards_shaper_scale": agent_cfg["agent"]["rewards_shaper_scale"],
-            "state_preprocessor": RunningStandardScaler,
-            "state_preprocessor_kwargs": {"size": env.observation_space, "device": env.device},
-            "value_preprocessor": RunningStandardScaler,
-            "value_preprocessor_kwargs": {"size": 1, "device": env.device},
-            "experiment": {
-                "directory": log_root_path,
-                "experiment_name": log_dir,
-                "write_interval": "auto",
-                "checkpoint_interval": "auto",
-            },
-        })
+        ppo_cfg.update(
+            {
+                "rollouts": agent_cfg["agent"]["rollouts"],
+                "learning_epochs": agent_cfg["agent"]["learning_epochs"],
+                "mini_batches": agent_cfg["agent"]["mini_batches"],
+                "discount_factor": agent_cfg["agent"]["discount_factor"],
+                "lambda": agent_cfg["agent"]["lambda"],
+                "learning_rate": agent_cfg["agent"]["learning_rate"],
+                "grad_norm_clip": agent_cfg["agent"]["grad_norm_clip"],
+                "ratio_clip": agent_cfg["agent"]["ratio_clip"],
+                "value_clip": agent_cfg["agent"]["value_clip"],
+                "clip_predicted_values": agent_cfg["agent"]["clip_predicted_values"],
+                "entropy_loss_scale": agent_cfg["agent"]["entropy_loss_scale"],
+                "value_loss_scale": agent_cfg["agent"]["value_loss_scale"],
+                "rewards_shaper_scale": agent_cfg["agent"]["rewards_shaper_scale"],
+                "state_preprocessor": RunningStandardScaler,
+                "state_preprocessor_kwargs": {"size": env.observation_space, "device": env.device},
+                "value_preprocessor": RunningStandardScaler,
+                "value_preprocessor_kwargs": {"size": 1, "device": env.device},
+                "experiment": {
+                    "directory": log_root_path,
+                    "experiment_name": log_dir,
+                    "write_interval": "auto",
+                    "checkpoint_interval": "auto",
+                },
+            }
+        )
 
         agent = PPO(
             models=models,

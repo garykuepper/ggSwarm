@@ -14,3 +14,16 @@ gym.register(
         "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_cfg.yaml",
     },
 )
+
+# Phase 1+ MARL variant: A drones in shared PhysX scene per env, MAPPO trained.
+# Capstone replay gate keeps using ggswarm-v0 (single-agent DirectRLEnv).
+gym.register(
+    id="ggswarm-marl-v0",
+    entry_point=f"{__name__}.ggswarm_marl_env:GgswarmMarlEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.ggswarm_marl_env_cfg:GgswarmMarlEnvCfg",
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_cfg.yaml",
+        "skrl_mappo_cfg_entry_point": f"{agents.__name__}:skrl_mappo_cfg.yaml",
+    },
+)

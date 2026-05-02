@@ -1,0 +1,4 @@
+metric,capstone_mean,capstone_std,marl_mean,marl_std,sigma_distance,pass
+mean_slot_error_m,0.218940,0.018768,0.256129,0.000000,1.981481,True
+collision_pairs_per_step,0.000000,0.000000,0.000000,0.000000,0.000000,True
+final_distance_to_goal_m,0.093842,0.000246,0.110167,0.000000,66.493063,False

@@ -16,7 +16,22 @@
       "Bash(git push:*)",
       "Skill(schedule)",
       "Bash(git tag *)",
-      "Bash(git branch *)"
+      "Bash(git branch *)",
+      "Bash(git worktree *)",
+      "Bash(git -C ../ggSwarm-capstone rev-parse HEAD)",
+      "Bash(grep -nB1 -A3 'p4-revert-4' ../ggSwarm-capstone/docs/status/changelog.md)",
+      "Bash(grep -nB1 -A4 '\\\\bp4\\\\b\\\\|revert' ../ggSwarm-capstone/docs/status/run_history.md)",
+      "Bash(grep -nB2 -A6 'p4-revert-1\\\\|p4-revert-2\\\\|p4-revert-3\\\\|p4-revert-4\\\\|reward 66.83\\\\|66.83' ../ggSwarm-capstone/docs/status/changelog.md)",
+      "Bash(env_isaaclab/Scripts/python.exe -c \"import ggswarm, os; print\\(os.path.abspath\\(ggswarm.__file__\\)\\)\")",
+      "Bash(env_isaaclab/Scripts/python.exe -c \"import sys; [print\\(p\\) for p in sys.path if 'ggswarm' in p.lower\\(\\)]\")",
+      "Bash(kill -0 620)",
+      "Bash(env_isaaclab/Scripts/python.exe *)",
+      "Bash(kill -0 128)",
+      "Bash(ps -o etime= -p 128)",
+      "Bash(echo \"PID 128 still running \\($\\(ps -o etime= -p 128)",
+      "Bash(kill 128)",
+      "Bash(kill -9 128)",
+      "Bash(kill -9 1173)"
     ]
   }
 }
