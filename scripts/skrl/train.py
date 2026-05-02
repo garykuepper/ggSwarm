@@ -202,9 +202,14 @@ def main(
         args_cli.device if args_cli.device is not None else env_cfg.sim.device
     )
 
-    # Apply num_agents and expand observation space for formation
+    # Apply num_agents and expand observation space for formation. The MARL
+    # cfg already declares per-agent observation_spaces dicts, so skip the
+    # single-agent observation_space override for that path.
     env_cfg.num_agents = args_cli.num_agents
-    if args_cli.num_agents > 1:
+    if isinstance(env_cfg, DirectMARLEnvCfg):
+        print(f"[INFO] MARL cfg: {args_cli.num_agents} agents in shared scene per env, "
+              f"K={env_cfg.num_neighbors} neighbors")
+    elif args_cli.num_agents > 1:
         env_cfg.observation_space = 12 + env_cfg.num_neighbors * 3
         print(f"[INFO] Formation mode: {args_cli.num_agents} agents/swarm, "
               f"K={env_cfg.num_neighbors} neighbors, obs_space={env_cfg.observation_space}")
@@ -316,6 +321,131 @@ def main(
 
     # Wrap environment for skrl compatibility (handles device and data format conversion)
     env = SkrlVecEnvWrapper(env, ml_framework=args_cli.ml_framework)
+
+    # ------------------------------------------------------------------
+    # MAPPO custom path: shared GNN actor + shared centralized critic.
+    # All A drone-agents reuse the same Python model objects so updates
+    # train one parameter set (the standard MAPPO + parameter-sharing
+    # recipe for homogeneous agents).
+    # ------------------------------------------------------------------
+    if algorithm == "mappo":
+        from skrl.memories.torch import RandomMemory
+        from skrl.multi_agents.torch.mappo import MAPPO, MAPPO_DEFAULT_CONFIG
+        from skrl.resources.preprocessors.torch import RunningStandardScaler
+        from skrl.trainers.torch import SequentialTrainer
+
+        from ggswarm.gnn_policy import GgswarmCentralizedValue, GgswarmGNNPolicy
+
+        possible_agents = list(env.possible_agents)
+        agent0 = possible_agents[0]
+
+        # Decentralized actor (per-drone GNN, parameter-shared).
+        shared_actor = GgswarmGNNPolicy(
+            observation_space=env.observation_space(agent0),
+            action_space=env.action_space(agent0),
+            device=env.device,
+            num_neighbors=env_cfg.num_neighbors,
+            num_agents=args_cli.num_agents,
+        )
+        GgswarmGNNPolicy.init_edge_cache(
+            memory_size=agent_cfg["agent"]["rollouts"],
+            num_envs=env.num_envs * args_cli.num_agents,
+        )
+
+        # Centralized critic (sees concatenation of all A drone obs per env).
+        shared_critic = GgswarmCentralizedValue(
+            observation_space=env.state_space(agent0),
+            action_space=env.action_space(agent0),
+            device=env.device,
+        )
+
+        # Build per-agent model dict reusing the same shared instances.
+        models = {
+            agent: {"policy": shared_actor, "value": shared_critic}
+            for agent in possible_agents
+        }
+
+        # Per-agent rollout memory (separate buffers per agent — same size).
+        memories = {
+            agent: RandomMemory(
+                memory_size=agent_cfg["agent"]["rollouts"],
+                num_envs=env.num_envs,
+                device=env.device,
+            )
+            for agent in possible_agents
+        }
+
+        observation_spaces = {a: env.observation_space(a) for a in possible_agents}
+        action_spaces = {a: env.action_space(a) for a in possible_agents}
+        shared_observation_spaces = {a: env.state_space(a) for a in possible_agents}
+
+        mappo_cfg = MAPPO_DEFAULT_CONFIG.copy()
+        for k in (
+            "rollouts",
+            "learning_epochs",
+            "mini_batches",
+            "discount_factor",
+            "lambda",
+            "learning_rate",
+            "grad_norm_clip",
+            "ratio_clip",
+            "value_clip",
+            "clip_predicted_values",
+            "entropy_loss_scale",
+            "value_loss_scale",
+            "kl_threshold",
+            "rewards_shaper_scale",
+            "time_limit_bootstrap",
+            "random_timesteps",
+            "learning_starts",
+        ):
+            if k in agent_cfg["agent"]:
+                mappo_cfg[k] = agent_cfg["agent"][k]
+        mappo_cfg["state_preprocessor"] = RunningStandardScaler
+        mappo_cfg["state_preprocessor_kwargs"] = {
+            "size": env.observation_space(agent0), "device": env.device,
+        }
+        mappo_cfg["shared_state_preprocessor"] = RunningStandardScaler
+        mappo_cfg["shared_state_preprocessor_kwargs"] = {
+            "size": env.state_space(agent0), "device": env.device,
+        }
+        mappo_cfg["value_preprocessor"] = RunningStandardScaler
+        mappo_cfg["value_preprocessor_kwargs"] = {"size": 1, "device": env.device}
+        mappo_cfg["experiment"] = {
+            "directory": log_root_path,
+            "experiment_name": log_dir,
+            "write_interval": "auto",
+            "checkpoint_interval": "auto",
+        }
+
+        agent = MAPPO(
+            possible_agents=possible_agents,
+            models=models,
+            memories=memories,
+            observation_spaces=observation_spaces,
+            action_spaces=action_spaces,
+            shared_observation_spaces=shared_observation_spaces,
+            device=env.device,
+            cfg=mappo_cfg,
+        )
+
+        if resume_path:
+            print(f"[INFO] Loading MAPPO checkpoint from: {resume_path}")
+            agent.load(resume_path)
+
+        trainer = SequentialTrainer(
+            env=env,
+            agents=agent,
+            cfg={
+                "timesteps": agent_cfg["trainer"]["timesteps"],
+                "close_environment_at_exit": False,
+            },
+        )
+        print("[INFO] Using MAPPO with shared GNN actor + shared centralized critic")
+        trainer.train()
+        print(f"Training time: {round(time.time() - start_time, 2)} seconds")
+        env.close()
+        return
 
     # Initialize the skrl Runner to manage the training loop
     # Docs: https://skrl.readthedocs.io/en/latest/api/utils/runner.html
