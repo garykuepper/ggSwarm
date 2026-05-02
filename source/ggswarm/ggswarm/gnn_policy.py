@@ -243,3 +243,41 @@ class GgswarmGNNPolicy(GaussianMixin, DeterministicMixin, Model):
             h = torch.nn.functional.elu(h)
 
         return h
+
+
+class GgswarmCentralizedValue(DeterministicMixin, Model):
+    """Centralized critic for MAPPO (Phase 1+ shared-scene multi-drone).
+
+    Takes the concatenation of all A drone obs in an env as the shared
+    state and produces a scalar value. Decentralized actors (`GgswarmGNNPolicy`)
+    consume per-drone obs at execution time; this critic is training-only.
+
+    With `state_space=-1` on the env cfg, DirectMARLEnv auto-concatenates
+    obs_dict[drone_0..drone_{A-1}] along the feature dim, giving the
+    shared state shape `[num_envs, A * obs_per_agent]` (e.g., 8*18=144 for
+    K=2 neighbors).
+
+    All A agents share the same value model instance for parameter sharing.
+    """
+
+    def __init__(
+        self,
+        observation_space,
+        action_space,
+        device,
+        hidden_channels: int = 128,
+    ):
+        Model.__init__(self, observation_space, action_space, device)
+        DeterministicMixin.__init__(self, clip_actions=False, role="value")
+
+        self.net = nn.Sequential(
+            nn.Linear(self.num_observations, hidden_channels),
+            nn.ELU(),
+            nn.Linear(hidden_channels, hidden_channels),
+            nn.ELU(),
+            nn.Linear(hidden_channels, 1),
+        )
+
+    def compute(self, inputs, role=""):  # noqa: ARG002
+        states = inputs.get("states")
+        return self.net(states), {}
