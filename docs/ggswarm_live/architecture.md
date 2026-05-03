@@ -103,12 +103,12 @@ Each drone broadcasts a compact UDP packet at 5–10 Hz containing position, vel
 
 Four independent failsafe layers, each progressively more aggressive. Each layer operates without dependency on any layer above it. No single component failure can bypass more than one layer.
 
-| Layer | Name | Trigger | Action | Runs on |
-|-------|------|---------|--------|---------|
-| 1 | **RL fallback** | RL offset > threshold | Revert to raw Skybrush waypoint | Companion computer |
-| 2 | **Offboard timeout** | Setpoint stream stops > 1 s | PX4 Position Hold / RTH | PX4 firmware (independent) |
-| 3 | **Data link loss** | GCS heartbeat lost > 10 s | PX4 RTH then land | PX4 firmware (independent) |
-| 4 | **Kill switch** | RPIC manual activation | Motor disarm / fleet land | Dedicated RC link (independent) |
+| Layer | Name | Trigger | Action | Runs on | Evidence source (sub-phase) |
+|-------|------|---------|--------|---------|------------------------------|
+| 1 | **RL fallback** | RL offset > threshold, or sensor-fault residual flag | Revert to raw Skybrush waypoint | Companion computer | [Phase 2a](phases/phase2a_localization.md) sim FP/FN rates + [Phase 13](phases/phase13_skybrush_e2e.md) hardware trigger latency |
+| 2 | **Offboard timeout** | Setpoint stream stops > 1 s, or peer-loss multi-dropout | PX4 Position Hold / RTH | PX4 firmware (independent) | [Phase 2c](phases/phase2c_fault_tolerance.md) sim multi-dropout CDFs + [Phase 12](phases/phase12_decentralized_hw.md) hardware-measured CDFs |
+| 3 | **Data link loss** | GCS heartbeat lost > 10 s, or mesh partition | PX4 RTH then land | PX4 firmware (independent) | [Phase 2d](phases/phase2d_consensus_dissemination.md) sim gossip-under-loss benchmarks + [Phase 12](phases/phase12_decentralized_hw.md) hardware mesh logs |
+| 4 | **Kill switch** | RPIC manual activation, or formation collapse | Motor disarm / fleet land | Dedicated RC link (independent) | [Phase 2c](phases/phase2c_fault_tolerance.md) sim collapse-rate threshold + [Phase 2d](phases/phase2d_consensus_dissemination.md) centroid-drift bound + [Phase 12](phases/phase12_decentralized_hw.md) hardware validation |
 
 **Independence guarantee:** Layer 2 activates even if the companion computer has suffered a complete hardware failure (PX4 detects missing setpoints at firmware level). Layer 3 activates independently of Layers 1 and 2 (PX4 monitors GCS heartbeat separately). Layer 4 operates on a dedicated 900 MHz RC link, independent of the WiFi network used for all other communication.
 
@@ -159,6 +159,33 @@ This architecture is designed to support a Part 107.35 waiver application for op
 - **Graceful degradation:** Every failure mode results in a simpler but still safe operating state. The system never goes from nominal to catastrophic in one step.
 
 See companion document **ggSwarm Safety Case Outline** for detailed hazard identification, risk mitigation matrix, and operational procedures formatted for the FAA Waiver Safety Explanation guidelines.
+
+### 6.1 Sim-derived + hardware-validated evidence pipeline
+
+Phase 2 sub-phase scorecards (sim-only, all variables isolated) are the
+*sim* evidence source for the safety-case behavior tables. Hardware
+phases (10–13) provide the *real-hardware* evidence that closes the loop.
+The waiver application cites both layers.
+
+| Failsafe layer (§4) | Sim evidence source | Hardware evidence source | Headline metric |
+| :--- | :--- | :--- | :--- |
+| Layer 1 — RL fallback (sensor fault) | [Phase 2a](phases/phase2a_localization.md) | [Phase 13](phases/phase13_skybrush_e2e.md) | Sim residual-test FP rate ≤ 0.01, FN rate ≤ 0.05; hardware trigger latency ≤ 100 ms |
+| Layer 2 — Offboard timeout (peer fault) | [Phase 2c](phases/phase2c_fault_tolerance.md) | [Phase 12](phases/phase12_decentralized_hw.md) | Sim multi-dropout recovery CDF; hardware-measured CDF within 2× sim |
+| Layer 3 — Data link loss (comms partition) | [Phase 2d](phases/phase2d_consensus_dissemination.md) | [Phase 12](phases/phase12_decentralized_hw.md) | Sim command propagation under 30% loss ≤ 50 sim steps; hardware mesh logs validate |
+| Layer 4 — Kill switch (formation collapse) | [Phase 2c](phases/phase2c_fault_tolerance.md) + [Phase 2d](phases/phase2d_consensus_dissemination.md) | [Phase 12](phases/phase12_decentralized_hw.md) | Sim collapse-rate threshold ≤ 0.01 per 1k + centroid-drift ≤ 0.05 m / 60 s; hardware confirms |
+
+Targets are placeholders until the first calibration runs land; replace
+with measured 95th-percentile thresholds before the safety case is filed.
+
+The Phase 14 sub-phases (14a Part 107 → 14b solo content + waiver
+application → 14c multi-drone rehearsals → 14d first paid booking)
+*consume* this evidence rather than producing it; the waiver application
+itself is filed during Phase 14b.
+
+See [consensus_mechanisms.md](consensus_mechanisms.md) for the
+adopt / decline rationale on the underlying primitives (eventually-consistent
+gossip + CRDTs + average consensus + Bertsekas auction; not blockchain, not
+Raft).
 
 ---
 

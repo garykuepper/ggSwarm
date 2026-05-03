@@ -3,6 +3,60 @@
 Reverse-chronological. Capstone changelog (frozen) lives at
 [`../../capstone/status/changelog.md`](../../capstone/status/changelog.md).
 
+## 2026-05-03 — Full phase plan restructure: exhaust sim before hardware; drone show as the major milestone
+
+**Driving principles:** (1) anything algorithmic ships as a numbered sim
+phase before any hardware work; (2) hardware phases isolate one variable
+each; (3) the drone show is the program's headline milestone, sub-phased
+along its real regulatory + revenue gates; (4) post-show phases stay
+numbered and sequential but cut to vision-level descriptions.
+
+**New phase structure (18 numbered phases + sub-phases):**
+
+- Sim block (exhaust algorithms first): 0 capstone, 1 shared-scene,
+  2 decentralized + fault-tolerant (sub-phased 2a–d), 3 scale,
+  4 expressive shapes, 5 animated formations, 6 outdoor disturbance DR
+  in sim, 7 obstacle-aware formation control in sim, 8 onboard
+  inference profiling + distillation in sim, 9 multi-platform DR in sim
+- Hardware block (one variable per phase): 10 single-drone bring-up,
+  11 anchored multi-drone, 12 anchors-off + decentralized stack on
+  hardware (with calibration loop back to sim Phase 2a), 13 Skybrush
+  end-to-end
+- The major milestone: 14 First Drone Show, sub-phased 14a Part 107
+  cert → 14b solo outdoor content + § 107.35 waiver application →
+  14c multi-drone rehearsals → 14d first paid booking
+- Post-milestone (vision-level only): 15 outdoor hardware,
+  16 onboard compute hardware, 17 obstacle-aware hardware,
+  18 multi-platform hardware (stretch)
+
+**Promoted to top-level (was bundled or sub-phased):** former 4a/4b/4c
+sim sub-phases → Phases 3 / 4 / 5; former Phase 5/6/7 hardware-bundled
+sim work pulled forward to Phases 6 / 7 / 8 / 9; former Phase 3 hardware
+sub-phases (3a/3b/3c/3d) → Phases 10 / 11 / 12 / 13; Drone Show track
+→ Phase 14 with sub-phases 14a–14d.
+
+**Files affected:**
+
+- Renamed (11): phase4a→3, 4b→4, 4c→5, 3a→10, 3b→11, 3c→12, 3d→13,
+  phase_drone_shows→14, phase5_outdoor_faults→15, phase6_onboard_obstacles→16,
+  phase7_hardware_agnostic→18.
+- New (9): phase6_disturbance_dr.md, phase7_obstacle_sim.md,
+  phase8_onboard_distill.md, phase9_multiplatform_dr.md, phase14a_part107.md,
+  phase14b_outdoor_solo_content.md, phase14c_multidrone_rehearsals.md,
+  phase14d_first_paid_booking.md, phase17_obstacle_hw.md.
+- Deleted (2): phase3_sim2real_baseline.md (parent index — sub-phases
+  promoted), phase4_scale_shapes.md (parent index — sub-phases promoted).
+- Edited: vision.md (§6 / §7 / §9 + cross-cutting infrastructure),
+  README.md (phases table grouped into Sim / Hardware / Milestone /
+  Post-show), architecture.md (§4 evidence column adds Phase 12 / 13;
+  §6.1 evidence pipeline adds hardware sources), backlog.md (every
+  phase tag re-pointed; H9–H12 added for sim phases 6–9; R1–R4 added
+  for Phase 14 regulatory items), Phase 2 sub-phase docs (calibration
+  loop now points to Phase 12).
+
+No code changes; all editorial. Capstone (`v1.0.0-capstone`,
+`docs/capstone/**`) untouched per project rules.
+
 ## 2026-05-01 — Phase 1a re-cut as MAPPO + DirectMARLEnv
 
 The original Phase 1a plan (in-place refactor of `GgswarmEnv` with a

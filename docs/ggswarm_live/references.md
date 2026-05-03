@@ -204,7 +204,7 @@ Lab), actively maintained.
 
 Isaac Sim extension that ships multi-vehicle support, PX4 integration,
 ROS 2, and additional sensors (magnetometer, GPS, barometer) out of the
-box. **Flagged for Phase 2 evaluation before custom PX4 integration work
+box. **Flagged for Phase 10 evaluation before custom PX4 integration work
 starts.** BSD-3, active.
 
 - <https://github.com/PegasusSimulator/PegasusSimulator>
@@ -216,7 +216,7 @@ horizons. See Dimmig 2024 Academia-vs-Industry discussion.
 ### Aerial Gym (Kulkarni 2023)
 
 Isaac Gym extension that demonstrates thousands of multirotors simulated
-in parallel on GPU. **Relevant to Phase 4 (scale)** as the throughput
+in parallel on GPU. **Relevant to Phase 3 (sim scale)** as the throughput
 demonstration that removes simulator bandwidth from the bottleneck list.
 BSD-3, active.
 
@@ -238,9 +238,9 @@ MIT, active.
 
 Python-based single-multirotor simulator with full 6-DoF dynamics,
 aerodynamic wrenches, actuator dynamics, sensors, and wind models.
-Validated against real Crazyflie agile maneuvers. **Relevant to Phase 2
-(sim-to-real baseline)** as a high-fidelity Crazyflie reference. MIT,
-active.
+Validated against real Crazyflie agile maneuvers. **Relevant to
+Phases 10–13 (hardware bring-up + decentralized hardware)** as a
+high-fidelity Crazyflie reference. MIT, active.
 
 - <https://github.com/spencerfolk/rotorpy>
 - See [Folk 2023](#folk2023).
@@ -248,8 +248,9 @@ active.
 ### QuadSwarm (Huang 2023)
 
 Multi-quadrotor simulator for deep RL with explicit zero-shot sim-to-real
-transfer demonstrations on Crazyflie. **Relevant to Phase 2 (sim-to-real
-baseline)** as a proven DRL-to-hardware pipeline. MIT, active.
+transfer demonstrations on Crazyflie. **Relevant to Phases 10–13
+(hardware bring-up + decentralized hardware)** as a proven DRL-to-hardware
+pipeline. MIT, active.
 
 - <https://github.com/Zhehui-Huang/quad-swarm-rl>
 - See [Huang 2023](#huang2023).
@@ -258,7 +259,7 @@ baseline)** as a proven DRL-to-hardware pipeline. MIT, active.
 
 Crazyswarm2 is the ROS 2 framework for controlling real Crazyflie
 swarms. CrazySim is the Gazebo-based SITL companion for the same stack.
-**Phase 2 tooling.** MIT, active.
+**Phases 10–13 tooling.** MIT, active.
 
 - <https://github.com/IMRCLab/crazyswarm2>
 - <https://github.com/gtfactslab/CrazySim>
@@ -291,11 +292,11 @@ exhaustive catalog; focus is on candidates already named in the v2 plan.
 
 | Platform | Class | Role | Typical cost (unit, 2025) |
 | :--- | :--- | :--- | :--- |
-| Crazyflie 2.1 | Micro, indoor | Phase 2 baseline | $200 to $350 |
-| Holybro X500 v2 | Medium, outdoor | Phase 5 outdoor candidate | $500 to $1500 |
-| ModalAI Seeker | Medium, outdoor + VIO | Phase 5 outdoor + onboard | $2000 to $5000 |
-| ModalAI VOXL2 (as carrier) | Compute carrier | Phase 6 onboard compute | $1500 to $3000 |
-| Jetson Orin Nano (carrier) | Compute | Phase 6 onboard compute | $500 to $1000 |
+| Crazyflie 2.1 | Micro, indoor | Phases 10–14 baseline | $200 to $350 |
+| Holybro X500 v2 | Medium, outdoor | Phase 15 outdoor candidate | $500 to $1500 |
+| ModalAI Seeker | Medium, outdoor + VIO | Phase 15 outdoor + Phase 16 onboard | $2000 to $5000 |
+| ModalAI VOXL2 (as carrier) | Compute carrier | Phase 16 onboard compute | $1500 to $3000 |
+| Jetson Orin Nano (carrier) | Compute | Phase 16 onboard compute | $500 to $1000 |
 
 Vendor references:
 
@@ -310,9 +311,9 @@ Vendor references:
 ## 4. Flight Stacks and Middleware
 
 Open-source flight stacks, wire protocols, and middleware. Relevant to
-v2 Phase 5+ when real airframes larger than Crazyflie enter the picture.
-Phase 2 on Crazyflie uses a different stack (CRTP over Crazyswarm2, see
-§ 2) and bypasses this layer entirely.
+v2 Phase 15+ when real airframes larger than Crazyflie enter the picture.
+Phases 10–14 on Crazyflie use a different stack (CRTP over Crazyswarm2,
+see § 2) and bypass this layer entirely.
 
 ### PX4 Autopilot (chosen)
 
@@ -322,7 +323,7 @@ VOXL2. Modular codebase, strong research ecosystem, native integration
 with Pegasus Simulator and `uosm.isaac.px4_bridge` (see § 2). BSD-3,
 actively maintained.
 
-**Chosen as the v2 flight stack from Phase 5 onward.** Rationale:
+**Chosen as the v2 flight stack from Phase 15 onward.** Rationale:
 dominant in research multi-vehicle work, Isaac Sim tooling targets it
 first (Pegasus is PX4-only), Agilicious and most cited academic
 quadrotor work runs on it.
