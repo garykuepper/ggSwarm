@@ -164,10 +164,10 @@ def print_report(run_dir: Path, tb_metrics: dict):
         print(f"\nFormation Metrics:")
         print(f"  Formation error (m): mean={formation.get('mean', '?'):.3f}  end={formation.get('end', '?'):.3f}")
 
-    # Alive agents (SwarmRaft)
+    # Alive agents (DropoutGuard)
     alive = tb_metrics.get("Metrics/alive_agents_per_group", {})
     if alive:
-        print(f"\nSwarmRaft Metrics:")
+        print(f"\nDropoutGuard Metrics:")
         print(f"  Alive agents/group:  mean={alive.get('mean', '?'):.1f}  min={alive.get('min', '?'):.1f}")
 
     print(f"\n{'=' * 60}")

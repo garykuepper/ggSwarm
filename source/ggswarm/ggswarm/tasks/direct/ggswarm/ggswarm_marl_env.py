@@ -99,7 +99,7 @@ class GgswarmMarlEnv(DirectMARLEnv):
         self._formation_total_error = torch.zeros(N_envs, device=device)  # [N_envs]
         self._collision_count = torch.zeros(N_envs, device=device)  # [N_envs]
 
-        # SwarmRaft state (per-drone alive mask, per-env dropout step)
+        # DropoutGuard state (per-drone alive mask, per-env dropout step)
         self._agent_alive = torch.ones(N_drones, dtype=torch.bool, device=device)  # [N_drones]
         self._dropout_step = torch.zeros(N_envs, dtype=torch.long, device=device)  # [N_envs]
 
@@ -289,7 +289,7 @@ class GgswarmMarlEnv(DirectMARLEnv):
                 self._desired_pos_w[too_close, 0] += escape[:, 0] * shortfall
                 self._desired_pos_w[too_close, 1] += escape[:, 1] * shortfall
 
-        # SwarmRaft: trigger agent dropout at scheduled per-env step
+        # DropoutGuard: trigger agent dropout at scheduled per-env step
         if self.cfg.dropout_enabled:
             should_trigger = (self.episode_length_buf == self._dropout_step) & (self._dropout_step > 0)
             if should_trigger.any():
@@ -729,7 +729,7 @@ class GgswarmMarlEnv(DirectMARLEnv):
         self._minco_acc[drone_ids] = 0.0
         self._agent_alive[drone_ids] = True
 
-        # SwarmRaft: per-env dropout step
+        # DropoutGuard: per-env dropout step
         if self.cfg.dropout_enabled:
             self._dropout_step[env_ids] = torch.randint(
                 self.cfg.dropout_step_min,

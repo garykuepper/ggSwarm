@@ -68,7 +68,7 @@ parser.add_argument(
     "--dropout",
     action="store_true",
     default=False,
-    help="Enable SwarmRaft dropout during play (disabled by default).",
+    help="Enable DropoutGuard dropout during play (disabled by default).",
 )
 parser.add_argument(
     "--no-minco",

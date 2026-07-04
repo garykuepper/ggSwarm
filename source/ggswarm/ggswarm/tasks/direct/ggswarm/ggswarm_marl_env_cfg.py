@@ -170,7 +170,7 @@ class GgswarmMarlEnvCfg(DirectMARLEnvCfg):
     obstacle_dampen_floor = 0.5
     obstacle_dampen_strength = 0.5
 
-    # SwarmRaft agent dropout
+    # DropoutGuard agent dropout (renamed from "SwarmRaft" — see decentralization_plan.md §2)
     dropout_enabled = False
     dropout_step_min = 200
     dropout_step_max = 350
