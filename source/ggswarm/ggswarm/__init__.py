@@ -11,8 +11,4 @@ Python module serving as a project/extension template.
 from .tasks import *
 
 # Register UI extensions.
-try:
-    from .ui_extension_example import *
-except ImportError:
-    # omni.ext not available (e.g., in test environment)
-    pass
+from .ui_extension_example import *
