@@ -2,7 +2,7 @@
 ggSwarm Cinematic Showcase — Tron-inspired demo video for capstone.
 
 Orchestrates an 8-scene cinematic sequence with camera cuts, formation
-morphing, SwarmRaft dropout, and scale-up. Uses tron_env.py for visuals
+morphing, DropoutGuard dropout, and scale-up. Uses tron_env.py for visuals
 and the trained GNN policy for drone control.
 
 Usage:
@@ -17,7 +17,7 @@ Scenes:
     3. Formation snaps into octagon (5s)
     4. Formation morphing: octagon → triangle → grid → letter G (20s)
     5. One drone fails — LED cuts out, edges snap (5s)
-    6. SwarmRaft recovery — heptagon reforms (10s)
+    6. DropoutGuard recovery — heptagon reforms (10s)
     7. Scale-up: 20-agent polygon fills frame (15s)
     8. Title card fade (5s)
 
@@ -259,7 +259,7 @@ def main():
                 base_env._agent_alive[victim] = False
                 print(f"[SWARMRAFT] Drone {victim} killed!")
 
-        # SwarmRaft recovery: recompute for N-1
+        # DropoutGuard recovery: recompute for N-1
         if scene["name"] == "swarmraft" and progress < 0.05 and prev_formation != "polygon_recovery":
             alive_count = base_env._agent_alive[:A].sum().item()
             if alive_count < A:
