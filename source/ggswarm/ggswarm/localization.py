@@ -80,8 +80,20 @@ class DecentralizedLocalizer:
         # Subtract known (calibrated) bias from measured ranges.
         ranges = ranges - self.known_bias
         w = self._link_weights(valid, alive_g)
+        alive_f = alive_g.unsqueeze(2).float()  # shape: [E, A, 1]
+        n_alive = alive_f.sum(dim=1, keepdim=True).clamp(min=1.0)  # shape: [E, 1, 1]
         for _ in range(self.correct_iters):
-            self.p_hat -= self.damping * self._gn_step(ranges, w)
+            step = self.damping * self._gn_step(ranges, w)
+            # Pairwise ranges are translation-invariant: a swarm-wide rigid
+            # translation changes no range at all, so any coherent common-
+            # mode (mean) component of the per-drone GN step is a gauge
+            # artifact of the one-step-stale broadcast/range, not real
+            # geometric information. Left uncorrected it silently cancels
+            # propagate()'s dead-reckoned translation every step. Gauge
+            # (absolute position) must come only from odometry; correction
+            # is only allowed to reshape the swarm relative to its own mean.
+            mean_step = (step * alive_f).sum(dim=1, keepdim=True) / n_alive
+            self.p_hat -= (step - mean_step) * alive_f
 
         # Per-drone residual: mean |range inconsistency| over usable links.
         diff = self.p_hat.unsqueeze(2) - self._p_broadcast.unsqueeze(1)
