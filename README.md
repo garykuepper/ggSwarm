@@ -20,8 +20,11 @@ A simulation-only multi-agent RL drone swarm. Tested whether a single
 GATv2 + PPO policy can replace hand-designed multi-agent coordination
 logic. **Yes, within tested scope:** 8 drones hold triangle, polygon,
 and letter-G formations with <0.3 m steady-state error, recover from
-mid-episode dropout within 2 s (SwarmRaft), navigate cylinder forests,
-and the same policy generalizes to 20 agents without retraining.
+mid-episode dropout within 2 s — this mechanism is named `DropoutGuard`
+in the active codebase (renamed from a misnomer; it predates and is
+unrelated to the SwarmRaft-paper-derived localization work in ggSwarm
+Live) — navigate cylinder forests, and the same policy generalizes to
+20 agents without retraining.
 
 Frozen at tag `v1.0.0-capstone` on the `capstone` branch. All
 documentation, phase write-ups, testing report, and run history live
@@ -40,6 +43,16 @@ coordinator) and downwash/aero physics fidelity — then **Phase 2
 flying on real drones. See
 [`docs/ggswarm_live/vision.md`](docs/ggswarm_live/vision.md).
 
+Phase 1's decentralization work runs on the `ggswarm-marl-v0` task
+(shared-scene MAPPO, `GgswarmMarlEnv`) rather than the capstone's
+single-agent `ggswarm-v0`. The peer-to-peer localization slice — drones
+estimating their own position from simulated UWB ranging and onboard
+odometry instead of reading it from the simulator — is implemented in
+shadow mode (obs still ground truth, estimator runs and logs) with
+Isaac-side validation pending; see
+[`docs/ggswarm_live/decentralization_plan.md`](docs/ggswarm_live/decentralization_plan.md)
+for the design and staged rollout.
+
 A separate drone-light-show project (its own algorithm, developed to
 fund this research) is **not** part of ggSwarm; the earlier combined
 plan is preserved at
@@ -55,6 +68,7 @@ plan is preserved at
   - [Capstone (frozen)](#capstone-frozen)
 - [Quickstart](#quickstart)
 - [Training and Playback (capstone-era sim)](#training-and-playback-capstone-era-sim)
+- [Pure-Torch Test Suite (Phase 1 localization)](#pure-torch-test-suite-phase-1-localization)
 - [License](#license)
 
 ## Project Navigation
@@ -65,6 +79,7 @@ Top-level docs splitter: [`docs/README.md`](docs/README.md).
 
 - [Program overview](docs/ggswarm_live/README.md)
 - [Vision](docs/ggswarm_live/vision.md)
+- [Decentralization detail plan](docs/ggswarm_live/decentralization_plan.md) — peer-to-peer localization design and staged rollout
 - Phases:
   [0 capstone baseline](docs/ggswarm_live/phases/phase0_capstone_baseline.md) ·
   [1 sim: decentralization + downwash](docs/ggswarm_live/phases/phase1_sim.md) ·
@@ -166,6 +181,24 @@ tensorboard --logdir logs/skrl/ggswarm
 For capstone-era training operations (GCE launches, log-sync workflow,
 post-training analysis), see
 [`docs/capstone/ops/`](docs/capstone/ops/).
+
+## Pure-Torch Test Suite (Phase 1 localization)
+
+The `ggswarm.ranging` and `ggswarm.localization` modules (simulated UWB
+peer ranging and the decentralized position estimator) are pure torch
+with no Isaac dependency, so their tests run without Isaac Sim installed
+— useful for fast iteration on any machine, including CI:
+
+```bash
+python -m venv .venv-tests
+.venv-tests/bin/pip install torch --index-url https://download.pytorch.org/whl/cpu
+.venv-tests/bin/pip install pytest
+.venv-tests/bin/python -m pytest tests/ -q
+```
+
+See [`docs/ggswarm_live/decentralization_plan.md`](docs/ggswarm_live/decentralization_plan.md)
+for what these modules do and the staged plan for wiring them into the
+live training obs pipeline.
 
 ## Troubleshooting
 
