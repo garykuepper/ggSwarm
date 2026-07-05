@@ -45,7 +45,7 @@ def run_honest(steps=500, **kw):
         pos, vel = octagon_traj(s * DT)
         loc.propagate(vel, DT)
         ranges, valid = rng.measure(pos)
-        loc.correct(ranges, valid, alive)
+        loc.correct(ranges, valid, alive, DT)
     return rng, loc, pos, alive
 
 
@@ -79,7 +79,7 @@ def test_dead_reckon_fallback_no_valid_links():
         pos, vel = octagon_traj(s * DT)
         loc.propagate(vel, DT)
         ranges, valid = rng.measure(pos)
-        loc.correct(ranges, valid, alive)  # all links invalid -> pure dead reckoning
+        loc.correct(ranges, valid, alive, DT)  # all links invalid -> pure dead reckoning
     assert loc.rmse(pos, alive).mean().item() < 0.02  # noiseless odom integrates cleanly
 
 
