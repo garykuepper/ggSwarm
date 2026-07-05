@@ -88,6 +88,44 @@ def test_nan_free_at_10x_noise():
     assert torch.isfinite(loc.p_hat).all()
 
 
+def test_residual_held_when_no_usable_links():
+    """When a drone has zero usable links, its residual should not change."""
+    torch.manual_seed(0)
+    rng, loc = make_stack(noise_std=0.10, bias=0.05, dropout=0.05, latency=0)
+    pos0, _ = octagon_traj(0.0)
+    loc.reset_idx(torch.arange(E), pos0)
+    rng.reset_idx(torch.arange(E), pos0)
+    alive = torch.ones(E, A, dtype=torch.bool)
+
+    # Run ~10 honest ticks to let residuals stabilize.
+    for s in range(10):
+        pos, vel = octagon_traj(s * DT)
+        loc.propagate(vel, DT)
+        ranges, valid = rng.measure(pos)
+        loc.update_residuals(ranges, valid, alive, DT)
+
+    # Save residual for drone i before the fault tick.
+    i = 3  # choose drone 3
+    res_before = loc.residual.clone()
+
+    # Next tick: propagate, measure, zero valid for drone i, then update_residuals.
+    pos, vel = octagon_traj(10 * DT)
+    loc.propagate(vel, DT)
+    ranges, valid = rng.measure(pos)
+    # Zero all usable links for drone i (both as source and target).
+    valid[:, i, :] = False  # drone i cannot measure any peer
+    valid[:, :, i] = False  # no peer can measure drone i
+    loc.update_residuals(ranges, valid, alive, DT)
+
+    # Assert residual for drone i is held, not zeroed.
+    assert torch.allclose(loc.residual[:, i], res_before[:, i]), \
+        f"Residual for drone {i} should be held when zero usable links; " \
+        f"before={res_before[:, i]}, after={loc.residual[:, i]}"
+    # Assert no NaN leaked from nanmedian.
+    assert torch.isfinite(loc.residual).all(), \
+        "Residual contains NaN after hold-last-residual branch"
+
+
 def run_with_fault(fault_drone=3, fault_bias=1.0, steps=300, fault_at=150,
                    calib_from=50, recover=True):
     """Full tick order with mu/sigma calibrated from the honest pre-fault window."""
