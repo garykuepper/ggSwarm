@@ -31,7 +31,18 @@ Both are reported so the changelog can quote whichever the user prefers.
 FN = a faulted drone is never flagged between its fault onset and episode
 end (whether or not the fault ever actually onset before an early episode
 termination is separately tracked so those non-trials don't inflate the FN
-rate).
+rate). The first (staggered, partial) episode per env is excluded from ALL
+fault-trial accounting: the full reset staggers `episode_length_buf` to
+randint(0, max_episode_length) (`_reset_idx`) while the bias is injected only
+on the EXACT match `episode_length_buf == _fault_step`, so an env whose
+staggered start already exceeds `_fault_step` never physically received the
+bias that episode and a `>=` onset test there would be spurious. Fault
+bookkeeping for an env starts only after its first observed buf wrap — from
+the second episode on, buf starts at 0 and `>=` is equivalent to having
+passed through the exact-match injection step while the mask was armed. The
+printed `episodes` count in fault mode counts only these accounted episodes.
+Honest-mode metrics (RMSE/FP) are unaffected and count from the start (they
+already use per-env warmup gating and don't depend on fault onset).
 
 RMSE and FP rate are measured from alive, never-faulted, post-warmup
 drone-steps in BOTH modes (a fault-mode run still has 7 of 8 honest peers
@@ -142,6 +153,11 @@ def main() -> int:
     onset_ever = torch.zeros(N_envs, A, dtype=torch.bool, device=device)
     fault_step_for_accum = u._fault_step.clone() if args.mode == "fault" else torch.zeros(N_envs, dtype=torch.long, device=device)
     fault_mask_for_accum = u._fault_mask.clone() if args.mode == "fault" else torch.zeros(N_envs, A, dtype=torch.bool, device=device)
+    # Guard against the staggered first episode (see module docstring): the
+    # full reset staggers episode_length_buf, but the bias injects only on the
+    # exact buf == _fault_step match, so fault accounting for an env is armed
+    # only after its first observed buf wrap.
+    seen_first_reset = torch.zeros(N_envs, dtype=torch.bool, device=device)
 
     faulted_trials = 0  # denominator: faulted-drone-episodes where onset actually occurred
     fn_count = 0
@@ -187,7 +203,11 @@ def main() -> int:
             # mode: fault_mask_for_accum is all-False, so `started` is always
             # all-False and nothing accumulates).
             new_buf = u.episode_length_buf
-            started = (new_buf.unsqueeze(1) >= fault_step_for_accum.unsqueeze(1)) & fault_mask_for_accum
+            started = (
+                (new_buf.unsqueeze(1) >= fault_step_for_accum.unsqueeze(1))
+                & fault_mask_for_accum
+                & seen_first_reset.unsqueeze(1)  # staggered first episode excluded
+            )
             onset_ever |= started
             first_flag_step = torch.where(flags & started & (first_flag_step < 0), new_buf.unsqueeze(1), first_flag_step)
             max_err_onset = torch.where(started, torch.maximum(max_err_onset, err), max_err_onset)
@@ -198,13 +218,20 @@ def main() -> int:
             # drone trials and formation-collapse counts per episode.
             reset_envs = (new_buf < prev_buf).nonzero(as_tuple=True)[0]
             if reset_envs.numel() > 0:
-                n_episodes += int(reset_envs.numel())
+                # Fault mode counts only accounted episodes: wraps of envs
+                # whose staggered first (partial) episode already ended.
+                if args.mode == "fault":
+                    accounted_envs = reset_envs[seen_first_reset[reset_envs]]
+                    n_episodes += int(accounted_envs.numel())
+                else:
+                    accounted_envs = reset_envs
+                    n_episodes += int(reset_envs.numel())
 
                 log0 = u.extras[u._agent_ids[0]].get("log", {})
                 collapses += int(log0.get("Episode_Termination/died", 0))
 
                 if args.mode == "fault":
-                    for e in reset_envs.tolist():
+                    for e in accounted_envs.tolist():
                         victims = fault_mask_for_accum[e].nonzero(as_tuple=True)[0].tolist()
                         for a in victims:
                             if not bool(onset_ever[e, a]):
@@ -224,6 +251,10 @@ def main() -> int:
                     onset_ever[reset_envs, :] = False
                     fault_step_for_accum[reset_envs] = u._fault_step[reset_envs]
                     fault_mask_for_accum[reset_envs] = u._fault_mask[reset_envs]
+
+                # Env has now completed its staggered first episode; fault
+                # accounting is armed for it from here on.
+                seen_first_reset[reset_envs] = True
 
             prev_buf = new_buf.clone()
 
