@@ -3,6 +3,153 @@
 Reverse-chronological. Capstone changelog (frozen) lives at
 [`../../capstone/status/changelog.md`](../../capstone/status/changelog.md).
 
+## 2026-07-05 — Peer-to-peer localization: Stages 0-4 implemented, Isaac gates pending
+
+[`decentralization_plan.md`](../decentralization_plan.md) Stages 0-4 are
+implemented on branch `phase1-localization`: the `DropoutGuard` rename
+(Stage 0), `source/ggswarm/ggswarm/ranging.py`'s `UwbRangingSim` (Stage 1),
+`source/ggswarm/ggswarm/localization.py`'s `DecentralizedLocalizer`
+(Stage 2), shadow-mode env integration in `ggswarm_marl_env.py` (Stage 3),
+and `scripts/calibrate_residual_threshold.py` /
+`scripts/eval_localization.py` (Stage 4). The pure-torch test suite
+(`tests/test_ranging.py` + `tests/test_localization.py`) is **17/17 green**
+on Linux CPU (no Isaac Sim dependency). Real gate numbers — RMSE/FP/FN/
+recovery-time/collapses against the trained policy — require Isaac Sim and
+are **not yet measured**; the unit-test-level numbers that are real:
+synthetic scripted-trajectory RMSE **0.073 m**, gauge drift **0.040 m**
+(Stage 2 gate), and recovered faulted-drone error mean **0.053 m** / max
+**0.101 m** against the Stage 4 `< 0.20 m` unit-test gate (all three from
+`tests/test_localization.py`, not the real policy).
+
+**Three adjudicated design deviations from §3-4 of the plan:**
+
+1. **Velocity-forward-predicted broadcasts, not raw last-broadcast
+   position.** The plan's reference `correct()` (§3 "Correct") minimizes
+   residual against peers' latency-delayed broadcast *positions* directly.
+   That has a translation-drag defect: a moving swarm's stale broadcasts
+   systematically lag the true position, and GN correction pulls each
+   drone's estimate toward that lag every tick, so gauge drift compounds
+   with real translation instead of just odometry noise. Fix: drones
+   broadcast `(position, velocity)`; `correct()` forward-predicts the
+   target as `b_pred = p_broadcast + v_broadcast * dt` before computing
+   residuals, so latency no longer costs translation accuracy. Landed
+   in Task 3 (commits `74e9074..0f21f6d`); `correct()`'s signature grew a
+   required `dt` argument as a result, which Task 6 threads through as
+   `self.step_dt`.
+2. **Pre-fit innovation gating tick order + median residual aggregation +
+   hold-last-verdict.** The plan's §3 "Fault detection"/"Correct" ordering
+   (correct against all peers, then test residuals) lets one faulted tick
+   contaminate every honest drone's estimate before the fault is ever
+   flagged — measured at 1.06 m contamination in Task 4's initial
+   red-test run. Redesigned tick order:
+   `propagate → measure → update_residuals (pre-fit) → run_fault_test →
+   correct (flag-gated links) → recover`. Residuals aggregate via the
+   **median** (not mean) over each drone's peer links, so a single
+   faulted link doesn't drag an honest drone's own residual over
+   threshold; a drone with zero usable links **holds its last verdict**
+   rather than flipping to healthy on missing evidence (prevents
+   flag-flapping). Landed in Task 4 (commits `2c980ba..091617e`); full
+   tick-order contract lives in `localization.py`'s class docstring.
+3. **Accept-if-consistent recovery with an odometry jump gate.** The
+   plan's §3 "Recovery" re-multilaterates a flagged drone from IRLS alone.
+   Range residuals turn out not to separate a genuine range-fault from an
+   equally range-consistent but wrong displaced position: on the test
+   octagon a +1.0 m common bias converges to a fit with residual 0.111,
+   inside the honest floor's 0.077 ± 0.033 — IRLS alone would accept the
+   wrong fix. The odometry jump is the separating signal: a legitimate
+   correction from dead-reckoning drift is threshold-sized, while
+   accepting a biased fit demands a bias-sized jump from the
+   dead-reckoned estimate. `recover()` now accepts a candidate only if
+   both `cand_res <= mu + k*sigma` **and**
+   `jump <= recovery_jump_gate * threshold` (new ctor param
+   `recovery_jump_gate`, default `2.0`); otherwise it dead-reckons.
+   Landed in Task 4 alongside deviation 2.
+
+## Isaac-side gates: PENDING (Windows)
+
+None of the following have been run — all deferred from Tasks 1, 6, 7, 8
+because this branch was developed on a Linux box with no Isaac Sim. Run in
+this order (later steps need earlier steps' output):
+
+1. **Smoke train** (Task 1, Stage 0 gate) — confirms the `DropoutGuard`
+   rename didn't break anything:
+
+   ```text
+   env_isaaclab/Scripts/python.exe scripts/skrl/train.py --headless --task ggswarm-marl-v0 --num_envs 64 --max_iterations 5
+   ```
+
+2. **Off-means-off replay gate** (Task 6, Stage 3 gate, most important) —
+   `scripts/skrl/replay_gate.py` must be bit-identical with
+   `loc_enabled=False` before/after the Task 6 commit.
+3. **Shadow-mode replay** (Task 6, Stage 3 gate) — same replay gate with
+   `loc_enabled=True`; check `Metrics/loc_rmse_m` ≤ 0.10 m steady-state and
+   step-time parity. Task 6's own Linux-only mini-harness saw an honest
+   floor of 0.086-0.15 m under synthetic geometry — an open calibration
+   question, not a known wiring defect.
+4. **Residual threshold calibration** (Task 7, Stage 4 gate):
+
+   ```text
+   env_isaaclab/Scripts/python.exe scripts/calibrate_residual_threshold.py --headless --task ggswarm-marl-v0 --checkpoint logs/ref/v1.0.0-capstone/best_agent.pt --num_envs 64 --episodes 50
+   ```
+
+   Paste the printed `residual_mu`/`residual_sigma` into `GgswarmMarlEnvCfg`
+   (`residual_mu`/`residual_sigma` fields, currently placeholders).
+5. **Localization scorecard, both modes** (Task 8, Stage 4 gate) — using
+   the `residual_mu`/`residual_sigma` from step 4:
+
+   ```text
+   env_isaaclab\Scripts\python.exe scripts\eval_localization.py --headless --task ggswarm-marl-v0 --checkpoint logs\ref\v1.0.0-capstone\best_agent.pt --num_envs 64 --episodes 100 --mode honest --residual_mu <PASTE> --residual_sigma <PASTE>
+   env_isaaclab\Scripts\python.exe scripts\eval_localization.py --headless --task ggswarm-marl-v0 --checkpoint logs\ref\v1.0.0-capstone\best_agent.pt --num_envs 64 --episodes 100 --mode fault --residual_mu <PASTE> --residual_sigma <PASTE>
+   ```
+
+   Expected to pass all five `decentralization_plan.md` §6 scorecard gates
+   (RMSE ≤ 0.10 m, FP ≤ 0.01, FN ≤ 0.05, recovery containment high /
+   time-to-flag p50 ≤ 1.0 s, 0 formation collapses).
+
+## 2026-07-03 — Plan simplified to two phases; drone show split into a separate project
+
+The 18-phase plan (2026-05-03 entry below) had grown into a detailed
+commitment across capabilities that hadn't been started and a
+drone-show milestone that coupled the research policy to a revenue
+product it didn't need to be coupled to. Replaced with two phases:
+
+- **Phase 1: Sim** — two flat goals, no fixed order: proper
+  decentralization (no central assignment, no anchors, peer fault
+  tolerance) and downwash/aero physics fidelity. Absorbs the intent of
+  the old Phase 1 (shared-scene) and Phase 2 (2a–2d decentralized
+  stack) without the sub-phase sequencing. The already-completed 1a
+  MAPPO/DirectMARLEnv groundwork (see 2026-05-01 entry) carries over
+  as-is — it's real accomplished work, not discarded.
+- **Phase 2: Hardware** — a goal list (get the Phase 1 policy flying on
+  real drones, confirm decentralization holds up outside sim), not a
+  detailed plan. Replaces the old strict Phase 10–13 bring-up sequence.
+
+**Drone-light-show work is no longer part of ggSwarm.** The old plan's
+Skybrush RL-overlay architecture and Phase 14 (First Drone Show,
+sub-phased through Part 107 / § 107.35 / first paid booking) assumed
+the ggSwarm decentralized-formation policy would also drive paid shows.
+That assumption didn't hold up: a drone light show needs pre-authored
+choreography execution, not learned formation control, and forcing one
+system to serve both distorted the research plan. The show work is now
+a separate project with its own algorithm, developed to fund ggSwarm
+research rather than being part of it.
+
+**Capabilities dropped from numbered phases, kept as unscheduled ideas:**
+expressive shapes, animated formations, obstacle-aware control, scale
+beyond 20 drones, onboard distillation, multi-platform DR, outdoor
+disturbance DR — see [`backlog.md`](../backlog.md).
+
+**Disposition:** everything superseded moved to
+[`archive/`](../archive/) rather than deleted — `vision.md` (→
+`vision_v0.2.md`), `architecture.md`, `consensus_mechanisms.md`,
+`backlog.md` (→ `backlog_detailed.md`), and phase docs 2/2a–2d, 3–9,
+10–13, 14/14a–14d, 15–18. `phase1_shared_scene_sim.md` renamed to
+`phase1_sim.md` and rewritten in place (accomplished work kept, scope
+reframed to the two goals). New `phase2_hardware.md`, new short
+`vision.md`, new short `backlog.md`, new `archive/README.md`. No code
+changes; all editorial. Capstone (`v1.0.0-capstone`, `docs/capstone/**`)
+untouched per project rules.
+
 ## 2026-05-03 — Full phase plan restructure: exhaust sim before hardware; drone show as the major milestone
 
 **Driving principles:** (1) anything algorithmic ships as a numbered sim
