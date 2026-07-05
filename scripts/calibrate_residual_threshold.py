@@ -11,7 +11,7 @@ consumes at flag time) from alive drones during policy rollout, and prints
 and the p99.9 sample) for the user to paste into `GgswarmMarlEnvCfg`.
 
 Policy-in-the-loop, not a hover test: the residual is measured over the
-policy's real maneuver envelope, not just steady hover, so a warmup period
+policy's real maneuver envelope, not just steady hover, so a per-env warmup period
 is discarded to let spawn transients and policy behavior settle first.
 
 AppLauncher header, checkpoint loading, and env construction are mirrored
@@ -101,13 +101,15 @@ def main() -> int:
                 actions[agent_id] = mean_action.clamp(-1.0, 1.0)
             obs_dict, _, _, _, _ = env.step(actions)
 
-            # After warmup (transients from spawn + policy settle), harvest
+            # After per-env warmup (transients from spawn + policy settle), harvest
             # residuals from alive drones only. Policy-in-the-loop =>
             # maneuver envelope, not hover.
-            if step_in_episode >= args.warmup_steps:
+            warm = env.unwrapped.episode_length_buf >= args.warmup_steps  # [N_envs] bool, per-env steps since ITS last reset
+            if warm.any():
                 loc = env.unwrapped._localizer
                 alive = env.unwrapped._agent_alive.reshape(env.unwrapped.num_envs, -1)
-                residual_samples.append(loc.residual[alive].flatten().cpu())
+                mask = warm.unsqueeze(1) & alive  # [N_envs, A]
+                residual_samples.append(loc.residual[mask].flatten().cpu())
 
             if (step_in_episode + 1) % steps_per_episode == 0:
                 print(f"  ~episode {(step_in_episode + 1) // steps_per_episode}/{args.episodes} complete")
