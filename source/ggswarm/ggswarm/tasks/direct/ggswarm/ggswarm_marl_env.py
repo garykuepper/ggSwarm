@@ -103,6 +103,36 @@ class GgswarmMarlEnv(DirectMARLEnv):
         self._agent_alive = torch.ones(N_drones, dtype=torch.bool, device=device)  # [N_drones]
         self._dropout_step = torch.zeros(N_envs, dtype=torch.long, device=device)  # [N_envs]
 
+        # Decentralized localization (shadow mode — obs remain ground truth)
+        if self.cfg.loc_obs_source != "ground_truth":
+            raise ValueError(
+                "loc_obs_source='estimate' is Stage 5 (obs swap); this build is shadow-mode only."
+            )
+        if self.cfg.loc_enabled:
+            from ggswarm.localization import DecentralizedLocalizer  # noqa: PLC0415
+            from ggswarm.ranging import UwbRangingSim  # noqa: PLC0415
+
+            self._ranging = UwbRangingSim(
+                N_envs, A, device,
+                noise_std=self.cfg.uwb_range_noise_std_m,
+                bias=self.cfg.uwb_range_bias_m,
+                dropout_prob=self.cfg.uwb_link_dropout_prob,
+                latency_steps=self.cfg.uwb_latency_steps,
+            )
+            self._localizer = DecentralizedLocalizer(
+                N_envs, A, device,
+                correct_iters=self.cfg.loc_correct_iters,
+                damping=self.cfg.loc_gn_damping,
+                odom_noise_std=self.cfg.odom_vel_noise_std_mps,
+                recovery_irls_iters=self.cfg.recovery_irls_iters,
+                recovery_huber_delta=self.cfg.recovery_huber_delta,
+                min_recovery_peers=self.cfg.loc_min_recovery_peers,
+                known_bias=self.cfg.loc_known_bias_m,
+                recovery_jump_gate=self.cfg.recovery_jump_gate,
+            )
+            self._fault_step = torch.zeros(N_envs, dtype=torch.long, device=device)  # [N_envs]
+            self._fault_mask = torch.zeros(N_envs, A, dtype=torch.bool, device=device)  # [N_envs, A]
+
         # Forest base goal (per-drone, used when forest_enabled)
         if self.cfg.forest_enabled:
             self._forest_base_goal = torch.zeros(N_drones, 3, device=device)  # [N_drones, 3]
@@ -389,6 +419,9 @@ class GgswarmMarlEnv(DirectMARLEnv):
         N_envs = self.num_envs
         N_drones = self._N_drones
 
+        if self.cfg.loc_enabled:
+            self._update_localization()
+
         desired_pos_b, _ = subtract_frame_transforms(
             self._robot.data.root_pos_w,
             self._robot.data.root_quat_w,
@@ -494,6 +527,51 @@ class GgswarmMarlEnv(DirectMARLEnv):
                     continue
                 pos_j = self._robot.data.root_pos_w[j].cpu().tolist()
                 self._debug_draw.draw_lines([pos_i], [pos_j], [src_color], [2.0])
+
+    def _update_localization(self) -> None:
+        """Shadow-mode localization tick: estimator runs and logs; obs untouched.
+
+        Order (innovation-gating contract, see localization.py class docstring
+        and Task 4's tick-order note): fault trigger -> propagate -> measure ->
+        update_residuals (unconditional pre-fit residual, feeds both the test
+        and correct()'s gating) -> run_fault_test (if enabled) -> correct ->
+        recover (if enabled). Runs once per env step (DirectMARLEnv calls
+        _get_observations once per step, after _reset_idx re-seeds fresh envs).
+        """
+        A = self._A
+        N_envs = self.num_envs
+        alive_g = self._agent_alive.reshape(N_envs, A)  # shape: [N_envs, A]
+        pos_true_g = (self._robot.data.root_pos_w - self._env_origins_per_drone).reshape(
+            N_envs, A, 3
+        )  # shape: [N_envs, A, 3]
+
+        # Fault injection at the scheduled per-env step (DropoutGuard scheduling pattern).
+        if self.cfg.fault_inject_enabled:
+            trigger = (self.episode_length_buf == self._fault_step) & (self._fault_step > 0)
+            if trigger.any():
+                self._ranging.inject_fault(
+                    self._fault_mask & trigger.unsqueeze(1), self.cfg.fault_bias_m
+                )
+
+        self._localizer.propagate(self._robot.data.root_lin_vel_w, self.step_dt)
+        ranges, valid = self._ranging.measure(pos_true_g)
+        self._localizer.update_residuals(ranges, valid, alive_g, self.step_dt)
+        if self.cfg.residual_test_enabled:
+            self._localizer.run_fault_test(
+                self.cfg.residual_mu, self.cfg.residual_sigma, self.cfg.residual_k
+            )
+        self._localizer.correct(ranges, valid, alive_g, self.step_dt)
+        if self.cfg.residual_test_enabled and self.cfg.recovery_enabled:
+            self._localizer.recover(ranges, valid, alive_g, self.step_dt)
+
+        log0 = self.extras[self._agent_ids[0]].setdefault("log", {})
+        log0["Metrics/loc_rmse_m"] = self._localizer.rmse(pos_true_g, alive_g).mean().item()
+        log0["Metrics/loc_gauge_drift_m"] = (
+            self._localizer.gauge_drift(pos_true_g, alive_g).mean().item()
+        )
+        log0["Metrics/loc_residual_p50"] = self._localizer.residual.median().item()
+        if self.cfg.residual_test_enabled:
+            log0["Metrics/loc_flag_rate"] = self._localizer.flags.float().mean().item()
 
     def _get_states(self) -> torch.Tensor:
         # state_space=-1 → DirectMARLEnv concatenates obs_dict for us.
@@ -796,3 +874,22 @@ class GgswarmMarlEnv(DirectMARLEnv):
         self._robot.write_root_pose_to_sim(default_root_state[:, :7], drone_ids)
         self._robot.write_root_velocity_to_sim(default_root_state[:, 7:], drone_ids)
         self._robot.write_joint_state_to_sim(joint_pos, joint_vel, None, drone_ids)
+
+        # Localization: seed estimates from spawn truth; clear channel state.
+        if self.cfg.loc_enabled:
+            pos_spawn_g = (
+                default_root_state[:, :3] - self._env_origins_per_drone[drone_ids]
+            ).reshape(n_envs_reset, A, 3)  # shape: [n_reset, A, 3]
+            self._localizer.reset_idx(env_ids, pos_spawn_g)
+            self._ranging.reset_idx(env_ids, pos_spawn_g)
+            if self.cfg.fault_inject_enabled:
+                self._fault_step[env_ids] = torch.randint(
+                    self.cfg.fault_step_min,
+                    self.cfg.fault_step_max + 1,
+                    (n_envs_reset,),
+                    device=self.device,
+                )
+                self._fault_mask[env_ids] = False
+                for e_idx in range(n_envs_reset):
+                    victims = torch.randperm(A, device=self.device)[: self.cfg.fault_count]
+                    self._fault_mask[env_ids[e_idx], victims] = True
