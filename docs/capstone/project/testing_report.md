@@ -152,7 +152,7 @@ report.
 These are intentionally out of scope for the capstone deadline but
 remain interesting follow-ups. Consolidated backlog with effort/impact
 ranking:
-[ggSwarm Live backlog](../../ggswarm_live/backlog.md).
+[ggSwarm Live backlog](../../ggswarm_live/archive/backlog_detailed.md).
 
 - **Action-space CBF for true reactive obstacle avoidance.** The CBF
   obstacle module is retained in `cbf.py` but disabled — goal deflection

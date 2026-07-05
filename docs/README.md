@@ -14,9 +14,11 @@ Start here: [`capstone/README.md`](capstone/README.md).
 
 ## ggSwarm Live (active development)
 
-Real-hardware deployment program. Takes the v1 policy out of simulation,
-onto PX4-based airframes, and delivers it as the adaptive-execution layer
-underneath Skybrush drone-light-show choreography. Target architecture:
-[`ggswarm_live/architecture.md`](ggswarm_live/architecture.md).
+Real-hardware research program. Takes the v1 policy out of an
+idealized, centralized simulation and makes it work decentralized,
+under real aerodynamics, and eventually on real drones. Two phases:
+sim (decentralization + downwash), then hardware transfer as a goal
+list. The drone-light-show revenue work is a separate project, not
+part of ggSwarm.
 
 Start here: [`ggswarm_live/README.md`](ggswarm_live/README.md).

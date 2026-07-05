@@ -232,7 +232,7 @@ concatenated. Each head can specialize.
 **Edge features** (optional): passing `edge_attr` with `edge_dim=N`
 lets attention condition on per-edge info (e.g., relative position).
 This project doesn't currently use them — tracked as
-[ggSwarm Live backlog § A1](../ggswarm_live/backlog.md#a1-gatv2-edge-features).
+[ggSwarm Live backlog § A1](../ggswarm_live/archive/backlog_detailed.md#a1-gatv2-edge-features).
 
 ## 11. CTDE — centralized training, decentralized execution
 

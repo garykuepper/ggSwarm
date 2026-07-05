@@ -31,18 +31,19 @@ under [`docs/capstone/`](docs/capstone/).
 
 ### ggSwarm Live (active)
 
-Real-hardware deployment program. Takes the capstone policy out of
-simulation, onto PX4-based airframes, and delivers it as the adaptive
-execution layer underneath Skybrush drone-light-show choreography.
-Target: a paying drone-show product whose revenue funds the hardware
-upgrades for the longer-horizon swarm-autonomy goals (decentralized
-peer ranging, onboard compute, obstacle-aware navigation, hardware-
-agnostic policy transfer).
+Real-hardware research program. Takes the capstone policy out of an
+idealized, centralized simulation and makes it work decentralized,
+under real aerodynamics, and eventually on real drones. Two phases:
+**Phase 1 (sim)** — proper decentralization (no anchors, no central
+coordinator) and downwash/aero physics fidelity — then **Phase 2
+(hardware)** — a goal list, not a detailed plan, for getting the policy
+flying on real drones. See
+[`docs/ggswarm_live/vision.md`](docs/ggswarm_live/vision.md).
 
-Target architecture: Skybrush CSV waypoints + RL-policy correction
-overlay → PX4 offboard mode, with four independent failsafe layers and
-a WiFi mesh that is explicitly **not** flight-critical infrastructure.
-See [`docs/ggswarm_live/architecture.md`](docs/ggswarm_live/architecture.md).
+A separate drone-light-show project (its own algorithm, developed to
+fund this research) is **not** part of ggSwarm; the earlier combined
+plan is preserved at
+[`docs/ggswarm_live/archive/`](docs/ggswarm_live/archive/) for reference.
 
 ## Table of Contents
 
@@ -63,20 +64,14 @@ Top-level docs splitter: [`docs/README.md`](docs/README.md).
 ### ggSwarm Live
 
 - [Program overview](docs/ggswarm_live/README.md)
-- [Vision and requirements](docs/ggswarm_live/vision.md)
-- [Target architecture (Skybrush + RL on PX4)](docs/ggswarm_live/architecture.md)
+- [Vision](docs/ggswarm_live/vision.md)
 - Phases:
   [0 capstone baseline](docs/ggswarm_live/phases/phase0_capstone_baseline.md) ·
-  [1 shared-scene sim](docs/ggswarm_live/phases/phase1_shared_scene_sim.md) ·
-  [2 sim-to-real](docs/ggswarm_live/phases/phase2_sim2real_baseline.md) ·
-  [3 decentralized](docs/ggswarm_live/phases/phase3_decentralized.md) ·
-  [4 scale + shapes](docs/ggswarm_live/phases/phase4_scale_shapes.md) ·
-  [4b drone shows](docs/ggswarm_live/phases/phase4b_drone_shows.md) ·
-  [5 outdoor + faults](docs/ggswarm_live/phases/phase5_outdoor_faults.md) ·
-  [6 onboard + obstacles](docs/ggswarm_live/phases/phase6_onboard_obstacles.md) ·
-  [7 hardware-agnostic](docs/ggswarm_live/phases/phase7_hardware_agnostic.md)
-- [Backlog](docs/ggswarm_live/backlog.md) — capstone deferrals + new work, mapped to phases
+  [1 sim: decentralization + downwash](docs/ggswarm_live/phases/phase1_sim.md) ·
+  [2 hardware transfer](docs/ggswarm_live/phases/phase2_hardware.md)
+- [Backlog](docs/ggswarm_live/backlog.md) — loose, unscheduled ideas
 - [References](docs/ggswarm_live/references.md)
+- [Archive](docs/ggswarm_live/archive/) — earlier 18-phase plan, kept for reference
 - Status: [changelog](docs/ggswarm_live/status/changelog.md) ·
   [log](docs/ggswarm_live/status/log.md)
 

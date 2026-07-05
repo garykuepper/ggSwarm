@@ -32,5 +32,5 @@ branch.
 The original Phase 7 ("Post-Capstone Plan") consolidated work that was
 deliberately deferred from Phases 1–6. Those items have been folded into
 the ggSwarm Live program backlog at
-[`../ggswarm_live/backlog.md`](../ggswarm_live/backlog.md), where they
+[`../ggswarm_live/archive/backlog_detailed.md`](../ggswarm_live/archive/backlog_detailed.md), where they
 are mapped onto the ggSwarm Live phase plan.

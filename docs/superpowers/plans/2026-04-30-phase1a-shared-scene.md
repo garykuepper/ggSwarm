@@ -1,5 +1,7 @@
 # Phase 1a: Shared-Scene Refactor Implementation Plan
 
+> **Note (2026-07-04):** `docs/ggswarm_live/phases/phase1_shared_scene_sim.md` referenced throughout this plan was renamed to `phases/phase1_sim.md` in the docs restructure.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Refactor `GgswarmEnv` so all `num_agents` drones spawn in one shared physics scene per env (replacing one-drone-per-env), fix the B3 stacked-spawn artifact, collapse the now-redundant `_num_groups = N // A` plumbing, and verify via a replay-only test against `v1.0.0-capstone` that the new env preserves capstone-checkpoint behavior with downwash off.

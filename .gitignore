@@ -89,3 +89,4 @@ logs/sweeps/*.log
 
 # Hydra outputs
 outputs/
+.venv-tests/

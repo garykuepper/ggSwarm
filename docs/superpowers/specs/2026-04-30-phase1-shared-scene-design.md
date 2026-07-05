@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-30
 **Status:** Approved (awaiting user spec review)
-**Phase reference:** [`docs/ggswarm_live/phases/phase1_shared_scene_sim.md`](../../ggswarm_live/phases/phase1_shared_scene_sim.md)
+**Phase reference:** [`docs/ggswarm_live/phases/phase1_sim.md`](../../ggswarm_live/phases/phase1_sim.md)
 **Capstone anchor:** `v1.0.0-capstone` on `capstone` branch
 **Compute envelope:** Local 3070 only (no GCE — credits exhausted)
 
@@ -89,7 +89,7 @@ Rationale: `CLAUDE.md` rules are unambiguous on no backwards-compat hacks, no ha
 
 - **Run labels:** `train_ggswarm_p1a-N.log`, `train_ggswarm_p1b-{disabled,analytic,residual}-N.log`, `train_ggswarm_p1c-N.log` (local instead of GCE).
 - **Changelog:** one entry per sub-phase landing in `docs/ggswarm_live/status/changelog.md` with TB scalar deltas and rationale.
-- **Phase doc:** `docs/ggswarm_live/phases/phase1_shared_scene_sim.md` status updated as 1a/1b/1c land.
+- **Phase doc:** `docs/ggswarm_live/phases/phase1_sim.md` status updated as 1a/1b/1c land.
 - **References:** Panerati 2021 and Shi 2022 entries already cited in `docs/ggswarm_live/references.md`.
 
 ## 5. Data Flow

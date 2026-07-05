@@ -100,7 +100,7 @@ inventory. Phase 6 is editing, polish, and submission.
   Phase 2 results, Phase 3 GNN, Phase 4 stress tests + obstacle navigation,
   Phase 5 cinematic, results vs objectives, lessons learned, future work —
   pull the future-work slide from
-  [ggSwarm Live backlog](../../ggswarm_live/backlog.md))
+  [ggSwarm Live backlog](../../ggswarm_live/archive/backlog_detailed.md))
 - Export demo video with QR code linking to the GitHub repo
 - Prepare live demo machine
 

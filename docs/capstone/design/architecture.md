@@ -139,7 +139,7 @@ flowchart TD
 > condition on *how far and in what direction* each neighbor sits —
 > typically a meaningful gain for spatial GNN tasks. Deferred until after
 > the Apr 24, 2026 capstone freeze; see
-> [ggSwarm Live backlog § A1](../../ggswarm_live/backlog.md#a1-gatv2-edge-features).
+> [ggSwarm Live backlog § A1](../../ggswarm_live/archive/backlog_detailed.md#a1-gatv2-edge-features).
 
 ### L3: MINCO Minimum-Jerk Filter
 
@@ -283,7 +283,7 @@ flowchart LR
 Backlog of non-critical architectural upgrades deferred until after the
 Apr 24, 2026 capstone freeze. Full index with effort/impact ranking
 lives in
-[ggSwarm Live backlog](../../ggswarm_live/backlog.md).
+[ggSwarm Live backlog](../../ggswarm_live/archive/backlog_detailed.md).
 
 Architecture-relevant items:
 

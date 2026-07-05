@@ -31,7 +31,9 @@
       "Bash(echo \"PID 128 still running \\($\\(ps -o etime= -p 128)",
       "Bash(kill 128)",
       "Bash(kill -9 128)",
-      "Bash(kill -9 1173)"
+      "Bash(kill -9 1173)",
+      "mcp__searxng__web_search",
+      "mcp__fetch__fetch_markdown"
     ]
   }
 }
