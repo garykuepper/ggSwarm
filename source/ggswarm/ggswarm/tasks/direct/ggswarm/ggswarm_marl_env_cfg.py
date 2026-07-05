@@ -175,3 +175,39 @@ class GgswarmMarlEnvCfg(DirectMARLEnvCfg):
     dropout_step_min = 200
     dropout_step_max = 350
     dropout_count = 1
+
+    # Decentralized localization (Phase 1 Goal A — shadow mode in this build;
+    # see docs/superpowers/specs/2026-07-04-phase1-decentralized-localization-design.md)
+    loc_enabled = False
+    loc_obs_source = "ground_truth"   # "ground_truth" only until Stage 5 lands
+    uwb_range_noise_std_m = 0.10
+    uwb_range_bias_m = 0.05
+    uwb_link_dropout_prob = 0.05
+    uwb_latency_steps = 1
+    odom_vel_noise_std_mps = 0.02
+    loc_correct_iters = 3
+    loc_gn_damping = 0.5
+    # Drones' ground-calibrated estimate of the static UWB range bias —
+    # subtracted on-board before the range is consumed. Defaults equal to
+    # uwb_range_bias_m (perfect ground calibration); Stage 5 DR may separate them.
+    loc_known_bias_m = 0.05
+    # residual fault test — mu/sigma come from scripts/calibrate_residual_threshold.py
+    residual_test_enabled = False
+    residual_mu = 0.0
+    residual_sigma = 0.0
+    residual_k = 3.0
+    recovery_enabled = False
+    recovery_irls_iters = 5
+    recovery_huber_delta = 0.10
+    recovery_jump_gate = 2.0   # reject recovery fixes jumping > gate * threshold from dead-reckoned estimate
+    loc_min_recovery_peers = 4
+    # fault injection (FN / recovery-time evaluation)
+    fault_inject_enabled = False
+    fault_bias_m = 1.0
+    fault_step_min = 200
+    fault_step_max = 350
+    fault_count = 1
+    # noise-anneal curriculum (Stage 5 — declared now, unused in shadow mode)
+    loc_noise_anneal_start = 0
+    loc_noise_anneal_end = 5000
+    loc_noise_scale_min = 0.1
