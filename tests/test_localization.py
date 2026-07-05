@@ -86,3 +86,93 @@ def test_dead_reckon_fallback_no_valid_links():
 def test_nan_free_at_10x_noise():
     _, loc, pos, alive = run_honest(steps=300, noise_std=1.0, bias=0.5, odom_std=0.2)
     assert torch.isfinite(loc.p_hat).all()
+
+
+def run_with_fault(fault_drone=3, fault_bias=1.0, steps=300, fault_at=150,
+                   calib_from=50, recover=True):
+    """Full tick order with mu/sigma calibrated from the honest pre-fault window."""
+    torch.manual_seed(0)
+    rng, loc = make_stack()
+    pos0, _ = octagon_traj(0.0)
+    loc.reset_idx(torch.arange(E), pos0)
+    rng.reset_idx(torch.arange(E), pos0)
+    alive = torch.ones(E, A, dtype=torch.bool)
+    mask = torch.zeros(E, A, dtype=torch.bool)
+    mask[:, fault_drone] = True
+    calib, mu, sigma, flagged_at = [], None, None, None
+    for s in range(steps):
+        if s == fault_at:
+            rng.inject_fault(mask, fault_bias)
+            cal = torch.stack(calib)
+            mu, sigma = cal.mean().item(), cal.std().item()
+        pos, vel = octagon_traj(s * DT)
+        loc.propagate(vel, DT)
+        ranges, valid = rng.measure(pos)
+        res = loc.update_residuals(ranges, valid, alive, DT)
+        if mu is None:
+            if s >= calib_from:
+                calib.append(res.clone())
+        else:
+            loc.run_fault_test(mu, sigma, 3.0)
+            if flagged_at is None and loc.flags[:, fault_drone].float().mean() > 0.5:
+                flagged_at = s
+        loc.correct(ranges, valid, alive, DT)
+        if recover and mu is not None:
+            loc.recover(ranges, valid, alive, DT)
+    return loc, pos, alive, flagged_at
+
+
+def test_fault_is_flagged():
+    loc, pos, alive, flagged_at = run_with_fault(recover=False)
+    assert flagged_at is not None and flagged_at - 150 <= 25  # flagged within 0.5 s
+
+
+def test_false_positive_rate_honest():
+    """Calibrate mu/sigma from an honest run, then assert flag rate <= 1%."""
+    torch.manual_seed(0)
+    rng, loc = make_stack()
+    pos0, _ = octagon_traj(0.0)
+    loc.reset_idx(torch.arange(E), pos0)
+    rng.reset_idx(torch.arange(E), pos0)
+    alive = torch.ones(E, A, dtype=torch.bool)
+    calib = []
+    for s in range(200):
+        pos, vel = octagon_traj(s * DT)
+        loc.propagate(vel, DT)
+        ranges, valid = rng.measure(pos)
+        res = loc.update_residuals(ranges, valid, alive, DT)
+        if s >= 50:  # skip the settling transient
+            calib.append(res.clone())
+        loc.correct(ranges, valid, alive, DT)
+    cal = torch.stack(calib)
+    mu, sigma = cal.mean().item(), cal.std().item()
+    rates = []
+    for s in range(200, 300):
+        pos, vel = octagon_traj(s * DT)
+        loc.propagate(vel, DT)
+        ranges, valid = rng.measure(pos)
+        loc.update_residuals(ranges, valid, alive, DT)
+        loc.run_fault_test(mu, sigma, 3.0)
+        rates.append(loc.flags.float().mean().item())
+        loc.correct(ranges, valid, alive, DT)
+    assert sum(rates) / len(rates) <= 0.01
+
+
+def test_recovery_bounds_error():
+    loc, pos, alive, _ = run_with_fault(recover=True)
+    err_faulted = (loc.p_hat[:, 3] - pos[:, 3]).norm(dim=1)
+    assert err_faulted.mean().item() < 0.20  # recovered despite 1.0 m ranging bias
+
+
+def test_recovery_skipped_below_min_peers():
+    torch.manual_seed(0)
+    rng, loc = make_stack(dropout=1.0, latency=0)  # no usable links at all
+    pos0, _ = octagon_traj(0.0)
+    loc.reset_idx(torch.arange(E), pos0)
+    rng.reset_idx(torch.arange(E), pos0)
+    alive = torch.ones(E, A, dtype=torch.bool)
+    loc.flags[:, 2] = True
+    before = loc.p_hat.clone()
+    ranges, valid = rng.measure(pos0)
+    loc.recover(ranges, valid, alive, DT)
+    assert torch.allclose(loc.p_hat, before)  # dead-reckon hold, no update
