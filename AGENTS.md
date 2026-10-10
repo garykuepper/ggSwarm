@@ -1,6 +1,6 @@
-# CLAUDE.md — ggSwarm Project Rules
+# AGENTS.md — ggSwarm Project Rules
 
-This file is automatically loaded by Claude Code at session start.
+Canonical agent instructions; `CLAUDE.md` is a symlink to this file.
 All rules below are MANDATORY unless marked SHOULD.
 
 ---
@@ -128,7 +128,7 @@ tensorboard --logdir logs/skrl/ggswarm
 
 - Every reward term must have a scale in `GgswarmEnvCfg` and (if applicable) a sigma/threshold parameter.
 - Planned-but-disabled reward terms must be `0.0` in cfg (not commented out).
-- Any reward change must be logged in `docs/capstone/status/changelog.md` (frozen) or `docs/ggswarm_live/status/changelog.md` (active) with rationale.
+- Any reward change must be logged in `docs/capstone/status/changelog.md` (frozen) or `docs/ggswarm_live/status/changelog.md` (Live program) with rationale.
 - No magic numbers in env core — all tunable constants must be cfg parameters.
 
 ## Tensor Shape Contracts (MANDATORY)
@@ -153,7 +153,7 @@ tensorboard --logdir logs/skrl/ggswarm
 
 | Document | Update trigger |
 | :--- | :--- |
-| `docs/ggswarm_live/status/changelog.md` | Every reward change, phase transition, or major bug fix (active program) |
+| `docs/ggswarm_live/status/changelog.md` | Every reward change, phase transition, or major bug fix (Live program) |
 | `docs/ggswarm_live/status/log.md` | Rolling notes (no fixed cadence) |
 | `docs/ggswarm_live/phases/` | Phase start/completion |
 | `docs/capstone/**` | **Frozen.** Do not edit except to fix dangling links during reorgs. |

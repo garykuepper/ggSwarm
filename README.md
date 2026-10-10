@@ -122,8 +122,8 @@ Top-level docs splitter: [`docs/README.md`](docs/README.md).
 ## Quickstart
 
 The current installable code is the capstone simulation stack
-(`ggswarm-v0` Isaac Lab task). Hardware work (Crazyflie, then the ArduPilot show drone) is gated in the
-ggSkyGrid plan.
+(`ggswarm-v0` Isaac Lab task). Hardware work (Crazyflie, then the
+ArduPilot show drone) is gated in the ggSkyGrid plan.
 
 > Isaac Lab is expected to be installed inside your Python virtual environment.
 > No sibling `IsaacLab` repository clone is required for this project setup.
