@@ -6,7 +6,7 @@ Solo pace, no timeline.*
 
 > **Superseded in part, 2026-09-23.** The learned policy is no longer the
 > primary path to hardware. The deterministic plan-and-certify core
-> ([ggChoreo](https://github.com/garykuepper/ggChoreo) (private)) comes first, then
+> ([ggChoreo](https://github.com/garykuepper/ggChoreo), private) comes first, then
 > online decentralized replanning behind a safety filter. This repo's
 > policy is benchmarked against it as a challenger. ggSwarm Live is
 > parked; order and gates are in the

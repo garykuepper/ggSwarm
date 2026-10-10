@@ -36,7 +36,7 @@ under [`docs/capstone/`](docs/capstone/).
 
 > **Direction changed 2026-09-23.** A three-survey review of real swarms
 > moved the plan to a deterministic plan-and-certify core first
-> ([ggChoreo](https://github.com/garykuepper/ggChoreo) (private)), then online
+> ([ggChoreo](https://github.com/garykuepper/ggChoreo), private), then online
 > decentralized replanning behind a safety filter, with this repo's
 > GATv2+PPO policy kept as a benchmarked challenger. The program is parked
 > behind a gate; see the
