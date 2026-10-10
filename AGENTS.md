@@ -13,8 +13,8 @@ The repo hosts two programs:
   `docs/capstone/`. Snapshot tag `v1.0.0-capstone`, branch `capstone`.
   The "Capstone-era rules" section below applied during that program and
   is preserved as historical context.
-- **ggSwarm Live** — **parked** (2026-09-23) behind a gate in
-  `~/ggSkyGrid/PLAN.md`. Its direction changed that day: a deterministic
+- **ggSwarm Live** — status and priorities: `~/ggSkyGrid/PLAN.md`.
+  Its direction changed on 2026-09-23: a deterministic
   plan-and-certify core (`~/ggChoreo`) comes first, then online
   decentralized replanning behind a safety filter. The GATv2+PPO policy
   stays as a benchmarked challenger behind that filter. Hardware is

@@ -72,7 +72,7 @@ is the planned outdoor platform. The earlier combined plan is preserved at
   - [ggSwarm Capstone (v1, shipped April 2026)](#ggswarm-capstone-v1-shipped-april-2026)
   - [ggSwarm Live](#ggswarm-live)
 - [Project Navigation](#project-navigation)
-  - [ggSwarm Live](#ggswarm-live)
+  - [ggSwarm Live](#ggswarm-live-1)
   - [Capstone (frozen)](#capstone-frozen)
 - [Quickstart](#quickstart)
 - [Training and Playback (capstone-era sim)](#training-and-playback-capstone-era-sim)
