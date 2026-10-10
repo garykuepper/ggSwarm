@@ -4,7 +4,6 @@
 [![Isaac Lab](https://img.shields.io/badge/Isaac%20Lab-2.3-76B900?logo=nvidia&logoColor=white)](https://isaac-sim.github.io/IsaacLab/)
 [![Isaac Sim](https://img.shields.io/badge/Isaac%20Sim-5.1-76B900?logo=nvidia&logoColor=white)](https://developer.nvidia.com/isaac-sim)
 ![Capstone](https://img.shields.io/badge/Capstone-Shipped%20Apr%202026-green)
-![Live](https://img.shields.io/badge/ggSwarm%20Live-Parked-lightgrey)
 
 ![ggSwarm — A Decentralized Drone Swarm](docs/assets/banner.jpg)
 
@@ -32,7 +31,7 @@ under [`docs/capstone/`](docs/capstone/).
 
 ![ggSwarm highlight](docs/assets/ggswarm-highlight.gif)
 
-### ggSwarm Live (parked)
+### ggSwarm Live
 
 > **Direction changed 2026-09-23.** A three-survey review of real swarms
 > moved the plan to a deterministic plan-and-certify core first
@@ -71,7 +70,7 @@ is the planned outdoor platform. The earlier combined plan is preserved at
 
 - [Two programs in one repo](#two-programs-in-one-repo)
   - [ggSwarm Capstone (v1, shipped April 2026)](#ggswarm-capstone-v1-shipped-april-2026)
-  - [ggSwarm Live (parked)](#ggswarm-live-parked)
+  - [ggSwarm Live](#ggswarm-live)
 - [Project Navigation](#project-navigation)
   - [ggSwarm Live](#ggswarm-live)
   - [Capstone (frozen)](#capstone-frozen)
