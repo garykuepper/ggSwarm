@@ -8,7 +8,7 @@ the policy actually needs from real hardware.
 > the ArduPilot show drone outdoors. What flies first is the ggChoreo
 > plan-and-certify output, with this policy as a challenger behind a
 > safety filter. See the
-> [ggSkyGrid plan](https://github.com/garykuepper/ggSkyGrid/blob/main/PLAN.md).
+> [ggSkyGrid plan](https://github.com/garykuepper/ggSkyGrid/blob/main/PLAN.md) (private).
 
 **New capability:** the sim-trained decentralized policy flies on real
 drones.

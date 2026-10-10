@@ -36,11 +36,11 @@ under [`docs/capstone/`](docs/capstone/).
 
 > **Direction changed 2026-09-23.** A three-survey review of real swarms
 > moved the plan to a deterministic plan-and-certify core first
-> ([ggChoreo](https://github.com/garykuepper/ggChoreo)), then online
+> ([ggChoreo](https://github.com/garykuepper/ggChoreo) (private)), then online
 > decentralized replanning behind a safety filter, with this repo's
 > GATv2+PPO policy kept as a benchmarked challenger. The program is parked
 > behind a gate; see the
-> [ggSkyGrid plan](https://github.com/garykuepper/ggSkyGrid/blob/main/PLAN.md).
+> [ggSkyGrid plan](https://github.com/garykuepper/ggSkyGrid/blob/main/PLAN.md) (private).
 > The description below is the July 2026 plan and is kept as history.
 
 Real-hardware research program. Takes the capstone policy out of an
