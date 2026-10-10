@@ -4,6 +4,12 @@
 in once Phase 1 (decentralization + downwash) lands and it's clear what
 the policy actually needs from real hardware.
 
+> **Updated 2026-09-23.** The hardware path is now Crazyflie indoors, then
+> the ArduPilot show drone outdoors. What flies first is the ggChoreo
+> plan-and-certify output, with this policy as a challenger behind a
+> safety filter. See the
+> [ggSkyGrid plan](https://github.com/garykuepper/ggSkyGrid/blob/main/PLAN.md).
+
 **New capability:** the sim-trained decentralized policy flies on real
 drones.
 

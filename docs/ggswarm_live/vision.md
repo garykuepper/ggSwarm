@@ -4,6 +4,15 @@
 plan (preserved at [`archive/vision_v0.2.md`](archive/vision_v0.2.md)).
 Solo pace, no timeline.*
 
+> **Superseded in part, 2026-09-23.** The learned policy is no longer the
+> primary path to hardware. The deterministic plan-and-certify core
+> ([ggChoreo](https://github.com/garykuepper/ggChoreo)) comes first, then
+> online decentralized replanning behind a safety filter. This repo's
+> policy is benchmarked against it as a challenger. ggSwarm Live is
+> parked; order and gates are in the
+> [ggSkyGrid plan](https://github.com/garykuepper/ggSkyGrid/blob/main/PLAN.md).
+> The text below is kept as the July 2026 plan.
+
 ## Vision statement
 
 A **decentralized drone swarm** that forms formations on command with
@@ -54,8 +63,8 @@ shows (Option B RL-overlay architecture, Part 107 / § 107.35
 regulatory phases). That coupling didn't hold up — a drone light show
 has its own, much simpler algorithmic needs (pre-authored choreography,
 not learned formation control), and bolting the research policy onto a
-revenue product distorted both. The show work is now its own project
-with its own algorithm; it isn't documented here. The prior combined
+revenue product distorted both. The show work is now its own project,
+ggSkylight. Since 2026-09-23 the two share one offline planner, ggChoreo. The prior combined
 design is preserved at [`archive/architecture.md`](archive/architecture.md)
 and [`archive/phases/phase14_drone_show.md`](archive/phases/phase14_drone_show.md)
 in case that separate project wants a starting reference.

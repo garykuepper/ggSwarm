@@ -4,13 +4,13 @@
 [![Isaac Lab](https://img.shields.io/badge/Isaac%20Lab-2.3-76B900?logo=nvidia&logoColor=white)](https://isaac-sim.github.io/IsaacLab/)
 [![Isaac Sim](https://img.shields.io/badge/Isaac%20Sim-5.1-76B900?logo=nvidia&logoColor=white)](https://developer.nvidia.com/isaac-sim)
 ![Capstone](https://img.shields.io/badge/Capstone-Shipped%20Apr%202026-green)
-![Live](https://img.shields.io/badge/ggSwarm%20Live-Active-blue)
+![Live](https://img.shields.io/badge/ggSwarm%20Live-Parked-lightgrey)
 
 ![ggSwarm — A Decentralized Drone Swarm](docs/assets/banner.jpg)
 
-A learned, graph-attention-based multi-drone formation policy — and the
-program building it out from a sim-only capstone into a real-hardware
-drone-show product.
+A learned, graph-attention-based multi-drone formation policy, and the
+research program taking a sim-only capstone toward a real, decentralized
+swarm on hardware.
 
 ## Two programs in one repo
 
@@ -32,7 +32,16 @@ under [`docs/capstone/`](docs/capstone/).
 
 ![ggSwarm highlight](docs/assets/ggswarm-highlight.gif)
 
-### ggSwarm Live (active)
+### ggSwarm Live (parked)
+
+> **Direction changed 2026-09-23.** A three-survey review of real swarms
+> moved the plan to a deterministic plan-and-certify core first
+> ([ggChoreo](https://github.com/garykuepper/ggChoreo)), then online
+> decentralized replanning behind a safety filter, with this repo's
+> GATv2+PPO policy kept as a benchmarked challenger. The program is parked
+> behind a gate; see the
+> [ggSkyGrid plan](https://github.com/garykuepper/ggSkyGrid/blob/main/PLAN.md).
+> The description below is the July 2026 plan and is kept as history.
 
 Real-hardware research program. Takes the capstone policy out of an
 idealized, centralized simulation and makes it work decentralized,
@@ -53,16 +62,16 @@ Isaac-side validation pending; see
 [`docs/ggswarm_live/decentralization_plan.md`](docs/ggswarm_live/decentralization_plan.md)
 for the design and staged rollout.
 
-A separate drone-light-show project (its own algorithm, developed to
-fund this research) is **not** part of ggSwarm; the earlier combined
-plan is preserved at
+The drone-light-show project is ggSkylight, a separate repo. Since
+2026-09-23 both share the ggChoreo planner, and ggSkylight's show drone
+is the planned outdoor platform. The earlier combined plan is preserved at
 [`docs/ggswarm_live/archive/`](docs/ggswarm_live/archive/) for reference.
 
 ## Table of Contents
 
 - [Two programs in one repo](#two-programs-in-one-repo)
   - [ggSwarm Capstone (v1, shipped April 2026)](#ggswarm-capstone-v1-shipped-april-2026)
-  - [ggSwarm Live (active)](#ggswarm-live-active)
+  - [ggSwarm Live (parked)](#ggswarm-live-parked)
 - [Project Navigation](#project-navigation)
   - [ggSwarm Live](#ggswarm-live)
   - [Capstone (frozen)](#capstone-frozen)
@@ -113,8 +122,8 @@ Top-level docs splitter: [`docs/README.md`](docs/README.md).
 ## Quickstart
 
 The current installable code is the capstone simulation stack
-(`ggswarm-v0` Isaac Lab task). The ggSwarm Live hardware stack adds PX4
-+ companion-computer pieces over time, on top of this same repo.
+(`ggswarm-v0` Isaac Lab task). Hardware work (Crazyflie, then the ArduPilot show drone) is gated in the
+ggSkyGrid plan.
 
 > Isaac Lab is expected to be installed inside your Python virtual environment.
 > No sibling `IsaacLab` repository clone is required for this project setup.
